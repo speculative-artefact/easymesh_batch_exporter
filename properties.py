@@ -16,6 +16,7 @@ def register_properties():
             ("FBX", "FBX", "Export as FBX"),
             ("OBJ", "OBJ", "Export as OBJ"),
             ("GLTF", "glTF", "Export as glTF"),
+            ("USD", "USD", "Export as USD"),
             ("STL", "STL", "Export as STL"),
         ],
         default="FBX"
@@ -31,34 +32,6 @@ def register_properties():
         soft_max=100.0
     )
     
-    bpy.types.Scene.mesh_export_forward_axis = EnumProperty(
-        name="Forward",
-        description="Forward axis for exported meshes",
-        items=[
-            ("X", "X Forward", ""),
-            ("Y", "Y Forward", ""),
-            ("Z", "Z Forward", ""),
-            ("-X", "-X Forward", ""),
-            ("-Y", "-Y Forward", ""),
-            ("-Z", "-Z Forward", ""),
-        ],
-        default="Y"
-    )
-    
-    bpy.types.Scene.mesh_export_up_axis = EnumProperty(
-        name="Up",
-        description="Up axis for exported meshes",
-        items=[
-            ("X", "X Up", ""),
-            ("Y", "Y Up", ""),
-            ("Z", "Z Up", ""),
-            ("-X", "-X Up", ""),
-            ("-Y", "-Y Up", ""),
-            ("-Z", "-Z Up", ""),
-        ],
-        default="Z"
-    )
-    
     bpy.types.Scene.mesh_export_axis_simple = EnumProperty(
         name="Coord Sys",
         description="Coordinate system for exported meshes",
@@ -70,24 +43,6 @@ def register_properties():
         ],
         default="Unreal"
     )
-    
-    bpy.types.Scene.mesh_export_apply_location = BoolProperty(
-        name="Location",
-        description="Apply object location before export",
-        default=False
-    )
-    
-    bpy.types.Scene.mesh_export_apply_rotation = BoolProperty(
-        name="Rotation",
-        description="Apply object rotation before export",
-        default=False
-    )
-    
-    bpy.types.Scene.mesh_export_apply_scale = BoolProperty(
-        name="Scale",
-        description="Apply object scale before export",
-        default=False
-    )
 
     bpy.types.Scene.mesh_export_zero_location = BoolProperty(
         name="Zero Location",
@@ -95,15 +50,27 @@ def register_properties():
         default=True
     )
 
-    bpy.types.Scene.mesh_export_zero_rotation = BoolProperty(
-        name="Zero Rotation",
-        description="Zero rotation of the object before export",
-        default=True
-    )
-
     bpy.types.Scene.mesh_export_triangulate = BoolProperty(
         name="Triangulate Faces",
         description="Convert all faces to triangles",
+        default=True
+    )
+    
+    bpy.types.Scene.mesh_export_triangulate_method = EnumProperty(
+        name="Method",
+        description="Method used for triangulating quads",
+        items=[
+            ("BEAUTY", "Beauty", "Triangulate with the best-looking result"),
+            ("FIXED", "Fixed", "Split the quad from the first to third vertices"),
+            ("FIXED_ALTERNATE", "Fixed Alternate", "Split the quad from the second to fourth vertices"),
+            ("SHORTEST_DIAGONAL", "Shortest Diagonal", "Split the quad along the shortest diagonal")
+        ],
+        default="BEAUTY"
+    )
+    
+    bpy.types.Scene.mesh_export_keep_normals = BoolProperty(
+        name="Keep Normals",
+        description="Preserve normal vectors during triangulation",
         default=True
     )
 
@@ -130,7 +97,8 @@ def register_properties():
         description="Decimate factor for LOD 01, lower values mean more decimation",
         default=0.5000,
         min=0.0000,
-        max=1.0000
+        max=1.0000,
+        subtype="FACTOR"
     )
 
     bpy.types.Scene.mesh_export_lod_02 = FloatProperty(
@@ -138,7 +106,8 @@ def register_properties():
         description="Decimate factor for LOD 02, lower values mean more decimation",
         default=0.2500,
         min=0.0000,
-        max=1.0000
+        max=1.0000,
+        subtype="FACTOR"
     )
 
     bpy.types.Scene.mesh_export_lod_03 = FloatProperty(
@@ -146,20 +115,52 @@ def register_properties():
         description="Decimate factor for LOD 03, lower values mean more decimation",
         default=0.1000,
         min=0.0000,
-        max=1.0000
+        max=1.0000,
+        subtype="FACTOR"
+    )
+
+    bpy.types.Scene.mesh_export_in_progress = bpy.props.BoolProperty(
+        name="Export in Progress",
+        description="Indicates an export is currently running",
+        default=False
+    )
+
+    bpy.types.Scene.mesh_export_current_object = bpy.props.StringProperty(
+        name="Current Object",
+        description="Name of the object currently being exported",
+        default=""
+    )
+
+    bpy.types.Scene.mesh_export_progress = bpy.props.IntProperty(
+        name="Export Progress",
+        description="Current export progress",
+        default=0,
+        min=0
+    )
+
+    bpy.types.Scene.mesh_export_total = bpy.props.IntProperty(
+        name="Export Total",
+        description="Total objects to export",
+        default=0,
+        min=0
     )
 
 def unregister_properties():
     del bpy.types.Scene.mesh_export_path
     del bpy.types.Scene.mesh_export_format
     del bpy.types.Scene.mesh_export_scale
-    del bpy.types.Scene.mesh_export_forward_axis
-    del bpy.types.Scene.mesh_export_up_axis
     del bpy.types.Scene.mesh_export_axis_simple
-    del bpy.types.Scene.mesh_export_apply_location
-    del bpy.types.Scene.mesh_export_apply_rotation
-    del bpy.types.Scene.mesh_export_apply_scale
     del bpy.types.Scene.mesh_export_zero_location
-    del bpy.types.Scene.mesh_export_zero_rotation
     del bpy.types.Scene.mesh_export_prefix
     del bpy.types.Scene.mesh_export_suffix
+    del bpy.types.Scene.mesh_export_triangulate
+    del bpy.types.Scene.mesh_export_triangulate_method
+    del bpy.types.Scene.mesh_export_keep_normals
+    del bpy.types.Scene.mesh_export_lod
+    del bpy.types.Scene.mesh_export_lod_01
+    del bpy.types.Scene.mesh_export_lod_02
+    del bpy.types.Scene.mesh_export_lod_03
+    del bpy.types.Scene.mesh_export_in_progress
+    del bpy.types.Scene.mesh_export_current_object
+    del bpy.types.Scene.mesh_export_progress
+    del bpy.types.Scene.mesh_export_total

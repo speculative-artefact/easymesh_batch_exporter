@@ -33,14 +33,17 @@ bpy.utils.user_resource("EXTENSIONS", path="vscode_development")
 from . import properties
 from . import operators
 from . import panels
+from . import export_indicators
 
 # Registration
 def register():
     properties.register_properties()
     operators.register()
     panels.register()
+    export_indicators.register()
 
 def unregister():
+    export_indicators.unregister()
     panels.unregister()
     operators.unregister()
     properties.unregister_properties()
