@@ -494,9 +494,11 @@ class MESH_OT_batch_export(Operator):
                             # Catch other potential removal errors
                             print(f"Error during cleanup of {log_cleanup_name}: {remove_e}")
 
-                    # 10. Mark Original Object (regardless of failure?)
-                    # Decide if you only want to mark successfully exported objects.
-                    # This checks if the original object's name (or potentially LOD variant) was added to failed_exports
+                    # 10. Mark Original Object as Exported
+                    # This checks if the original object's name, 
+                    # or potentially LOD variant, was added to failed_exports
+                    # Result is: only meshes that completely export, 
+                    # including all LODs, are marked as successfully exported
                     processed_successfully = not any(fail_name.startswith(original_obj.name) for fail_name in failed_exports)
 
                     if original_obj and processed_successfully:

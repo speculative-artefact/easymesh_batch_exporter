@@ -78,9 +78,9 @@ class MESH_PT_exporter_panel(Panel):
         row.operator("mesh.batch_export", text=button_text, icon="EXPORT")
 
 
-# LOD Panel (Keep as is, ensure bl_parent_id is correct)
+# LOD Panel
 class MESH_PT_exporter_panel_lod(Panel):
-    bl_label = "LOD Generation"
+    bl_label = "Quick LODs"
     bl_idname = "MESH_PT_exporter_panel_lod"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI" 
@@ -114,15 +114,29 @@ class MESH_PT_exporter_panel_lod(Panel):
 
         box = layout.box()
         col = box.column(align=True)
-        col.label(text="Ratios:")
+        # col.label(text="Ratios:")
         # Display relevant properties based on type
         if scene.mesh_export_lod_type == "COLLAPSE":
-            col.prop(scene, "mesh_export_lod_ratio_01", text="LOD1")
-            col.prop(scene, "mesh_export_lod_ratio_02", text="LOD2")
-            col.prop(scene, "mesh_export_lod_ratio_03", text="LOD3")
-            col.prop(scene, "mesh_export_lod_ratio_04", text="LOD4")
+            row = col.row(align=True)
+            row.prop(scene, "mesh_export_lod_ratio_01", text="LOD1")
+            row = col.row(align=True)
+            row.prop(scene, "mesh_export_lod_ratio_02", text="LOD2")
+            if scene.mesh_export_lod_count < 2:
+                # Visual indicator for which LODs are disabled
+                row.enabled = False
+            row = col.row(align=True)
+            row.prop(scene, "mesh_export_lod_ratio_03", text="LOD3")
+            if scene.mesh_export_lod_count < 3:
+                # Visual indicator for which LODs are disabled
+                row.enabled = False
+            row = col.row(align=True)
+            row.prop(scene, "mesh_export_lod_ratio_04", text="LOD4")
+            if scene.mesh_export_lod_count < 4:
+                # Visual indicator for which LODs are disabled
+                row.enabled = False
         elif scene.mesh_export_lod_type == "UNSUBDIVIDE":
             # Unsudivide should use Int for iterations
+            # Can fix this later if needed
             col.prop(scene, "mesh_export_lod_ratio_01", text="LOD1 Iter.")
             col.prop(scene, "mesh_export_lod_ratio_02", text="LOD2 Iter.")
             col.prop(scene, "mesh_export_lod_ratio_03", text="LOD3 Iter.")

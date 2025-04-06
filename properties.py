@@ -118,7 +118,7 @@ def register_properties():
 
     # LOD count property
     bpy.types.Scene.mesh_export_lod_count = IntProperty(
-        name="Number of LODs",
+        name="Additional LODs",
         description="How many additional LODs to generate (LOD1 to LOD4)",
         default=4, min=1, max=4, # Max 4 due to 4 ratio properties
     )
@@ -138,23 +138,23 @@ def register_properties():
 
     # LOD ratio properties
     bpy.types.Scene.mesh_export_lod_ratio_01 = FloatProperty(
-        name="LOD1 Ratio/Iter", 
-        description="Decimate factor/iterations for LOD 1",
+        name="LOD1 Ratio", 
+        description="Decimate factor for LOD 1",
         default=0.75, min=0.0, max=1.0, subtype="FACTOR"
     )
     bpy.types.Scene.mesh_export_lod_ratio_02 = FloatProperty(
-        name="LOD2 Ratio/Iter", 
-        description="Decimate factor/iterations for LOD 2",
+        name="LOD2 Ratio", 
+        description="Decimate factor for LOD 2",
         default=0.50, min=0.0, max=1.0, subtype="FACTOR"
     )
     bpy.types.Scene.mesh_export_lod_ratio_03 = FloatProperty(
-        name="LOD3 Ratio/Iter", 
-        description="Decimate factor/iterations for LOD 3",
+        name="LOD3 Ratio", 
+        description="Decimate factor for LOD 3",
         default=0.25, min=0.0, max=1.0, subtype="FACTOR"
     )
     bpy.types.Scene.mesh_export_lod_ratio_04 = FloatProperty(
-        name="LOD4 Ratio/Iter", 
-        description="Decimate factor/iterations for LOD 4",
+        name="LOD4 Ratio", 
+        description="Decimate factor for LOD 4",
         default=0.10, min=0.0, max=1.0, subtype="FACTOR"
     )
 

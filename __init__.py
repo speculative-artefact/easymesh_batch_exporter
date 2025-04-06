@@ -17,9 +17,14 @@ bl_info = {
     "name": "EasyMesh Batch Exporter",
     "author": "Bradley Walker",
     "version": (1, 1, 0),
-    "blender": (3, 5, 0), # Adjust if needed
+    "blender": (4, 2, 0), 
     "location": "View3D > Sidebar > Exporter",
-    "description": "Export multiple selected objects sequentially with customisable settings",
+    "description": (
+        "Batch export multiple selected mesh objects with customisable "
+        "settings like LOD generation, triangulation, prefix/suffix "
+        "naming, and transform options. Useful for game development "
+        "pipelines."
+    ),
     "warning": "",
     "doc_url": "",
     "category": "Import-Export",
