@@ -6,6 +6,7 @@ import os
 import time
 import contextlib
 import re
+import math
 import logging
 from bpy.types import Operator
 from bpy.props import StringProperty
@@ -229,11 +230,13 @@ def apply_mesh_modifiers(obj):
 
 
 def compress_textures(obj, ratio):
-    """Compresses textures based on decimation ratio with no user input required.
+    """
+    Compresses textures based on decimation ratio with no user input required.
     
     Args:
-        obj: The mesh object whose textures should be compressed
-        ratio: The decimation ratio (1.0 = full quality, 0.1 = heavy decimation)
+        obj:    The mesh object whose textures should be compressed
+        ratio:  The decimation ratio 
+                1.0 = full quality, 0.01 = heavy decimation
         
     Returns:
         List of modified image names for reporting
@@ -270,8 +273,8 @@ def compress_textures(obj, ratio):
         return []
         
     # Calculate compression amount based on decimation ratio
-    compression_factor = max(ratio**0.5, 0.25)  # Limit max compression to 1/4 size
-    min_dimension = 128  # Minimum texture size
+    compression_factor = max(ratio**0.9, 0.05)  # Limit max compression to 1/20
+    min_dimension = 64  # Minimum texture size
     
     # Process each image
     for orig_img, nodes_using_img in image_nodes.items():
@@ -405,9 +408,9 @@ def apply_decimate_modifier(obj, ratio, decimate_type):
         bpy.ops.object.mode_set(mode="OBJECT")
 
     # Compress textures based on ratio - no UI elements needed
-    compressed_textures = compress_textures(obj, ratio)
-    if compressed_textures:
-        logger.info(f"Compressed {len(compressed_textures)} textures")
+    # compressed_textures = compress_textures(obj, ratio)
+    # if compressed_textures:
+    #     logger.info(f"Compressed {len(compressed_textures)} textures")
 
     # Create and apply decimate modifier as before
     mod_name = "TempDecimate"
@@ -436,8 +439,8 @@ def apply_decimate_modifier(obj, ratio, decimate_type):
             f"(target: {ratio:.3f}, actual: {actual_ratio:.3f})"
         )
         
-        if compressed_textures:
-            logger.info(f"Texture compression details: {', '.join(compressed_textures)}")
+        # if compressed_textures:
+        #     logger.info(f"Texture compression details: {', '.join(compressed_textures)}")
             
     except Exception as e:
         logger.error(f"Failed to apply Decimate modifier: {e}")
@@ -492,6 +495,27 @@ def export_object(obj, file_path, scene_props):
     # base_file_path = os.path.splitext(file_path)[0] # Ensure no extension yet
     base_file_path = file_path
     export_filepath = f"{base_file_path}.{fmt.lower()}"
+
+    temp_lod_lvl = obj.name.split("_")[-1]
+
+    if temp_lod_lvl == "LOD01":
+        export_quality = math.ceil(scene_props.mesh_export_lod_ratio_01 * 100)
+        downscale_size = "2048"
+    elif temp_lod_lvl == "LOD02":
+        export_quality = math.ceil(scene_props.mesh_export_lod_ratio_02 * 100)
+        downscale_size = "1024"
+    elif temp_lod_lvl == "LOD03":
+        export_quality = math.ceil(scene_props.mesh_export_lod_ratio_03 * 100)
+        downscale_size = "512"
+    elif temp_lod_lvl == "LOD04":
+        export_quality = math.ceil(scene_props.mesh_export_lod_ratio_04 * 100)
+        downscale_size = "256"
+    else:
+        export_quality = 100
+        downscale_size = "KEEP"
+
+    # logger.info(f"[[quality: {export_quality}]]")
+    # logger.info(f"[[downscale: {downscale_size}]]")
     
     logger.info(f"File path: {file_path}")
     logger.info(
@@ -522,6 +546,7 @@ def export_object(obj, file_path, scene_props):
                     global_scale=scene_props.mesh_export_scale,
                     forward_axis=scene_props.mesh_export_coord_forward,
                     up_axis=scene_props.mesh_export_coord_up,
+                    export_materials=True,
                     path_mode="COPY",
                     apply_modifiers=False, # Handled by apply_mesh_modifiers
                     export_triangulated_mesh=False, # Handled triangulate_mesh
@@ -536,8 +561,8 @@ def export_object(obj, file_path, scene_props):
                     export_extras=True,
                     export_yup=(scene_props.mesh_export_coord_up == "Y"),
                     # Need to add a prop to track material quality
-                    export_jpeg_quality=100,
-                    export_image_quality=100,
+                    export_jpeg_quality=export_quality,
+                    export_image_quality=export_quality,
                 )
             elif fmt == "USD":
                 bpy.ops.wm.usd_export(
@@ -552,7 +577,10 @@ def export_object(obj, file_path, scene_props):
                     evaluation_mode="RENDER",
                     triangulate_meshes=False, # Handled by triangulate_mesh
                     # Need to add a prop to track material quality
-                    usdz_downscale_size="KEEP"
+                    usdz_downscale_size=downscale_size,
+                    export_textures=True,
+                    export_textures_mode="NEW",
+                    overwrite_textures=True,
                 )
             elif fmt == "STL":
                 bpy.ops.wm.stl_export(
@@ -587,10 +615,10 @@ def cleanup_object(obj, obj_name_for_log):
     logger.info(f"Attempting cleanup for: {log_name}")
     
     # First restore original textures if they were compressed
-    try:
-        restore_original_textures(obj)
-    except Exception as tex_e:
-        logger.warning(f"Error restoring original textures for {log_name}: {tex_e}")
+    # try:
+    #     restore_original_textures(obj)
+    # except Exception as tex_e:
+    #     logger.warning(f"Error restoring original textures for {log_name}: {tex_e}")
     
     # Then remove the object
     try:
