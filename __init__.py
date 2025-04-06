@@ -14,38 +14,42 @@
 # Copyright (C) 2025 Bradley Walker
 
 bl_info = {
-    "name": "Custom Mesh Exporter",
+    "name": "EasyMesh Batch Exporter",
     "author": "Bradley Walker",
-    "version": (1, 0, 0),
-    "blender": (3, 5, 0),
-    "location": "View3D > Sidebar > Mesh Exporter",
-    "description": "Export multiple selected objects with customisable settings",
+    "version": (1, 1, 0),
+    "blender": (3, 5, 0), # Adjust if needed
+    "location": "View3D > Sidebar > Exporter",
+    "description": "Export multiple selected objects sequentially with customisable settings",
     "warning": "",
     "doc_url": "",
     "category": "Import-Export",
 }
 
 import bpy
-# for development
-bpy.utils.user_resource("EXTENSIONS", path="vscode_development")
 
 # Import other modules
 from . import properties
 from . import operators
 from . import panels
-from . import export_indicators
+from . import export_indicators # Still needed for timer and recent list
 
 # Registration
+classes = (
+    *operators.classes,
+    *panels.classes,
+    # export_indicators registers its own classes/timer
+)
+
 def register():
     properties.register_properties()
-    operators.register()
-    panels.register()
-    export_indicators.register()
+    for cls in classes:
+        bpy.utils.register_class(cls)
+    export_indicators.register() # Register timer and indicator operators/panels
 
 def unregister():
-    export_indicators.unregister()
-    panels.unregister()
-    operators.unregister()
+    export_indicators.unregister() # Unregister timer first
+    for cls in reversed(classes):
+        bpy.utils.unregister_class(cls)
     properties.unregister_properties()
 
 if __name__ == "__main__":
