@@ -1,183 +1,423 @@
+# operators.py
+"""Contains Blender operators for the Mesh Exporter add-on."""
+
 import bpy
 import os
 import time
 import contextlib
+import re
+import logging
 from bpy.types import Operator
 from bpy.props import StringProperty
-from . import export_indicators # Import for status constants/colors if needed later
+from . import export_indicators
 
-# --- Export Indicator Logic (Moved from export_indicators.py) ---
+# --- Setup Logger ---
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter("%(name)s:%(levelname)s: %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)  # Default level
 
+# --- Constants ---
 EXPORT_TIME_PROP = "mesh_export_timestamp"
 EXPORT_STATUS_PROP = "mesh_export_status"
+
+
+# --- Core Functions ---
 
 def mark_object_as_exported(obj):
     """Mark an object as just exported by setting custom properties."""
     if obj is None or obj.type != "MESH":
         return
-    # Set timestamp and status (using values from export_indicators if needed)
     obj[EXPORT_TIME_PROP] = time.time()
-    # Use the enum value directly if export_indicators is imported fully
-    # obj[EXPORT_STATUS_PROP] = export_indicators.ExportStatus.FRESH.value
-    obj[EXPORT_STATUS_PROP] = 0 # Assuming 0 corresponds to FRESH status
-
-    # Trigger visual update if the full indicator system is active
+    obj[EXPORT_STATUS_PROP] = 0  # Assuming 0 is FRESH status
     if hasattr(export_indicators, "set_object_color"):
-         export_indicators.set_object_color(obj)
+        export_indicators.set_object_color(obj)
 
-# --- Helper Functions ---
 
 @contextlib.contextmanager
 def temp_selection_context(context, active_object=None, selected_objects=None):
-    """Temporarily set the active object and selection, checking object existence by name."""
+    """Temporarily set the active object and selection."""
     original_active = context.view_layer.objects.active
-    original_selected = context.selected_objects[:] # Make a copy
-    scene_objects = context.scene.objects # Get collection for checking
+    original_selected = context.selected_objects[:]
+    scene_objects = context.scene.objects
 
     try:
-        # Deselect all first
-        # Run in object mode if necessary for selection operators
         current_mode = context.mode
         if current_mode != "OBJECT":
             bpy.ops.object.mode_set(mode="OBJECT")
-
         bpy.ops.object.select_all(action="DESELECT")
 
-        # Select specified objects
         active_obj_to_set = None
         if selected_objects:
             if not isinstance(selected_objects, list):
                 selected_objects = [selected_objects]
             for obj in selected_objects:
-                # Check object exists in scene using its name before selecting
                 if obj and obj.name in scene_objects:
                     try:
                         obj.select_set(True)
                     except ReferenceError:
-                        # This can happen if the object became invalid between check and select
-                        print(f"Warning: Could not select '{obj.name}' - object reference invalid.")
+                        logger.warning(
+                            f"Could not select '{obj.name}' - object reference invalid."
+                        )
                 elif obj:
-                     # Object reference exists but name not in scene objects (shouldn't usually happen here)
-                     print(f"Warning: Object reference '{obj.name}' exists but not found in scene during selection.")
+                    logger.warning(
+                        f"Object reference '{obj.name}' exists but not found "
+                        f"in scene during selection."
+                    )
 
-        # Determine the active object to set - Check using name
         if active_object and active_object.name in scene_objects:
-             active_obj_to_set = active_object
+            active_obj_to_set = active_object
         elif selected_objects:
-             # Fallback to first selected object *that is still valid*
-             first_valid_selected = next((obj for obj in selected_objects if obj and obj.name in scene_objects), None)
-             if first_valid_selected:
-                  active_obj_to_set = first_valid_selected
+            first_valid = next(
+                (obj for obj in selected_objects
+                 if obj and obj.name in scene_objects),
+                None
+            )
+            if first_valid:
+                active_obj_to_set = first_valid
 
-        context.view_layer.objects.active = active_obj_to_set # Set active object (or None if invalid)
+        context.view_layer.objects.active = active_obj_to_set
 
-        # Restore original mode if we changed it
         if context.mode != current_mode:
-             bpy.ops.object.mode_set(mode=current_mode)
-
-        yield # Let the code inside the "with" block run
-
+            bpy.ops.object.mode_set(mode=current_mode)
+        yield
     finally:
-        # Restore original selection state
-        # Ensure object mode for selection operators
+        # Restore selection state
         current_mode = context.mode
         if current_mode != "OBJECT":
-             bpy.ops.object.mode_set(mode="OBJECT")
-
+            bpy.ops.object.mode_set(mode="OBJECT")
         bpy.ops.object.select_all(action="DESELECT")
         restored_selection = []
         for obj in original_selected:
-            # Check using name before selecting
             if obj and obj.name in scene_objects:
                 try:
-                     obj.select_set(True)
-                     restored_selection.append(obj) # Keep track of successfully re-selected
+                    obj.select_set(True)
+                    restored_selection.append(obj)
                 except ReferenceError:
-                    pass # Object might have been deleted or became invalid
-            elif obj:
-                 pass # Object reference exists but no longer in scene
+                    pass  # Object already gone
 
-        # Restore original active object - Check using name
-        original_active_restored = None
+        # Restore active object
         if original_active and original_active.name in scene_objects:
             try:
                 context.view_layer.objects.active = original_active
-                original_active_restored = original_active
             except ReferenceError:
-                pass # Original active object became invalid
+                pass  # Original active already gone
         else:
-             # If original active is gone/invalid, try setting to first re-selected, or None
-             if restored_selection:
-                  context.view_layer.objects.active = restored_selection[0]
-                  original_active_restored = restored_selection[0] # Update for mode restore check
-             else:
-                  context.view_layer.objects.active = None
+            context.view_layer.objects.active = (
+                restored_selection[0] if restored_selection else None
+            )
 
-
-        # Restore original mode if we changed it, considering the potentially new active object
+        # Restore original mode
         if context.mode != current_mode:
-             # Check if the object we want to switch mode on is still valid
-             obj_to_switch_mode = context.view_layer.objects.active
-             if obj_to_switch_mode:
-                  try:
-                      # Attempt to switch mode back
-                      bpy.ops.object.mode_set(mode=current_mode)
-                  except TypeError:
-                       # This can happen if the mode is incompatible (e.g., trying to go to Edit on a Lamp)
-                       # Or if the active object became None unexpectedly. Default to OBJECT mode.
-                       if context.mode != "OBJECT":
-                           bpy.ops.object.mode_set(mode="OBJECT")
-             elif context.mode != "OBJECT":
-                  # If no active object, ensure we are back in Object mode
-                  bpy.ops.object.mode_set(mode="OBJECT")
+            obj_to_switch = context.view_layer.objects.active
+            if obj_to_switch:
+                try:
+                    bpy.ops.object.mode_set(mode=current_mode)
+                except TypeError:
+                    if context.mode != "OBJECT":
+                        bpy.ops.object.mode_set(mode="OBJECT")
+            elif context.mode != "OBJECT":
+                bpy.ops.object.mode_set(mode="OBJECT")
+
+
+def create_export_copy(original_obj, context):
+    """Creates a linked copy of the object and its data."""
+    if not original_obj or original_obj.type != "MESH":
+        raise ValueError("Invalid object provided for copying.")
+    if original_obj.mode != "OBJECT":
+        bpy.ops.object.mode_set(mode="OBJECT")
+    try:
+        copy_obj = original_obj.copy()
+        copy_obj.data = original_obj.data.copy()
+        context.collection.objects.link(copy_obj)
+        logger.info(
+            f"Created copy: {copy_obj.name} from {original_obj.name}"
+        )
+        return copy_obj
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to create copy of {original_obj.name}: {e}"
+        ) from e
+
+
+def sanitise_filename(name):
+    """Remove characters that are problematic in filenames."""
+    # Replace invalid characters with underscores
+    sanitised = re.sub(r'[\\/:*?"<>|.]', '_', name)
+    return sanitised
+
+
+def setup_export_object(obj, original_obj_name, scene_props, lod_level=None):
+    """Renames object, applies prefix/suffix/LOD naming, zeros location."""
+    if not obj:
+        return None, None
+    try:
+        # Sanitise the original object name
+        original_obj_name = sanitise_filename(original_obj_name)
+        base_name = (
+            scene_props.mesh_export_prefix +
+            original_obj_name +
+            scene_props.mesh_export_suffix
+        )
+        # Truncate if name too long (conservatively 100 chars)
+        max_base_length = 100
+        if len(base_name) > max_base_length:
+            truncated = base_name[:max_base_length-3] + "..."
+            logger.warning(
+                f"Name too long, truncating: {base_name} → {truncated}"
+            )
+            base_name = truncated
+        final_name = (
+            f"{base_name}_LOD{lod_level:02d}"
+            if lod_level is not None
+            else base_name
+        )
+        obj.name = final_name
+        logger.info(f"Renamed to: {obj.name}")
+
+        if scene_props.mesh_export_zero_location:
+            obj.location = (0.0, 0.0, 0.0)
+            logger.info(f"Zeroed location for {obj.name}")
+
+        return obj.name, base_name
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to setup (rename/zero) {obj.name}: {e}"
+        ) from e
 
 
 def apply_mesh_modifiers(obj):
-    """Apply all modifiers on a mesh object."""
+    """Apply all VISIBLE modifiers on a mesh object."""
     if not obj or obj.type != "MESH":
         return
-    # Important: Apply modifiers in a temporary context
-    # Modifiers can't always be applied in edit mode, ensure object mode
-    is_edit_mode = obj.mode == "EDIT"
-    if is_edit_mode:
+    logger.info(f"Applying base modifiers for {obj.name}...")
+    current_mode = obj.mode
+    if current_mode != "OBJECT":
         bpy.ops.object.mode_set(mode="OBJECT")
 
-    # Use override context for applying modifiers
     override = bpy.context.copy()
     override["object"] = obj
     override["active_object"] = obj
     override["selected_objects"] = [obj]
     override["selected_editable_objects"] = [obj]
+    applied_modifiers = []
 
     try:
-        # Apply modifiers one by one from top to bottom
-        for modifier in obj.modifiers[:]: # Iterate over a copy
-            try:
-                 with bpy.context.temp_override(**override):
-                      bpy.ops.object.modifier_apply(modifier=modifier.name)
-            except (RuntimeError, ReferenceError) as e:
-                 print(f"Warning: Could not apply modifier '{modifier.name}' on {obj.name}: {e}")
-                 # Optionally remove problematic modifier: obj.modifiers.remove(modifier)
+        for modifier in obj.modifiers[:]:  # Iterate over a copy
+            if modifier.show_viewport:
+                mod_name = modifier.name
+                logger.info(f"Applying modifier: {mod_name}")
+                try:
+                    with bpy.context.temp_override(**override):
+                        bpy.ops.object.modifier_apply(modifier=mod_name)
+                    applied_modifiers.append(mod_name)
+                except (RuntimeError, ReferenceError) as e:
+                    logger.warning(
+                        f"Could not apply modifier '{mod_name}' on {obj.name}: {e}"
+                    )
+            else:
+                logger.info(f"Skipping disabled modifier: {modifier.name}")
     finally:
-        # Restore original mode if necessary
-        if is_edit_mode:
-            bpy.ops.object.mode_set(mode="EDIT")
+        if obj.mode != current_mode:
+            bpy.ops.object.mode_set(mode=current_mode)
+    logger.info(
+        f"Finished applying modifiers. Applied: {applied_modifiers}"
+    )
 
 
-def triangulate_mesh(obj, method="BEAUTY", keep_normals=True):
-    """Add and apply a triangulate modifier."""
+def compress_textures(obj, ratio):
+    """Compresses textures based on decimation ratio with no user input required.
+    
+    Args:
+        obj: The mesh object whose textures should be compressed
+        ratio: The decimation ratio (1.0 = full quality, 0.1 = heavy decimation)
+        
+    Returns:
+        List of modified image names for reporting
+    """
+    if not obj or obj.type != "MESH":
+        return []
+    
+    logger.info(f"Compressing textures for {obj.name} (decimation ratio: {ratio:.3f})...")
+    
+    # Get all materials on the object
+    materials = obj.data.materials
+    if not materials:
+        logger.info(f"No materials found on {obj.name}, skipping texture compression")
+        return []
+    
+    modified_images = []
+    
+    # First pass - collect all unique images and nodes using them
+    image_nodes = {}  # {image: [nodes using this image]}
+    for mat in materials:
+        if not mat or not mat.node_tree:
+            continue
+            
+        # Find all image texture nodes in the material
+        for node in mat.node_tree.nodes:
+            if node.type == 'TEX_IMAGE' and node.image:
+                if node.image not in image_nodes:
+                    image_nodes[node.image] = []
+                image_nodes[node.image].append((mat, node))
+    
+    # Nothing to do if no images found
+    if not image_nodes:
+        logger.info(f"No texture images found on {obj.name}")
+        return []
+        
+    # Calculate compression amount based on decimation ratio
+    compression_factor = max(ratio**0.5, 0.25)  # Limit max compression to 1/4 size
+    min_dimension = 128  # Minimum texture size
+    
+    # Process each image
+    for orig_img, nodes_using_img in image_nodes.items():
+        # Skip already compressed or size-zero images
+        if not orig_img.has_data or orig_img.size[0] == 0 or orig_img.size[1] == 0:
+            continue
+            
+        # Calculate new resolution
+        orig_width, orig_height = orig_img.size
+        is_power_of_2 = (orig_width & (orig_width - 1) == 0) and (orig_height & (orig_height - 1) == 0)
+        
+        new_width = max(int(orig_width * compression_factor), min_dimension)
+        new_height = max(int(orig_height * compression_factor), min_dimension)
+        
+        # Round to power of 2 if original was power of 2
+        if is_power_of_2:
+            new_width = 2 ** (new_width - 1).bit_length()
+            new_height = 2 ** (new_height - 1).bit_length()
+            
+        # Skip if size hasn't changed
+        if (new_width, new_height) == (orig_width, orig_height):
+            continue
+        
+        # Create a copy of the original image
+        copy_name = f"{orig_img.name}_LOD"
+        
+        # Check if copy already exists, reuse if it does
+        copied_img = bpy.data.images.get(copy_name)
+        if copied_img:
+            # If dimensions don't match our target, recreate it
+            if copied_img.size[0] != new_width or copied_img.size[1] != new_height:
+                bpy.data.images.remove(copied_img)
+                copied_img = None
+        
+        if not copied_img:
+            # Create new image with proper dimensions
+            copied_img = bpy.data.images.new(
+                name=copy_name,
+                width=new_width,
+                height=new_height
+            )
+            
+            # Copy pixel data from original and resize
+            if orig_img.has_data and orig_img.pixels:
+                try:
+                    # Make a copy of the original at the lower resolution
+                    copied_img.scale(orig_width, orig_height)  # First match original size
+                    copied_img.pixels = orig_img.pixels[:]     # Copy pixels
+                    copied_img.scale(new_width, new_height)    # Then resize to target
+                    
+                    # Copy other relevant properties
+                    copied_img.colorspace_settings.name = orig_img.colorspace_settings.name
+                    if orig_img.filepath:
+                        copied_img.filepath = orig_img.filepath  # For export reference
+                    
+                except Exception as e:
+                    logger.warning(f"Error copying pixels for {orig_img.name}: {e}")
+                    
+            logger.info(f"Created compressed copy of '{orig_img.name}' at {new_width}x{new_height}")
+        
+        # Update material nodes to use the copied image
+        for mat, node in nodes_using_img:
+            node.image = copied_img
+        
+        modified_images.append(f"{orig_img.name} ({orig_width}x{orig_height} → {new_width}x{new_height})")
+        
+        # Store original image reference on the object for restoration
+        if "original_textures" not in obj:
+            obj["original_textures"] = {}
+        
+        obj["original_textures"][copy_name] = orig_img.name
+    
+    return modified_images
+
+
+def restore_original_textures(obj):
+    """Restores original textures after export"""
+    if not obj or obj.type != "MESH" or "original_textures" not in obj:
+        return
+    
+    texture_map = obj.get("original_textures", {})
+    if not texture_map:
+        return
+    
+    logger.info(f"Restoring original textures for {obj.name}...")
+    
+    # Get all materials on the object
+    materials = obj.data.materials
+    if not materials:
+        return
+    
+    # Find all image texture nodes and restore originals
+    for mat in materials:
+        if not mat or not mat.node_tree:
+            continue
+            
+        for node in mat.node_tree.nodes:
+            if node.type == "TEX_IMAGE" and node.image:
+                # Check if this is an LOD image that needs restoration
+                if node.image.name in texture_map:
+                    original_name = texture_map[node.image.name]
+                    original_img = bpy.data.images.get(original_name)
+                    
+                    if original_img:
+                        logger.info(f"Restoring {node.image.name} → {original_name}")
+                        node.image = original_img
+    
+    # Clean up the mapping
+    del obj["original_textures"]
+    
+    # Delete any unused LOD textures
+    for img in bpy.data.images:
+        if img.name.endswith("_LOD") and not img.users:
+            bpy.data.images.remove(img)
+
+
+def apply_decimate_modifier(obj, ratio, decimate_type):
+    """Adds, configures, and applies a Decimate modifier."""
     if not obj or obj.type != "MESH":
         return
+    
+    # Get initial poly count for logging
+    initial_poly_count = len(obj.data.polygons)
+    logger.info(
+        f"Applying Decimate to mesh with {initial_poly_count} polygons "
+        f"(Ratio: {ratio:.3f}, Type: {decimate_type})..."
+    )
 
-    is_edit_mode = obj.mode == "EDIT"
-    if is_edit_mode:
+    current_mode = obj.mode
+    if current_mode != "OBJECT":
         bpy.ops.object.mode_set(mode="OBJECT")
 
-    tri_mod = obj.modifiers.new(name="TempTriangulate", type="TRIANGULATE")
-    tri_mod.quad_method = method
-    tri_mod.keep_custom_normals = keep_normals
+    # Compress textures based on ratio - no UI elements needed
+    compressed_textures = compress_textures(obj, ratio)
+    if compressed_textures:
+        logger.info(f"Compressed {len(compressed_textures)} textures")
 
-    # Use override context for applying modifier
+    # Create and apply decimate modifier as before
+    mod_name = "TempDecimate"
+    dec_mod = obj.modifiers.new(name=mod_name, type="DECIMATE")
+    dec_mod.decimate_type = decimate_type.upper()
+
+    # Right now it only supports COLLAPSE
+    if dec_mod.decimate_type == "COLLAPSE":
+        dec_mod.ratio = ratio
+
     override = bpy.context.copy()
     override["object"] = obj
     override["active_object"] = obj
@@ -186,468 +426,483 @@ def triangulate_mesh(obj, method="BEAUTY", keep_normals=True):
 
     try:
         with bpy.context.temp_override(**override):
-            bpy.ops.object.modifier_apply(modifier=tri_mod.name)
-    except (RuntimeError, ReferenceError) as e:
-        print(f"Warning: Could not apply triangulation modifier on {obj.name}: {e}")
+            bpy.ops.object.modifier_apply(modifier=mod_name)
+        
+        # Log final results
+        final_poly_count = len(obj.data.polygons)
+        actual_ratio = final_poly_count / initial_poly_count if initial_poly_count > 0 else 0
+        logger.info(
+            f"Decimation complete: {initial_poly_count} → {final_poly_count} polys "
+            f"(target: {ratio:.3f}, actual: {actual_ratio:.3f})"
+        )
+        
+        if compressed_textures:
+            logger.info(f"Texture compression details: {', '.join(compressed_textures)}")
+            
+    except Exception as e:
+        logger.error(f"Failed to apply Decimate modifier: {e}")
+        if mod_name in obj.modifiers:
+            try:
+                obj.modifiers.remove(dec_mod)
+            except (ReferenceError, RuntimeError):
+                 pass # Modifier already gone or object invalid
+        raise RuntimeError(f"Failed to apply Decimate modifier: {e}") from e
     finally:
-        # Modifier is automatically removed by apply, no need to explicitly remove
-        if is_edit_mode:
-            bpy.ops.object.mode_set(mode="EDIT")
+        if obj.mode != current_mode:
+            bpy.ops.object.mode_set(mode=current_mode)
+
+
+def triangulate_mesh(obj, method="BEAUTY", keep_normals=True):
+    """Add and apply a triangulate modifier."""
+    if not obj or obj.type != "MESH":
+        return
+    logger.info(f"Triangulating {obj.name}...")
+    current_mode = obj.mode
+    if current_mode != "OBJECT":
+        bpy.ops.object.mode_set(mode="OBJECT")
+
+    mod_name = "TempTriangulate"
+    tri_mod = obj.modifiers.new(name=mod_name, type="TRIANGULATE")
+    tri_mod.quad_method = method
+    tri_mod.keep_custom_normals = keep_normals
+
+    override = bpy.context.copy()
+    override["object"] = obj
+    override["active_object"] = obj
+    override["selected_objects"] = [obj]
+    override["selected_editable_objects"] = [obj]
+
+    try:
+        with bpy.context.temp_override(**override):
+            bpy.ops.object.modifier_apply(modifier=mod_name)
+        logger.info("Successfully triangulated.")
+    except Exception as e:
+        logger.warning(
+            f"Could not apply triangulation modifier on {obj.name}: {e}"
+        )
+    finally:
+        if obj.mode != current_mode:
+            bpy.ops.object.mode_set(mode=current_mode)
 
 
 def export_object(obj, file_path, scene_props):
     """Exports a single object using scene properties."""
     fmt = scene_props.mesh_export_format
     success = False
+    # base_file_path = os.path.splitext(file_path)[0] # Ensure no extension yet
+    base_file_path = file_path
+    export_filepath = f"{base_file_path}.{fmt.lower()}"
+    
+    logger.info(f"File path: {file_path}")
+    logger.info(
+        f"Exporting {os.path.basename(export_filepath)} ({fmt})..."
+    )
 
-    # Ensure only the target object is selected and active
-    with temp_selection_context(bpy.context, active_object=obj, selected_objects=[obj]):
+    with temp_selection_context(bpy.context, active_object=obj,
+                                selected_objects=[obj]):
         try:
             if fmt == "FBX":
                 bpy.ops.export_scene.fbx(
-                    filepath=file_path + ".fbx",
+                    filepath=export_filepath,
                     use_selection=True,
-                    global_scale=scene_props.mesh_export_scale, # FBX exporter handles scale
+                    global_scale=scene_props.mesh_export_scale,
                     axis_forward=scene_props.mesh_export_coord_forward,
                     axis_up=scene_props.mesh_export_coord_up,
-                    apply_scale_options="FBX_SCALE_ALL", # Or adjust as needed
+                    apply_scale_options="FBX_SCALE_ALL",
                     object_types={"MESH"},
-                    use_mesh_modifiers=False, # Modifiers should be applied already
-                    bake_anim=False,
-                    # Add other relevant FBX options
+                    path_mode="COPY",
+                    embed_textures=True,
+                    use_mesh_modifiers=False, # Handled by apply_mesh_modifiers
+                    use_triangles=False,      # Handled by triangulate_mesh
                 )
             elif fmt == "OBJ":
-                bpy.ops.export_scene.obj(
-                    filepath=file_path + ".obj",
-                    use_selection=True,
-                    global_scale=scene_props.mesh_export_scale, # OBJ exporter handles scale
-                    axis_forward=scene_props.mesh_export_coord_forward,
-                    axis_up=scene_props.mesh_export_coord_up,
-                    use_mesh_modifiers=False,
-                    use_triangles=False, # Triangulation handled separately if enabled
-                    # Add other relevant OBJ options
+                bpy.ops.wm.obj_export(
+                    filepath=export_filepath,
+                    export_selected_objects=True,
+                    global_scale=scene_props.mesh_export_scale,
+                    forward_axis=scene_props.mesh_export_coord_forward,
+                    up_axis=scene_props.mesh_export_coord_up,
+                    path_mode="COPY",
+                    apply_modifiers=False, # Handled by apply_mesh_modifiers
+                    export_triangulated_mesh=False, # Handled triangulate_mesh
                 )
             elif fmt == "GLTF":
-                # Ensure the glTF addon is enabled
                 bpy.ops.export_scene.gltf(
-                    filepath=file_path + ".gltf",
-                    export_format="GLTF_SEPARATE", # or GLB
+                    filepath=export_filepath,
                     use_selection=True,
-                    export_apply=False, # Transforms/Modifiers should be applied already
+                    export_format="GLTF_SEPARATE", # or GLB
+                    export_apply=False, # Transforms/Mods applied manually
                     export_attributes=True,
                     export_extras=True,
                     export_yup=(scene_props.mesh_export_coord_up == "Y"),
-                     # Add other relevant glTF options
+                    # Need to add a prop to track material quality
+                    export_jpeg_quality=100,
+                    export_image_quality=100,
                 )
             elif fmt == "USD":
-                 bpy.ops.wm.usd_export(
-                     filepath=file_path + ".usd",
-                     selected_objects_only=True,
-                     export_meshes=True,
-                     export_materials=True, # Optional
-                     generate_preview_surface=False, # Optional
-                     use_instancing=False, # Optional
-                     evaluation_mode="RENDER", # Use evaluated mesh state
-                     # USD exporter uses Blender's scene units and axis settings by default
-                     # axis_up/forward might need manual transform if critical
-                 )
+                bpy.ops.wm.usd_export(
+                    filepath=export_filepath,
+                    selected_objects_only=True,
+                    export_global_forward_selection=scene_props.mesh_export_coord_forward,
+                    export_global_up_selection=scene_props.mesh_export_coord_up,
+                    export_meshes=True,
+                    export_materials=True,
+                    generate_preview_surface=False,
+                    use_instancing=False,
+                    evaluation_mode="RENDER",
+                    triangulate_meshes=False, # Handled by triangulate_mesh
+                    # Need to add a prop to track material quality
+                    usdz_downscale_size="KEEP"
+                )
             elif fmt == "STL":
-                 bpy.ops.export_mesh.stl(
-                     filepath=file_path + ".stl",
-                     use_selection=True,
-                     global_scale=scene_props.mesh_export_scale,
-                     axis_forward=scene_props.mesh_export_coord_forward,
-                     axis_up=scene_props.mesh_export_coord_up,
-                     use_mesh_modifiers=False,
-                 )
+                bpy.ops.wm.stl_export(
+                    filepath=export_filepath,
+                    export_selected_objects=True,
+                    global_scale=scene_props.mesh_export_scale,
+                    forward_axis=scene_props.mesh_export_coord_forward,
+                    up_axis=scene_props.mesh_export_coord_up,
+                    apply_modifiers=False, # Handled by apply_mesh_modifiers
+                )
             else:
-                 print(f"Error: Unsupported export format '{fmt}'")
-                 return False # Indicate failure for unsupported format
+                logger.error(f"Unsupported export format '{fmt}'")
+                return False
 
-            print(f"Exported {os.path.basename(file_path)} ({fmt})")
+            logger.info(
+                f"Successfully exported {os.path.basename(export_filepath)}"
+            )
             success = True
-
         except Exception as e:
-            print(f"Error exporting {obj.name} as {fmt}: {e}")
-            # Consider using self.report({"ERROR"}, ...) if inside operator context
-
+            logger.error(
+                f"Failed exporting {obj.name} as {fmt}: {e}", exc_info=True
+            )
+            success = False
     return success
 
 
-# --- Main Export Operator ---
+def cleanup_object(obj, obj_name_for_log):
+    """Removes the specified object, handling potential errors."""
+    if not obj:
+        return
+    log_name = obj_name_for_log if obj_name_for_log else "unnamed object"
+    logger.info(f"Attempting cleanup for: {log_name}")
+    
+    # First restore original textures if they were compressed
+    try:
+        restore_original_textures(obj)
+    except Exception as tex_e:
+        logger.warning(f"Error restoring original textures for {log_name}: {tex_e}")
+    
+    # Then remove the object
+    try:
+        bpy.data.objects.remove(obj, do_unlink=True)
+        logger.info(f"Cleaned up: {log_name}")
+    except (ReferenceError, Exception) as remove_e:
+        logger.warning(f"Issue during cleanup of {log_name}: {remove_e}")
+
+
+# --- Operators ---
 
 class MESH_OT_batch_export(Operator):
-    """Exports selected mesh objects sequentially with specified settings"""
+    """Exports selected mesh objects sequentially with status bar progress."""
     bl_idname = "mesh.batch_export"
     bl_label = "Export Selected Meshes"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
-        # Enable only if there are selected mesh objects
+        """Enable only if mesh objects are selected."""
         return any(obj.type == "MESH" for obj in context.selected_objects)
 
     def execute(self, context):
+        """Runs the batch export process."""
         scene = context.scene
         scene_props = scene
         wm = context.window_manager
         start_time = time.time()
 
-        # Get mesh objects to process from current selection
-        objects_to_export = [obj for obj in context.selected_objects if obj.type == "MESH"]
+        objects_to_export = [
+            obj for obj in context.selected_objects if obj.type == "MESH"
+        ]
         total_objects = len(objects_to_export)
 
         if not objects_to_export:
             self.report({"WARNING"}, "No mesh objects selected.")
+            logger.warning("Export cancelled: No mesh objects selected.")
             return {"CANCELLED"}
 
-        # Prepare export path
+        # Validate export path
         export_base_path = bpy.path.abspath(scene_props.mesh_export_path)
-        if not os.path.exists(export_base_path):
+        if not os.path.isdir(export_base_path):
             try:
                 os.makedirs(export_base_path)
-            except OSError as e:
-                self.report({"ERROR"}, f"Could not create export directory: {export_base_path}. Error: {e}")
+                logger.info(f"Created export directory: {export_base_path}")
+            except Exception as e:
+                err_msg = (
+                    f"Export path invalid/couldn't be created: "
+                    f"{export_base_path}. Error: {e}"
+                )
+                self.report({"ERROR"}, err_msg)
+                logger.error(err_msg)
                 return {"CANCELLED"}
-        elif not os.path.isdir(export_base_path):
-             self.report({"ERROR"}, f"Export path is not a directory: {export_base_path}")
-             return {"CANCELLED"}
 
         successful_exports = 0
         failed_exports = []
+        overall_success = True
 
-        # --- Initialize Progress Bar ---
-        wm.progress_begin(0, total_objects) # <<-- START PROGRESS
-
-        try: # Wrap the main loop for finally block
+        logger.info(
+            f"Starting batch export for {total_objects} objects to {export_base_path}"
+        )
+        wm.progress_begin(0, total_objects)
+        try:
             # --- Main Export Loop ---
             for index, original_obj in enumerate(objects_to_export):
-
-                # --- Update Progress Bar ---
-                # Update based on the number of items *completed* or *about to start*.
-                # Updating with index + 1 means after item "index" is done, progress is "index + 1".
-                # Value should go from 1 up to total_objects.
                 wm.progress_update(index + 1)
-
-                # ADD FOR DEBUGGING ONLY - REMOVE LATER
-                # import time
-                # time.sleep(0.01)
-                # --- END DEBUGGING ---
-
-                print(f"\nProcessing ({index + 1}/{total_objects}): {original_obj.name}")
-
-                export_obj = None
-                export_obj_name = None
+                logger.info(
+                    f"Processing ({index + 1}/{total_objects}): {original_obj.name}"
+                )
+                object_processed_successfully = True
 
                 try:
-                    # 1. Copy Object
-                    # Ensure we are in object mode for copying
-                    if original_obj.mode != "OBJECT":
-                        bpy.ops.object.mode_set(mode="OBJECT")
+                    # --- Process One Original Object ---
+                    if scene_props.mesh_export_lod:
+                        # --- LOD Branch ---
+                        logger.info(
+                            f"Generating {scene_props.mesh_export_lod_count + 1} LOD levels..."
+                        )
+                        lod_ratios_prop = [
+                            scene_props.mesh_export_lod_ratio_01,
+                            scene_props.mesh_export_lod_ratio_02,
+                            scene_props.mesh_export_lod_ratio_03,
+                            scene_props.mesh_export_lod_ratio_04,
+                        ]
+                        ratios = ([1.0] +
+                                  lod_ratios_prop[:scene_props.mesh_export_lod_count])
 
-                    export_obj = original_obj.copy()
-                    export_obj.data = original_obj.data.copy()
-                    context.collection.objects.link(export_obj)
-                    export_obj_name = export_obj.name # <<-- STORE NAME HERE after successful copy
-                    print(f"Copied {original_obj.name} to {export_obj_name}")
-
-                    # Context for operations on the copied object
-                    with temp_selection_context(context, active_object=export_obj, selected_objects=[export_obj]):
-                        # 2. Apply Prefix/Suffix to Name
-                        new_name = scene_props.mesh_export_prefix + original_obj.name + scene_props.mesh_export_suffix
-                        export_obj.name = new_name
-                        export_obj_name = export_obj.name # <<-- UPDATE STORED NAME if renamed
-                        base_export_name = new_name
-                        print(f"Renamed copy to: {export_obj_name}")
-
-                        # 3. Zero Location (on Copy)
-                        if scene_props.mesh_export_zero_location:
-                            export_obj.location = (0.0, 0.0, 0.0)
-                            print("Zeroed location")
-
-                        # 4. Apply Modifiers (on Copy) - before LOD/Triangulation
-                        print("Applying existing modifiers...")
-                        apply_mesh_modifiers(export_obj)
-
-                        # 5 & 6. Apply Decimate (LOD) & Triangulate (if needed per LOD)
-                        if scene_props.mesh_export_lod:
-                            print(f"Generating LODs ({scene_props.mesh_export_lod_count} levels)...")
-                            lod_ratios = [
-                                scene_props.mesh_export_lod_ratio_01,
-                                scene_props.mesh_export_lod_ratio_02,
-                                scene_props.mesh_export_lod_ratio_03,
-                                scene_props.mesh_export_lod_ratio_04,
-                            ]
-
-                            # Export Base Mesh (LOD 0) - potentially triangulated
-                            lod0_path = os.path.join(export_base_path, f"{base_export_name}_LOD0")
-                            lod0_obj = export_obj.copy() # Copy before adding LOD modifiers
-                            lod0_obj.data = export_obj.data.copy()
-                            context.collection.objects.link(lod0_obj)
-
-                            with temp_selection_context(context, active_object=lod0_obj, selected_objects=[lod0_obj]):
+                        for lod_level, ratio in enumerate(ratios):
+                            lod_obj = None
+                            lod_obj_name = None
+                            try:
+                                logger.info(f"Preparing LOD{lod_level}...")
+                                lod_obj = create_export_copy(original_obj, context)
+                                (lod_obj_name, _) = setup_export_object(
+                                    lod_obj, original_obj.name,
+                                    scene_props, lod_level
+                                )
+                                apply_mesh_modifiers(lod_obj) # Base modifiers
+                                if lod_level > 0:
+                                    apply_decimate_modifier(
+                                        lod_obj, ratio,
+                                        scene_props.mesh_export_lod_type
+                                    )
                                 if scene_props.mesh_export_triangulate:
-                                    print("Triangulating LOD0...")
-                                    triangulate_mesh(lod0_obj, scene_props.mesh_export_triangulate_method, scene_props.mesh_export_keep_normals)
-                                print(f"Exporting {os.path.basename(lod0_path)}...")
-                                if export_object(lod0_obj, lod0_path, scene_props):
-                                    successful_exports +=1
-                                else:
-                                    failed_exports.append(f"{original_obj.name} (LOD 0)")
+                                    triangulate_mesh(
+                                        lod_obj,
+                                        scene_props.mesh_export_triangulate_method,
+                                        scene_props.mesh_export_keep_normals
+                                    )
 
-                            # Cleanup LOD0 copy
-                            bpy.data.objects.remove(lod0_obj, do_unlink=True)
-
-
-                            # Generate and Export Higher LODs
-                            # Apply decimate/triangulate directly on the main export_obj copy
-                            for i in range(scene_props.mesh_export_lod_count):
-                                lod_level = i + 1
-                                ratio = lod_ratios[i]
-                                lod_path = os.path.join(export_base_path, f"{base_export_name}_LOD{lod_level:02d}")
-                                print(f"Generating LOD{lod_level} (Ratio: {ratio:.3f})...")
-
-                                # Add Decimate Modifier
-                                dec_mod = export_obj.modifiers.new(name=f"TempLODDecimate", type="DECIMATE")
-                                dec_mod.decimate_type = scene_props.mesh_export_lod_type.upper() # COLLAPSE or UNSUBDIVIDE
-                                dec_mod.ratio = ratio
-                                # Add other decimate options if needed (e.g., triangulate, symmetry)
-
-                                # Apply Decimate
-                                try:
-                                    print(f"pplying Decimate modifier...")
-                                    with temp_selection_context(context, active_object=export_obj, selected_objects=[export_obj]):
-                                        bpy.ops.object.modifier_apply(modifier=dec_mod.name) # Apply it
-                                except Exception as e:
-                                    print(f"Warning: Failed to apply Decimate for LOD{lod_level}: {e}")
-                                    export_obj.modifiers.remove(dec_mod) # Remove if apply failed
-                                    failed_exports.append(f"{original_obj.name} (LOD {lod_level} - Decimate Apply Fail)")
-                                    continue # Skip export for this LOD
-
-
-                                # Apply Triangulate (if needed for this LOD)
-                                if scene_props.mesh_export_triangulate:
-                                    print("Triangulating...")
-                                    triangulate_mesh(export_obj, scene_props.mesh_export_triangulate_method, scene_props.mesh_export_keep_normals)
-
-
-                                # Export LOD Mesh
-                                print(f"Exporting {os.path.basename(lod_path)}...")
-                                if export_object(export_obj, lod_path, scene_props):
+                                lod_file_path = os.path.join(export_base_path,
+                                                             lod_obj_name)
+                                if export_object(lod_obj, lod_file_path,
+                                                 scene_props):
                                     successful_exports += 1
                                 else:
-                                    failed_exports.append(f"{original_obj.name} (LOD {lod_level})")
+                                    raise RuntimeError("Export function failed")
 
+                            except Exception as lod_e:
+                                object_processed_successfully = False
+                                log_name = (lod_obj_name if lod_obj_name else
+                                            f"{original_obj.name}_LOD{lod_level:02d}")
+                                logger.error(
+                                    f"Failed processing {log_name}: {lod_e}"
+                                )
+                                failed_exports.append(
+                                    f"{original_obj.name} (LOD{lod_level:02d})"
+                                )
+                            finally:
+                                cleanup_object(lod_obj, lod_obj_name)
+                        # --- End LOD Level Loop ---
 
-                                # --- IMPORTANT: Need to revert mesh state for next LOD ---
-                                # Since modifiers were applied, we can't just remove them.
-                                # Re-copying from original OR using undo is complex.
-                                # **Current approach modifies the copy permanently.**
-                                # TODO: For correct iterative LODs, you might need to:
-                                #    a) Make a fresh copy from original_obj for EACH LOD level. (More robust)
-                                #    b) Apply modifiers temporarily without saving state (harder).
-                                print(f"Note: Current LOD implementation modifies the base mesh copy progressively.")
-                                # For now, we proceed with the modified mesh for the next LOD level.
-
-
-                        else:
-                            # 7. Apply Triangulate (Only if not doing LODs)
+                    else:
+                        # --- Non-LOD Branch ---
+                        export_obj = None
+                        export_obj_name = None
+                        try:
+                            logger.info("Processing single export (no LODs)...")
+                            export_obj = create_export_copy(original_obj, context)
+                            (export_obj_name, base_name) = setup_export_object(
+                                export_obj, original_obj.name, scene_props
+                            )
+                            apply_mesh_modifiers(export_obj)
                             if scene_props.mesh_export_triangulate:
-                                print("Triangulating mesh...")
-                                triangulate_mesh(export_obj, scene_props.mesh_export_triangulate_method, scene_props.mesh_export_keep_normals)
+                                triangulate_mesh(
+                                    export_obj,
+                                    scene_props.mesh_export_triangulate_method,
+                                    scene_props.mesh_export_keep_normals
+                                )
 
-                            # 8. Export (Single file, no LODs)
-                            file_path = os.path.join(export_base_path, base_export_name)
-                            print(f"Exporting {os.path.basename(file_path)}...")
+                            file_path = os.path.join(export_base_path, base_name)
                             if export_object(export_obj, file_path, scene_props):
                                 successful_exports += 1
                             else:
+                                object_processed_successfully = False
                                 failed_exports.append(original_obj.name)
 
-                    # --- End of temp_selection_context ---
+                        except Exception as e:
+                            object_processed_successfully = False
+                            log_name = (export_obj_name if export_obj_name else
+                                        original_obj.name)
+                            logger.error(f"Failed processing {log_name}: {e}")
+                            failed_exports.append(
+                                f"{original_obj.name} (Processing Error)"
+                            )
+                        finally:
+                            cleanup_object(export_obj, export_obj_name)
+                    # --- End Non-LOD Branch ---
 
-                except Exception as e:
-                    # Report the main processing error
-                    error_msg = f"Failed to process {original_obj.name}: {e}"
-                    self.report({"ERROR"}, error_msg)
-                    # Use export_obj_name if available in the log message
-                    log_name = export_obj_name if export_obj_name else original_obj.name
-                    print(f"ERROR processing {log_name}: {e}")
-                    failed_exports.append(f"{original_obj.name} (Processing Error: {e})")
-
-
+                except Exception as outer_e:
+                    logger.error(
+                        f"Unexpected outer error during processing of {original_obj.name}: {outer_e}",
+                        exc_info=True
+                    )
+                    object_processed_successfully = False
+                    failed_exports.append(f"{original_obj.name} (Outer Error)")
                 finally:
-                    # 9. Cleanup
-                    if export_obj: # Check if the python variable holding the reference exists
-                        log_cleanup_name = export_obj_name if export_obj_name else "unnamed copy"
-                        print(f"Attempting cleanup for: {log_cleanup_name}")
-                        try:
-                            # Attempt removal using the object reference
-                            bpy.data.objects.remove(export_obj, do_unlink=True)
-                            # Use the stored name for the success message
-                            print(f"Cleaned up copy: {log_cleanup_name}")
-                        except ReferenceError:
-                            # This might happen if obj was already removed or became invalid earlier
-                            # Use the stored name for the message
-                            print(f"Copy {log_cleanup_name} was already removed or invalid before final cleanup.")
-                        except Exception as remove_e:
-                            # Catch other potential removal errors
-                            print(f"Error during cleanup of {log_cleanup_name}: {remove_e}")
-
-                    # 10. Mark Original Object as Exported
-                    # This checks if the original object's name, 
-                    # or potentially LOD variant, was added to failed_exports
-                    # Result is: only meshes that completely export, 
-                    # including all LODs, are marked as successfully exported
-                    processed_successfully = not any(fail_name.startswith(original_obj.name) for fail_name in failed_exports)
-
-                    if original_obj and processed_successfully:
+                    # Mark Original Object
+                    if original_obj and object_processed_successfully:
                         mark_object_as_exported(original_obj)
-                        print(f"Marked original {original_obj.name} as exported.")
+                        logger.info(
+                            f"Marked original {original_obj.name} as exported."
+                        )
                     elif original_obj:
-                        print(f"Skipped marking original {original_obj.name} due to processing errors.")
-        
-            # --- Loop Finished ---
-            # Update progress bar to final value
-            # wm.progress_update(total_objects) # <<-- Ensure it reaches the end
-        
-        finally: # Use finally to ensure progress bar ends even if error occurs
-             # --- End Progress Bar ---
-             wm.progress_end() # <<-- END PROGRESS
+                        logger.info(
+                            f"Skipped marking original {original_obj.name} due to errors."
+                        )
+                        overall_success = False
+            # --- End Main Object Loop ---
+        finally:
+            wm.progress_end()
 
+        # --- Final Report ---
         end_time = time.time()
         elapsed_time = end_time - start_time
-
-        # Final Report
-        report_type = {"INFO"} if not failed_exports else {"WARNING"}
-        message = f"Export finished in {elapsed_time:.2f} seconds. Exported {successful_exports} files."
+        log_level = logging.INFO if overall_success else logging.WARNING
+        message = (
+            f"Export finished in {elapsed_time:.2f}s. "
+            f"Exported {successful_exports} files."
+        )
         if failed_exports:
-            message += f"Failed to export: {', '.join(failed_exports)}"
+            unique_fails = sorted(list(set(f.split(' (')[0]
+                                            for f in failed_exports)))
+            fail_summary = (
+                f"Failed exports logged for: {len(unique_fails)} original "
+                f"objects ({', '.join(unique_fails[:5])}"
+                f"{'...' if len(unique_fails)>5 else ''}). Check console/log."
+            )
+            message += f" {fail_summary}"
+            logger.warning(f"Failures occurred for: {', '.join(unique_fails)}")
 
+        logger.log(log_level, message)
+        report_type = {"INFO"} if overall_success else {"WARNING"}
         self.report(report_type, message)
-        print(f"\n{message}")
 
-        # Trigger redraw to show indicators
+        # --- Trigger redraw ---
         for window in context.window_manager.windows:
             for area in window.screen.areas:
                 area.tag_redraw()
 
         return {"FINISHED"}
-    
 
-# Custom operator to select an object by name (needed for the panel)
+
 class OBJECT_OT_select_by_name(Operator):
-    """Selects and focuses on the specified object""" # Docstring updated
+    """Selects and focuses on the specified object."""
     bl_idname = "object.select_by_name"
     bl_label = "Select Object by Name"
     bl_description = "Selects and focuses on the specified object"
-    bl_options = {"REGISTER", "INTERNAL"} # Keep INTERNAL if only called by UI
+    bl_options = {"REGISTER", "INTERNAL"}
 
-    # This property receives the name from the UI button
     object_name: StringProperty()
 
-    # @classmethod <-- REMOVE THE ENTIRE POLL METHOD
-    # def poll(cls, context):
-    #     # This check cannot work here and is not necessary.
-    #     # Existence is checked in execute().
-    #     return True
-
     def execute(self, context):
-        # Check for object existence using the name passed to the instance
+        """Executes the selection."""
         target_obj = bpy.data.objects.get(self.object_name)
-
         if not target_obj:
-            # Report error if object name not found in scene data
-            print(f"Object '{self.object_name}' not found for selection.")
-            # Optionally use self.report for status bar message
-            # self.report({"WARNING"}, f"Object '{self.object_name}' not found.")
+            logger.warning(f"Object '{self.object_name}' not found for slctn.")
             return {"CANCELLED"}
 
-        # --- Selection Logic ---
         original_mode = context.mode
-        obj_to_switch_mode = context.active_object # Get active obj before changing selection
-
         try:
-            # Ensure Object mode for selection operations
             if original_mode != "OBJECT":
-                 # Check if current active object allows switching from its mode
-                 can_switch = not obj_to_switch_mode or obj_to_switch_mode.mode == "OBJECT"
-                 if can_switch:
-                      bpy.ops.object.mode_set(mode="OBJECT")
-                 else:
-                      # Cannot switch from current mode (e.g., Edit mode on wrong object type)
-                      print(f"Cannot switch from {original_mode} on {obj_to_switch_mode.name if obj_to_switch_mode else 'None'} to select.")
-                      # self.report({"WARNING"}, f"Cannot switch mode to select '{self.object_name}'.")
-                      return {"CANCELLED"}
+                # Only switch if active object allows it or no active object
+                active = context.active_object
+                can_switch = not active or active.mode == "OBJECT"
+                if can_switch:
+                    bpy.ops.object.mode_set(mode="OBJECT")
+                else:
+                    logger.warning(
+                        f"Cannot switch from {original_mode} on "
+                        f"{active.name if active else 'None'} to select."
+                    )
+                    return {"CANCELLED"}
 
-
-            # Perform selection
             bpy.ops.object.select_all(action="DESELECT")
             target_obj.select_set(True)
             context.view_layer.objects.active = target_obj
 
-            # Optional: Frame view (make sure context is right, might need override)
-            # try:
-            #     # Find 3D view area
-            #     for window in context.window_manager.windows:
-            #         screen = window.screen
-            #         for area in screen.areas:
-            #             if area.type == "VIEW_3D":
-            #                 for region in area.regions:
-            #                     if region.type == "WINDOW":
-            #                         override = {"window": window, "screen": screen, "area": area, "region": region}
-            #                         bpy.ops.view3d.view_selected(override)
-            #                         break
-            #                 break
-            #         break
-            # except Exception as frame_e:
-            #     print(f"Could not frame view: {frame_e}")
-
-
         except (ReferenceError, RuntimeError) as e:
-             # Catch errors during selection/activation
-             print(f"Error selecting object '{self.object_name}': {e}")
-             # self.report({"ERROR"}, f"Error selecting '{self.object_name}'.")
-             # Attempt to restore original mode if we changed it
-             if context.mode != original_mode:
-                  try:
-                      bpy.ops.object.mode_set(mode=original_mode)
-                  except Exception: pass # Ignore errors during error-recovery mode switch
-             return {"CANCELLED"}
+            logger.error(f"Error selecting object '{self.object_name}': {e}")
+            # Attempt to restore original mode on error
+            if context.mode != original_mode:
+                try:
+                    bpy.ops.object.mode_set(mode=original_mode)
+                except Exception:
+                    pass
+            return {"CANCELLED"}
 
         # Attempt to restore original mode if we changed it
         if context.mode != original_mode:
-             try:
-                  # Check if the newly active object supports the original mode
-                  if context.active_object and context.active_object.type == "MESH" or original_mode == "OBJECT":
-                      bpy.ops.object.mode_set(mode=original_mode)
-                  elif context.mode != "OBJECT": # Fallback to object mode if incompatible
-                       bpy.ops.object.mode_set(mode="OBJECT")
-             except Exception as mode_e:
-                  print(f"Could not restore original mode ({original_mode}): {mode_e}")
-                  if context.mode != "OBJECT": # Ensure Object mode if restore fails
-                       bpy.ops.object.mode_set(mode="OBJECT")
-
+            try:
+                # Check if the newly active object supports the original mode
+                active = context.active_object
+                can_restore = (
+                    active and active.type == "MESH" or original_mode == "OBJECT"
+                )
+                if can_restore:
+                    bpy.ops.object.mode_set(mode=original_mode)
+                elif context.mode != "OBJECT":
+                    bpy.ops.object.mode_set(mode="OBJECT") # Fallback
+            except Exception as mode_e:
+                logger.error(
+                    f"Could not restore original mode ({original_mode}): {mode_e}"
+                )
+                if context.mode != "OBJECT": # Ensure Object mode if restore fails
+                    bpy.ops.object.mode_set(mode="OBJECT")
 
         return {"FINISHED"}
-    
+
 
 # --- Registration ---
 classes = (
     MESH_OT_batch_export,
-    OBJECT_OT_select_by_name, # Make sure this is included
+    OBJECT_OT_select_by_name,
 )
 
+
 def register():
+    """Registers operator classes."""
     for cls in classes:
         try:
             bpy.utils.register_class(cls)
-        except ValueError: # Handle re-registration if needed
-            pass
+        except ValueError:
+            logger.warning(f"Class {cls.__name__} already registered.")
+            pass  # Already registered
+
 
 def unregister():
+    """Unregisters operator classes."""
     for cls in reversed(classes):
         try:
             bpy.utils.unregister_class(cls)
-        except RuntimeError: # Handle errors if already unregistered
-             pass
+        except RuntimeError:
+            logger.warning(f"Class {cls.__name__} already unregistered.")
+            pass  # Already unregistered
