@@ -56,7 +56,3 @@ A Blender add-on for batch exporting multiple selected mesh objects with customi
     ![Viewport Shading Object Color](https://docs.blender.org/manual/en/latest/_images/editors_3dview_controls_shading_solid_color_object.png) *(Image from Blender Manual)*
 * **Recent Exports Panel:** A list of recently exported objects (still FRESH or STALE) appears in a sub-panel. Clicking the icon selects the object.
 * **Clear Indicators:** The "Clear All Export Indicators" button at the bottom of the "Recent Exports" panel will immediately remove the status from all objects and restore their original viewport colors.
-
-*(Optional: Add a screenshot of your add-on's panel here)*
-```markdown
-![Add-on Panel Screenshot](placeholder_panel_screenshot.png)
