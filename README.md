@@ -53,6 +53,6 @@ A Blender add-on for batch exporting multiple selected mesh objects with customi
 * **Yellow:** Object exported within the last 5 minutes (`STALE`).
 * **Normal Color:** Object export indicator has expired, or indicators were cleared.
 * **Visibility:** To see these colours in the 3D Viewport, ensure you are in **Solid** display mode and that the **Shading -> Color** type is set to **Object**.
-    ![Viewport Shading Object Color](https://docs.blender.org/manual/en/latest/editors/3dview/display/shading.html#solid)
+    [[Viewport Shading Docs]](https://docs.blender.org/manual/en/latest/editors/3dview/display/shading.html#solid)
 * **Recent Exports Panel:** A list of recently exported objects (still FRESH or STALE) appears in a sub-panel. Clicking the icon selects the object.
 * **Clear Indicators:** The "Clear All Export Indicators" button at the bottom of the "Recent Exports" panel will immediately remove the status from all objects and restore their original viewport colors.
