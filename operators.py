@@ -1,5 +1,9 @@
 # operators.py
-"""Contains Blender operators for the Mesh Exporter add-on."""
+"""
+Contains Blender operators for the Mesh Exporter add-on.
+Handles batch export of selected mesh objects, including LOD generation,
+texture compression, and cleanup of temporary objects.
+"""
 
 import bpy
 import os
@@ -29,13 +33,22 @@ EXPORT_STATUS_PROP = "mesh_export_status"
 # --- Core Functions ---
 
 def mark_object_as_exported(obj):
-    """Mark an object as just exported by setting custom properties."""
+    """
+    Mark an object as just exported by setting custom properties.
+    This is used to track the export status of objects.
+    
+    Args:
+        obj (bpy.types.Object): The object to mark as exported.
+    
+    Returns:
+        None
+    """
     if obj is None or obj.type != "MESH":
         return
     obj[EXPORT_TIME_PROP] = time.time()
     obj[EXPORT_STATUS_PROP] = 0  # Assuming 0 is FRESH status
-    if hasattr(export_indicators, "set_object_color"):
-        export_indicators.set_object_color(obj)
+    if hasattr(export_indicators, "set_object_colour"):
+        export_indicators.set_object_colour(obj)
 
 
 @contextlib.contextmanager
@@ -61,7 +74,8 @@ def temp_selection_context(context, active_object=None, selected_objects=None):
                         obj.select_set(True)
                     except ReferenceError:
                         logger.warning(
-                            f"Could not select '{obj.name}' - object reference invalid."
+                            f"Could not select '{obj.name}' - "
+                            f"object reference invalid."
                         )
                 elif obj:
                     logger.warning(
@@ -125,7 +139,16 @@ def temp_selection_context(context, active_object=None, selected_objects=None):
 
 
 def create_export_copy(original_obj, context):
-    """Creates a linked copy of the object and its data."""
+    """
+    Creates a linked copy of the object and its data.
+    
+    Args:
+        original_obj (bpy.types.Object): The original object to copy.
+        context (bpy.context): The current Blender context.
+        
+    Returns:
+        bpy.types.Object: The copied object.
+    """
     if not original_obj or original_obj.type != "MESH":
         raise ValueError("Invalid object provided for copying.")
     if original_obj.mode != "OBJECT":
@@ -145,14 +168,33 @@ def create_export_copy(original_obj, context):
 
 
 def sanitise_filename(name):
-    """Remove characters that are problematic in filenames."""
+    """
+    Remove characters that are problematic in filenames.
+    
+    Args:
+        name (str): The name to sanitise.
+    
+    Returns:
+        str: The sanitised name.
+    """
     # Replace invalid characters with underscores
     sanitised = re.sub(r'[\\/:*?"<>|.]', '_', name)
     return sanitised
 
 
 def setup_export_object(obj, original_obj_name, scene_props, lod_level=None):
-    """Renames object, applies prefix/suffix/LOD naming, zeros location."""
+    """
+    Renames object, applies prefix/suffix/LOD naming, zeros location.
+    
+    Args:
+        obj (bpy.types.Object): The object to set up for export.
+        original_obj_name (str): The original name of the object.
+        scene_props (bpy.types.PropertyGroup): Scene properties for export.
+        lod_level (int, optional): LOD level for naming. Defaults to None.
+    
+    Returns:
+        tuple: The final name and base name of the object.
+    """
     if not obj:
         return None, None
     try:
@@ -191,7 +233,15 @@ def setup_export_object(obj, original_obj_name, scene_props, lod_level=None):
 
 
 def apply_mesh_modifiers(obj):
-    """Apply all VISIBLE modifiers on a mesh object."""
+    """
+    Apply all VISIBLE modifiers on a mesh object.
+    
+    Args:
+        obj (bpy.types.Object): The object whose modifiers to apply.
+        
+    Returns:
+        None
+    """
     if not obj or obj.type != "MESH":
         return
     logger.info(f"Applying base modifiers for {obj.name}...")
@@ -217,7 +267,8 @@ def apply_mesh_modifiers(obj):
                     applied_modifiers.append(mod_name)
                 except (RuntimeError, ReferenceError) as e:
                     logger.warning(
-                        f"Could not apply modifier '{mod_name}' on {obj.name}: {e}"
+                        f"Could not apply modifier '{mod_name}' "
+                        f"on {obj.name}: {e}"
                     )
             else:
                 logger.info(f"Skipping disabled modifier: {modifier.name}")
@@ -244,12 +295,14 @@ def compress_textures(obj, ratio):
     if not obj or obj.type != "MESH":
         return []
     
-    logger.info(f"Compressing textures for {obj.name} (decimation ratio: {ratio:.3f})...")
+    logger.info(f"Compressing textures for {obj.name} "
+                f"(decimation ratio: {ratio:.3f})...")
     
     # Get all materials on the object
     materials = obj.data.materials
     if not materials:
-        logger.info(f"No materials found on {obj.name}, skipping texture compression")
+        logger.info(f"No materials found on {obj.name}, "
+                    f"skipping texture compression")
         return []
     
     modified_images = []
@@ -279,12 +332,15 @@ def compress_textures(obj, ratio):
     # Process each image
     for orig_img, nodes_using_img in image_nodes.items():
         # Skip already compressed or size-zero images
-        if not orig_img.has_data or orig_img.size[0] == 0 or orig_img.size[1] == 0:
+        if (not orig_img.has_data 
+            or orig_img.size[0] == 0 
+            or orig_img.size[1] == 0):
             continue
             
         # Calculate new resolution
         orig_width, orig_height = orig_img.size
-        is_power_of_2 = (orig_width & (orig_width - 1) == 0) and (orig_height & (orig_height - 1) == 0)
+        is_power_of_2 = ((orig_width & (orig_width - 1) == 0) 
+                         and (orig_height & (orig_height - 1) == 0))
         
         new_width = max(int(orig_width * compression_factor), min_dimension)
         new_height = max(int(orig_height * compression_factor), min_dimension)
@@ -305,7 +361,8 @@ def compress_textures(obj, ratio):
         copied_img = bpy.data.images.get(copy_name)
         if copied_img:
             # If dimensions don't match our target, recreate it
-            if copied_img.size[0] != new_width or copied_img.size[1] != new_height:
+            if (copied_img.size[0] != new_width 
+                or copied_img.size[1] != new_height):
                 bpy.data.images.remove(copied_img)
                 copied_img = None
         
@@ -321,25 +378,34 @@ def compress_textures(obj, ratio):
             if orig_img.has_data and orig_img.pixels:
                 try:
                     # Make a copy of the original at the lower resolution
-                    copied_img.scale(orig_width, orig_height)  # First match original size
-                    copied_img.pixels = orig_img.pixels[:]     # Copy pixels
-                    copied_img.scale(new_width, new_height)    # Then resize to target
+                    # First match original size
+                    copied_img.scale(orig_width, orig_height)  
+                    # Copy pixels
+                    copied_img.pixels = orig_img.pixels[:]     
+                    # Then resize to target
+                    copied_img.scale(new_width, new_height)    
                     
                     # Copy other relevant properties
-                    copied_img.colorspace_settings.name = orig_img.colorspace_settings.name
+                    copied_img.colourspace_settings.name = (
+                        orig_img.colourspace_settings.name
+                    )
                     if orig_img.filepath:
-                        copied_img.filepath = orig_img.filepath  # For export reference
+                        # For export reference
+                        copied_img.filepath = orig_img.filepath  
                     
                 except Exception as e:
-                    logger.warning(f"Error copying pixels for {orig_img.name}: {e}")
+                    logger.warning(f"Error copying pixels for "
+                                   f"{orig_img.name}: {e}")
                     
-            logger.info(f"Created compressed copy of '{orig_img.name}' at {new_width}x{new_height}")
+            logger.info(f"Created compressed copy of '{orig_img.name}' "
+                        f"at {new_width}x{new_height}")
         
         # Update material nodes to use the copied image
         for mat, node in nodes_using_img:
             node.image = copied_img
         
-        modified_images.append(f"{orig_img.name} ({orig_width}x{orig_height} → {new_width}x{new_height})")
+        modified_images.append(f"{orig_img.name} ({orig_width}x{orig_height} "
+                               f"→ {new_width}x{new_height})")
         
         # Store original image reference on the object for restoration
         if "original_textures" not in obj:
@@ -351,7 +417,16 @@ def compress_textures(obj, ratio):
 
 
 def restore_original_textures(obj):
-    """Restores original textures after export"""
+    """
+    Restores original textures after exportby replacing 
+    compressed copies with originals.
+    
+    Args:
+        obj (bpy.types.Object): The object whose textures to restore.
+    
+    Returns:
+        None
+    """
     if not obj or obj.type != "MESH" or "original_textures" not in obj:
         return
     
@@ -379,7 +454,8 @@ def restore_original_textures(obj):
                     original_img = bpy.data.images.get(original_name)
                     
                     if original_img:
-                        logger.info(f"Restoring {node.image.name} → {original_name}")
+                        logger.info(f"Restoring {node.image.name} "
+                                    f"→ {original_name}")
                         node.image = original_img
     
     # Clean up the mapping
@@ -392,7 +468,17 @@ def restore_original_textures(obj):
 
 
 def apply_decimate_modifier(obj, ratio, decimate_type):
-    """Adds, configures, and applies a Decimate modifier."""
+    """
+    Adds, configures, and applies a Decimate modifier.
+    
+    Args:
+        obj (bpy.types.Object): The object to apply the modifier to.
+        ratio (float): The decimation ratio (0.0 to 1.0).
+        decimate_type (str): The type of decimation to apply.
+
+    Returns:
+        None
+    """
     if not obj or obj.type != "MESH":
         return
     
@@ -433,14 +519,17 @@ def apply_decimate_modifier(obj, ratio, decimate_type):
         
         # Log final results
         final_poly_count = len(obj.data.polygons)
-        actual_ratio = final_poly_count / initial_poly_count if initial_poly_count > 0 else 0
+        actual_ratio = (final_poly_count / initial_poly_count 
+                        if initial_poly_count > 0 else 0)
         logger.info(
-            f"Decimation complete: {initial_poly_count} → {final_poly_count} polys "
+            f"Decimation complete: {initial_poly_count} "
+            f"→ {final_poly_count} polys "
             f"(target: {ratio:.3f}, actual: {actual_ratio:.3f})"
         )
         
         # if compressed_textures:
-        #     logger.info(f"Texture compression details: {', '.join(compressed_textures)}")
+        #     logger.info(f"Texture compression details: "
+        #                 f"{', '.join(compressed_textures)}")
             
     except Exception as e:
         logger.error(f"Failed to apply Decimate modifier: {e}")
@@ -456,7 +545,17 @@ def apply_decimate_modifier(obj, ratio, decimate_type):
 
 
 def triangulate_mesh(obj, method="BEAUTY", keep_normals=True):
-    """Add and apply a triangulate modifier."""
+    """
+    Add and apply a triangulate modifier.
+    
+    Args:
+        obj (bpy.types.Object): The object to triangulate.
+        method (str): The triangulation method to use.
+        keep_normals (bool): Whether to keep custom normals.
+    
+    Returns:
+        None
+    """
     if not obj or obj.type != "MESH":
         return
     logger.info(f"Triangulating {obj.name}...")
@@ -489,7 +588,17 @@ def triangulate_mesh(obj, method="BEAUTY", keep_normals=True):
 
 
 def export_object(obj, file_path, scene_props):
-    """Exports a single object using scene properties."""
+    """
+    Exports a single object using scene properties.
+    
+    Args:
+        obj (bpy.types.Object): The object to export.
+        file_path (str): The file path for the export.
+        scene_props (bpy.types.PropertyGroup): Scene properties for export.
+    
+    Returns:
+        bool: True if export was successful, False otherwise.
+    """
     fmt = scene_props.mesh_export_format
     success = False
     # base_file_path = os.path.splitext(file_path)[0] # Ensure no extension yet
@@ -568,8 +677,10 @@ def export_object(obj, file_path, scene_props):
                 bpy.ops.wm.usd_export(
                     filepath=export_filepath,
                     selected_objects_only=True,
-                    export_global_forward_selection=scene_props.mesh_export_coord_forward,
-                    export_global_up_selection=scene_props.mesh_export_coord_up,
+                    export_global_forward_selection=(
+                        scene_props.mesh_export_coord_forward),
+                    export_global_up_selection=(
+                        scene_props.mesh_export_coord_up),
                     export_meshes=True,
                     export_materials=True,
                     generate_preview_surface=False,
@@ -608,7 +719,16 @@ def export_object(obj, file_path, scene_props):
 
 
 def cleanup_object(obj, obj_name_for_log):
-    """Removes the specified object, handling potential errors."""
+    """
+    Removes the specified object, handling potential errors.
+    
+    Args:
+        obj (bpy.types.Object): The object to clean up.
+        obj_name_for_log (str): The name to log for the object.
+    
+    Returns:
+        None
+    """
     if not obj:
         return
     log_name = obj_name_for_log if obj_name_for_log else "unnamed object"
@@ -618,7 +738,9 @@ def cleanup_object(obj, obj_name_for_log):
     # try:
     #     restore_original_textures(obj)
     # except Exception as tex_e:
-    #     logger.warning(f"Error restoring original textures for {log_name}: {tex_e}")
+    #     logger.warning(
+    #       f"Error restoring original textures for {log_name}: {tex_e}"
+    #     )
     
     # Then remove the object
     try:
@@ -678,7 +800,8 @@ class MESH_OT_batch_export(Operator):
         overall_success = True
 
         logger.info(
-            f"Starting batch export for {total_objects} objects to {export_base_path}"
+            f"Starting batch export for {total_objects} "
+            f"objects to {export_base_path}"
         )
         wm.progress_begin(0, total_objects)
         try:
@@ -686,7 +809,8 @@ class MESH_OT_batch_export(Operator):
             for index, original_obj in enumerate(objects_to_export):
                 wm.progress_update(index + 1)
                 logger.info(
-                    f"Processing ({index + 1}/{total_objects}): {original_obj.name}"
+                    f"Processing ({index + 1}/{total_objects}): "
+                    f"{original_obj.name}"
                 )
                 object_processed_successfully = True
 
@@ -695,7 +819,9 @@ class MESH_OT_batch_export(Operator):
                     if scene_props.mesh_export_lod:
                         # --- LOD Branch ---
                         logger.info(
-                            f"Generating {scene_props.mesh_export_lod_count + 1} LOD levels..."
+                            f"Generating "
+                            f"{scene_props.mesh_export_lod_count + 1} "
+                            f"LOD levels..."
                         )
                         lod_ratios_prop = [
                             scene_props.mesh_export_lod_ratio_01,
@@ -703,15 +829,22 @@ class MESH_OT_batch_export(Operator):
                             scene_props.mesh_export_lod_ratio_03,
                             scene_props.mesh_export_lod_ratio_04,
                         ]
-                        ratios = ([1.0] +
-                                  lod_ratios_prop[:scene_props.mesh_export_lod_count])
+                        ratios = (
+                            [1.0] 
+                            + lod_ratios_prop[
+                                :scene_props.mesh_export_lod_count
+                            ]
+                        )
 
                         for lod_level, ratio in enumerate(ratios):
                             lod_obj = None
                             lod_obj_name = None
                             try:
                                 logger.info(f"Preparing LOD{lod_level}...")
-                                lod_obj = create_export_copy(original_obj, context)
+                                lod_obj = create_export_copy(
+                                    original_obj, 
+                                    context
+                                )
                                 (lod_obj_name, _) = setup_export_object(
                                     lod_obj, original_obj.name,
                                     scene_props, lod_level
@@ -722,12 +855,11 @@ class MESH_OT_batch_export(Operator):
                                         lod_obj, ratio,
                                         scene_props.mesh_export_lod_type
                                     )
-                                if scene_props.mesh_export_triangulate:
-                                    triangulate_mesh(
-                                        lod_obj,
-                                        scene_props.mesh_export_triangulate_method,
-                                        scene_props.mesh_export_keep_normals
-                                    )
+                                if scene_props.mesh_export_tri:
+                                    # Trying to avoid long line
+                                    method=scene_props.mesh_export_tri_method
+                                    k_nrms=scene_props.mesh_export_keep_normals
+                                    triangulate_mesh(lod_obj, method, k_nrms)
 
                                 lod_file_path = os.path.join(export_base_path,
                                                              lod_obj_name)
@@ -735,12 +867,14 @@ class MESH_OT_batch_export(Operator):
                                                  scene_props):
                                     successful_exports += 1
                                 else:
-                                    raise RuntimeError("Export function failed")
+                                    raise RuntimeError("Export func failed")
 
                             except Exception as lod_e:
                                 object_processed_successfully = False
-                                log_name = (lod_obj_name if lod_obj_name else
-                                            f"{original_obj.name}_LOD{lod_level:02d}")
+                                log_name = (
+                                    lod_obj_name if lod_obj_name else
+                                    f"{original_obj.name}_LOD{lod_level:02d}"
+                                    )
                                 logger.error(
                                     f"Failed processing {log_name}: {lod_e}"
                                 )
@@ -756,21 +890,26 @@ class MESH_OT_batch_export(Operator):
                         export_obj = None
                         export_obj_name = None
                         try:
-                            logger.info("Processing single export (no LODs)...")
-                            export_obj = create_export_copy(original_obj, context)
+                            logger.info("Processing single export (no LODs)..")
+                            export_obj = create_export_copy(
+                                original_obj, 
+                                context
+                            )
                             (export_obj_name, base_name) = setup_export_object(
                                 export_obj, original_obj.name, scene_props
                             )
                             apply_mesh_modifiers(export_obj)
-                            if scene_props.mesh_export_triangulate:
+                            if scene_props.mesh_export_tri:
                                 triangulate_mesh(
                                     export_obj,
-                                    scene_props.mesh_export_triangulate_method,
+                                    scene_props.mesh_export_tri_method,
                                     scene_props.mesh_export_keep_normals
                                 )
 
-                            file_path = os.path.join(export_base_path, base_name)
-                            if export_object(export_obj, file_path, scene_props):
+                            file_path = os.path.join(
+                                export_base_path, base_name)
+                            if export_object(
+                                export_obj, file_path, scene_props):
                                 successful_exports += 1
                             else:
                                 object_processed_successfully = False
@@ -790,7 +929,8 @@ class MESH_OT_batch_export(Operator):
 
                 except Exception as outer_e:
                     logger.error(
-                        f"Unexpected outer error during processing of {original_obj.name}: {outer_e}",
+                        f"Unexpected outer error during processing of "
+                        f"{original_obj.name}: {outer_e}",
                         exc_info=True
                     )
                     object_processed_successfully = False
@@ -804,7 +944,8 @@ class MESH_OT_batch_export(Operator):
                         )
                     elif original_obj:
                         logger.info(
-                            f"Skipped marking original {original_obj.name} due to errors."
+                            f"Skipped marking original {original_obj.name} "
+                            f"due to errors."
                         )
                         overall_success = False
             # --- End Main Object Loop ---
@@ -893,7 +1034,8 @@ class OBJECT_OT_select_by_name(Operator):
                 # Check if the newly active object supports the original mode
                 active = context.active_object
                 can_restore = (
-                    active and active.type == "MESH" or original_mode == "OBJECT"
+                    active and active.type == "MESH" 
+                    or original_mode == "OBJECT"
                 )
                 if can_restore:
                     bpy.ops.object.mode_set(mode=original_mode)
@@ -901,9 +1043,11 @@ class OBJECT_OT_select_by_name(Operator):
                     bpy.ops.object.mode_set(mode="OBJECT") # Fallback
             except Exception as mode_e:
                 logger.error(
-                    f"Could not restore original mode ({original_mode}): {mode_e}"
+                    f"Could not restore original mode "
+                    f"({original_mode}): {mode_e}"
                 )
-                if context.mode != "OBJECT": # Ensure Object mode if restore fails
+                if context.mode != "OBJECT": 
+                    # Ensure Object mode if restore fails
                     bpy.ops.object.mode_set(mode="OBJECT")
 
         return {"FINISHED"}

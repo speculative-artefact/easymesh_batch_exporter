@@ -1,5 +1,13 @@
+# properties.py
+"""
+This module defines properties for exporting meshes in Blender.
+It includes properties for export path, format, scale, coordinate system,
+triangulation, LOD generation, and more.
+"""
+
 import bpy
-from bpy.props import StringProperty, EnumProperty, FloatProperty, IntProperty, BoolProperty
+from bpy.props import (StringProperty, EnumProperty, 
+                       FloatProperty, IntProperty, BoolProperty)
 
 def register_properties():
     # Export path property
@@ -66,14 +74,14 @@ def register_properties():
     )
 
     # Triangulate properties
-    bpy.types.Scene.mesh_export_triangulate = BoolProperty(
+    bpy.types.Scene.mesh_export_tri = BoolProperty(
         name="Triangulate Faces",
         description="Convert all faces to triangles on the copy",
         default=True
     )
 
     # Triangulate method property
-    bpy.types.Scene.mesh_export_triangulate_method = EnumProperty(
+    bpy.types.Scene.mesh_export_tri_method = EnumProperty(
         name="Method",
         description="Method used for triangulating quads",
         items=[
@@ -167,8 +175,8 @@ def unregister_properties():
         "mesh_export_coord_up", 
         "mesh_export_coord_forward",
         "mesh_export_zero_location", 
-        "mesh_export_triangulate",
-        "mesh_export_triangulate_method", 
+        "mesh_export_tri",
+        "mesh_export_tri_method", 
         "mesh_export_keep_normals",
         "mesh_export_prefix", 
         "mesh_export_suffix", 

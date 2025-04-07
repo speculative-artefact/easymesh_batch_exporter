@@ -1,5 +1,15 @@
 # export_indicators.py
-"""Handles visual indicators for recently exported objects."""
+"""
+Handles visual indicators (object colour changes) for recently 
+exported objects.
+
+Relies on custom properties set by the main export operator:
+- mesh_export_timestamp: Time of export.
+- mesh_export_status: Current status (FRESH, STALE, NONE).
+
+Requires the user to set their 3D Viewport shading colour 
+type to 'Object' in Solid display mode to see the colour changes.
+"""
 
 import bpy
 import time
@@ -14,250 +24,355 @@ if not logger.handlers:
     formatter = logging.Formatter("%(name)s:%(levelname)s: %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
-    logger.setLevel(logging.INFO) # Default level
+    logger.setLevel(logging.INFO)  # Default level
 
 # --- Constants ---
 
 class ExportStatus(Enum):
     """Enum to represent the export status based on time."""
-    FRESH = 0   # Just exported (green) - less than FRESH_DURATION
-    STALE = 1   # Exported a while ago (yellow) - less than STALE_DURATION
+    FRESH = 0   # Just exported (green)
+    STALE = 1   # Exported a while ago (yellow)
     NONE = 2    # No indicator needed / Expired
 
 
 # Timing constants (in seconds)
-FRESH_DURATION = 60    # 1 minute
-STALE_DURATION = 300   # 5 minutes
+FRESH_DURATION_SECONDS = 60     # 1 minute
+STALE_DURATION_SECONDS = 300    # 5 minutes
+# FRESH_DURATION_SECONDS = 5     # debug
+# STALE_DURATION_SECONDS = 10    # debug
 
-# Custom property names (shared with operators.py)
+
+# Custom property names
 EXPORT_TIME_PROP = "mesh_export_timestamp"
 EXPORT_STATUS_PROP = "mesh_export_status"
-ORIGINAL_COLOR_PROP = "original_object_color" # For visual indicator
+ORIGINAL_COLOUR_PROP = "mesh_exporter_original_colour"
 
-# Export status colors (RGBA)
-STATUS_COLORS = {
+# Export status colours (RGBA tuple)
+STATUS_COLOURS = {
     ExportStatus.FRESH.value: (0.2, 0.8, 0.2, 1.0),  # Green
     ExportStatus.STALE.value: (0.8, 0.8, 0.2, 1.0),  # Yellow
 }
 
-# Store original viewport settings per 3D view space ID
-_original_shading_settings = {}
+# Timer interval
+_TIMER_INTERVAL_SECONDS = 5.0
 
 
 # --- Core Functions ---
 
+def _delete_prop(obj, prop_name):
+    """
+    Safely delete a custom property from an object if it exists.
+
+    Args:
+        obj (bpy.types.Object): The object to modify.
+        prop_name (str): The name of the property to delete.
+
+    Returns:
+        bool: True if the property was deleted or didn't exist, False on error.
+    """
+    if not obj or not hasattr(obj, "name"):
+        logger.debug(f"Cannot delete prop {prop_name}, object invalid.")
+        return False
+    if obj.get(prop_name) is None:
+        return True # Property doesn't exist, consider it "deleted"
+
+    try:
+        del obj[prop_name]
+        logger.debug(f"Deleted prop {prop_name} for {obj.name}")
+        return True
+    except (ReferenceError, KeyError):
+        logger.debug(f"Prop {prop_name} already gone/obj "
+                     f"invalid for {obj.name}.")
+        # Consider it deleted if it's gone
+        return True
+    except Exception as e:
+        logger.warning(f"Error removing prop {prop_name} from {obj.name}: {e}")
+    return False
+
+
+def restore_object_colour(obj):
+    """
+    Restore object's original viewport colour if stored previously.
+    Also ensures the original colour property is removed.
+
+    Args:
+        obj (bpy.types.Object): The object whose colour to restore.
+
+    Returns:
+        bool: True if colour was restored or not needed, False on failure.
+    """
+    if not obj or not hasattr(obj, "name"):
+        logger.debug("Skipping restore: object invalid.")
+        return False
+    if ORIGINAL_COLOUR_PROP not in obj:
+        logger.debug(f"No original colour stored for {obj.name}, "
+                     f"skipping restore.")
+        return True # Nothing needed to restore
+
+    logger.debug(f"Attempting to restore colour for {obj.name}...")
+    original_colour_stored = None
+    restore_success = False
+
+    try:
+        original_colour_stored = obj[ORIGINAL_COLOUR_PROP]
+        log_type = type(original_colour_stored)
+        logger.debug(f"Retrieved stored colour prop for {obj.name}: "
+                     f"{original_colour_stored} (Type: {log_type})")
+
+        # Check if it behaves like a sequence of length 4
+        is_valid_sequence = False
+        if hasattr(original_colour_stored, '__len__') and \
+           hasattr(original_colour_stored, '__getitem__'):
+            try:
+                if len(original_colour_stored) == 4:
+                    is_valid_sequence = True
+            except Exception as e:
+                logger.warning(f"Error checking len/getitem for stored colour "
+                               f"on {obj.name}: {e}")
+
+        if is_valid_sequence:
+            try:
+                original_colour_tuple = tuple(
+                    float(c) for c in original_colour_stored
+                )
+                current_colour_tuple = tuple(float(c) for c in obj.color)
+
+                if current_colour_tuple != original_colour_tuple:
+                    obj.color = original_colour_tuple
+                    logger.info(
+                        f"Restored colour for {obj.name} to "
+                        f"{original_colour_tuple}"
+                    )
+                else:
+                    logger.debug(f"Colour for {obj.name} already "
+                                 f"matches original.")
+                restore_success = True
+
+            except (AttributeError, TypeError, ValueError) as e:
+                 logger.error(
+                     f"Failed to apply stored colour {original_colour_stored} "
+                     f"for {obj.name}: {e}"
+                  )
+            except ReferenceError:
+                 logger.warning(f"Object {obj.name} became invalid "
+                                f"during colour apply.")
+
+        else:
+             logger.warning(
+                 f"Invalid original colour data stored for {obj.name}: "
+                 f"Not a sequence of length 4 "
+                 f"(Value: {original_colour_stored}, Type: {log_type}). "
+                 f"Cannot restore."
+             )
+
+    except KeyError:
+        logger.debug(f"Original colour prop key missing for {obj.name}.")
+        restore_success = True # Prop gone, consider restore "successful"
+    except ReferenceError:
+        logger.warning(f"Object {obj.name} became invalid during "
+                       f"restore read.")
+    except Exception as e:
+         logger.error(f"Unexpected error restoring colour for {obj.name}: {e}")
+
+    # Always ensure the original colour prop 
+    # is removed after attempting restore.
+    logger.debug(f"Ensuring cleanup of original colour prop for {obj.name}")
+    _delete_prop(obj, ORIGINAL_COLOUR_PROP)
+
+    return restore_success
+
+
+def set_object_colour(obj):
+    """
+    Set object viewport colour based on its current export status.
+    Stores the original colour if setting an indicator colour 
+    for the first time.
+
+    Args:
+        obj (bpy.types.Object): The object whose colour to set.
+    """
+    if not obj or not hasattr(obj, "name"):
+        logger.debug("Skipping set_object_colour: object invalid.")
+        return
+    if EXPORT_STATUS_PROP not in obj:
+        logger.debug(f"Skipping set_object_colour for {obj.name}: "
+                     f"No status prop.")
+        return
+
+    try:
+        status = obj.get(EXPORT_STATUS_PROP, ExportStatus.NONE.value)
+        target_colour = STATUS_COLOURS.get(status)
+
+        if not target_colour:
+            logger.debug(f"No target colour for {obj.name} (status={status}).")
+            return
+
+        # --- Store Original Colour (If Needed) ---
+        if ORIGINAL_COLOUR_PROP not in obj:
+            try:
+                current_colour_prop = obj.color
+                logger.debug(f"Reading obj.color for {obj.name}: "
+                             f"{current_colour_prop} "
+                             f"(Type: {type(current_colour_prop)})")
+
+                # Store as list of floats
+                original_colour_list = [float(c) for c in current_colour_prop]
+
+                if len(original_colour_list) == 4:
+                    obj[ORIGINAL_COLOUR_PROP] = original_colour_list
+                    logger.debug(f"Stored original colour for {obj.name} "
+                                 f"as list: {original_colour_list}")
+                else:
+                     logger.warning(
+                         f"Could not store original colour for {obj.name}: "
+                         f"obj.color returned unexpected length: "
+                         f"{current_colour_prop}"
+                     )
+            except (AttributeError, TypeError, 
+                    ValueError, ReferenceError) as e:
+                logger.warning(
+                    f"Could not read or store original colour for {obj.name}: "
+                    f"{e}. Restore may fail."
+                )
+
+        # --- Apply Status Colour ---
+        try:
+            current_colour_tuple = tuple(float(c) for c in obj.color)
+            if current_colour_tuple != target_colour:
+                obj.color = target_colour
+                logger.debug(f"Set colour for {obj.name} to {target_colour}")
+            # Property exists since Blender 2.8 according to docs
+            if hasattr(obj, 'show_instancer_for_viewport'):
+                obj.show_instancer_for_viewport = True
+        except (AttributeError, TypeError, ValueError, ReferenceError) as e:
+             logger.error(f"Failed to set status colour/property "
+                          f"for {obj.name}: {e}")
+
+    except ReferenceError:
+         logger.debug(f"Object {obj.name} became invalid "
+                      f"during set_object_colour.")
+    except Exception as e:
+        logger.error(f"Unexpected error in set_object_colour "
+                     f"for {obj.name}: {e}")
+
+
 def update_all_export_statuses():
-    """Update status of all tracked objects based on elapsed time."""
+    """
+    Iterate through objects, update export status based on elapsed time.
+    Returns True if any object's status changed, indicating a redraw is needed.
+    """
     current_time = time.time()
     needs_redraw = False
 
-    for obj in bpy.data.objects:
-        if not (obj.type == "MESH" and EXPORT_TIME_PROP in obj):
+    if not bpy.data or not bpy.data.objects:
+        return False
+
+    # Iterate safely over object list copy
+    for obj in list(bpy.data.objects):
+        try:
+            if not (obj and obj.type == "MESH" and EXPORT_TIME_PROP in obj):
+                continue
+
+            export_time = obj.get(EXPORT_TIME_PROP, 0)
+            if not export_time:
+                logger.warning(f"Object {obj.name} missing timestamp prop.")
+                continue
+
+            elapsed_time = current_time - export_time
+            old_status_val = obj.get(EXPORT_STATUS_PROP, 
+                                     ExportStatus.NONE.value)
+
+            new_status = ExportStatus.NONE
+            if elapsed_time < FRESH_DURATION_SECONDS:
+                new_status = ExportStatus.FRESH
+            elif elapsed_time < STALE_DURATION_SECONDS:
+                new_status = ExportStatus.STALE
+
+            new_status_val = new_status.value
+
+            if new_status_val != old_status_val:
+                needs_redraw = True
+                logger.debug(
+                    f"Updating status for {obj.name}: "
+                    f"{ExportStatus(old_status_val).name} -> {new_status.name}"
+                )
+
+                # --- State Transition Logic ---
+                if new_status == ExportStatus.NONE:
+                    # Restores colour, removes original prop
+                    if restore_object_colour(obj):
+                        logger.debug(f"Colour restore done for {obj.name}.")
+                    else:
+                        logger.warning(f"Colour restore failed/skipped "
+                                       f"for {obj.name}.")
+                    # Remove remaining tracking props
+                    _delete_prop(obj, EXPORT_TIME_PROP)
+                    _delete_prop(obj, EXPORT_STATUS_PROP)
+                else:
+                    # Becoming FRESH or STALE: Set new status prop, then colour
+                    obj[EXPORT_STATUS_PROP] = new_status_val
+                    set_object_colour(obj)
+                # --- End State Transition Logic ---
+
+        except ReferenceError:
+            logger.debug("Object became invalid during status update loop.")
             continue
-
-        export_time = obj.get(EXPORT_TIME_PROP, 0)
-        if not export_time:
+        except Exception as e:
+            obj_name = obj.name if obj and hasattr(obj, 'name') else 'N/A'
+            logger.error(f"Error updating status for object {obj_name}: {e}",
+                         exc_info=True)
             continue
-
-        elapsed_time = current_time - export_time
-        old_status = obj.get(EXPORT_STATUS_PROP, ExportStatus.NONE.value)
-
-        # Determine new status
-        if elapsed_time < FRESH_DURATION:
-            new_status = ExportStatus.FRESH.value
-        elif elapsed_time < STALE_DURATION:
-            new_status = ExportStatus.STALE.value
-        else:
-            new_status = ExportStatus.NONE.value
-
-        # Update object only if status has changed
-        if new_status != old_status:
-            obj[EXPORT_STATUS_PROP] = new_status
-            set_object_color(obj)
-            needs_redraw = True
-            logger.debug(
-                f"Updated status for {obj.name} to {ExportStatus(new_status).name}"
-            )
-
-            if new_status == ExportStatus.NONE.value:
-                cleanup_export_props(obj)
-                logger.debug(f"Cleaned up export props for {obj.name}")
 
     return needs_redraw
 
 
 def get_recently_exported_objects():
-    """Get a list of recently exported objects sorted by export time."""
+    """Get a list of objects with active FRESH/STALE status, sorted."""
     exported_objects = []
+    if not bpy.data or not bpy.data.objects:
+        return []
+
     for obj in bpy.data.objects:
-        if obj.type == "MESH" and EXPORT_TIME_PROP in obj:
-            status = obj.get(EXPORT_STATUS_PROP, ExportStatus.NONE.value)
-            if status != ExportStatus.NONE.value:
-                exported_objects.append((obj, obj[EXPORT_TIME_PROP]))
+        try:
+            if (obj and obj.type == "MESH" and EXPORT_TIME_PROP in obj):
+                status = obj.get(EXPORT_STATUS_PROP, ExportStatus.NONE.value)
+                if status != ExportStatus.NONE.value:
+                    timestamp = obj.get(EXPORT_TIME_PROP, 0)
+                    exported_objects.append((obj, timestamp))
+        except ReferenceError:
+             continue # Object invalid
 
     return sorted(exported_objects, key=lambda item: item[1], reverse=True)
 
 
-def set_object_color(obj):
-    """Set object viewport color based on its export status."""
-    if not obj or EXPORT_STATUS_PROP not in obj:
-        return
-
-    status = obj.get(EXPORT_STATUS_PROP, ExportStatus.NONE.value)
-
-    if (ORIGINAL_COLOR_PROP not in obj and
-            status != ExportStatus.NONE.value):
-        try:
-            # Store copy of color tuple
-            obj[ORIGINAL_COLOR_PROP] = list(obj.color)
-        except AttributeError:
-            logger.warning(
-                f"Could not store original color for {obj.name}. "
-                f"Color restore might fail."
-            )
-            # Ensure prop exists even if storing failed, to trigger restore logic
-            if ORIGINAL_COLOR_PROP not in obj:
-                 obj[ORIGINAL_COLOR_PROP] = list(obj.color) # Store default?
-
-
-    if status in STATUS_COLORS:
-        try:
-            obj.color = STATUS_COLORS[status]
-            obj.show_instancer_for_viewport = True # Required for object color
-        except AttributeError as e:
-             logger.error(f"Failed to set color for {obj.name}: {e}")
-    else:
-        restore_object_color(obj)
-
-
-def restore_object_color(obj):
-    """Restore object's original viewport color."""
-    if not obj or ORIGINAL_COLOR_PROP not in obj:
-        return
-
-    try:
-        original_color_list = obj[ORIGINAL_COLOR_PROP]
-        if (isinstance(original_color_list, (list, tuple)) and
-                len(original_color_list) == 4):
-             obj.color = tuple(original_color_list)
-        else:
-             logger.warning(
-                 f"Invalid original color stored for {obj.name}: "
-                 f"{original_color_list}"
-             )
-        del obj[ORIGINAL_COLOR_PROP]
-    except (ReferenceError, KeyError):
-        pass
-    except AttributeError as e:
-        logger.error(f"Failed to restore color for {obj.name}: {e}")
-
-
-def cleanup_export_props(obj):
-    """Remove export tracking properties when status expires."""
-    if not obj:
-        return
-    props_to_remove = [EXPORT_TIME_PROP, EXPORT_STATUS_PROP, ORIGINAL_COLOR_PROP]
-    for prop in props_to_remove:
-        if prop in obj:
-            try:
-                del obj[prop]
-            except (ReferenceError, KeyError):
-                pass
-
-
-def configure_viewport_for_object_colors():
-    """Configure active 3D viewport to display object colors in Solid mode."""
-    global _original_shading_settings
-    try:
-        context = bpy.context
-        area = next((a for a in context.screen.areas if a.type == "VIEW_3D"), None)
-        if not area:
-            logger.warning("Could not find active 3D Viewport area.")
-            return
-        space = next((s for s in area.spaces if s.type == "VIEW_3D"), None)
-        if not space or not hasattr(space, "shading"):
-            logger.warning("Could not find valid 3D Viewport space data.")
-            return
-
-        space_key = space.as_pointer()
-
-        if space_key not in _original_shading_settings:
-            _original_shading_settings[space_key] = {
-                "type": space.shading.type,
-                "color_type": space.shading.color_type
-            }
-            logger.debug("Stored original viewport settings for space.")
-
-        if space.shading.type == "SOLID" and space.shading.color_type != "OBJECT":
-            space.shading.color_type = "OBJECT"
-            logger.info("Set 3D Viewport shading color type to 'Object'.")
-
-    except Exception as e:
-        logger.error(f"Error configuring viewport: {e}", exc_info=True)
-
-
-def restore_viewport_settings():
-    """Restore original viewport shading settings for all tracked viewports."""
-    global _original_shading_settings
-    restored_count = 0
-    try:
-        # Handle shutdown state
-        if not bpy.data or not bpy.data.window_managers: return 
-
-        for window in bpy.data.window_managers[0].windows:
-            for screen in bpy.data.screens:
-                for area in screen.areas:
-                    if area.type == "VIEW_3D":
-                        for space in area.spaces:
-                            if space.type == "VIEW_3D" and hasattr(space, "shading"):
-                                space_key = space.as_pointer()
-                                if space_key in _original_shading_settings:
-                                    original = _original_shading_settings[space_key]
-                                    try:
-                                        if (space.shading.type != original["type"] or
-                                           space.shading.color_type != original["color_type"]):
-
-                                            space.shading.type = original["type"]
-                                            space.shading.color_type = original["color_type"]
-                                            logger.debug(
-                                                f"Restored viewport space settings to "
-                                                f"{original['type']}/{original['color_type']}"
-                                            )
-                                            restored_count += 1
-                                    except Exception as e:
-                                         logger.warning(
-                                             f"Failed restoring specific space setting: {e}"
-                                         )
-                                    # Remove entry once processed, prevents errors if space reused
-                                    del _original_shading_settings[space_key]
-
-    except Exception as e:
-        logger.error(f"Error during viewport setting restoration: {e}")
-    finally:
-        if restored_count > 0:
-             logger.info(f"Restored {restored_count} viewport shading settings.")
-        _original_shading_settings.clear()
-
-
 # --- Timer Logic ---
-_timer_interval = 5.0
 
 def update_timer_callback():
     """Function called periodically by Blender's timer."""
     try:
         if update_all_export_statuses():
-            if bpy.context.window_manager:
-                 for window in bpy.context.window_manager.windows:
+            context = bpy.context
+            if context and getattr(context, "window_manager", None):
+                 for window in context.window_manager.windows:
+                     if not getattr(window, "screen", None): continue
                      for area in window.screen.areas:
-                         if area.type == "VIEW_3D":
+                         if area.type == 'VIEW_3D':
                              for region in area.regions:
-                                 if region.type == "UI":
-                                     region.tag_redraw()
-                                     break # Only need one UI region redraw
+                                 if region.type == 'UI':
+                                     try:
+                                         region.tag_redraw()
+                                     except ReferenceError: pass
+                                     # Redraw only one relevant 
+                                     # UI region per area
+                                     break
+            else:
+                 logger.debug("Timer callback skipped redraw: "
+                              "invalid context.")
     except Exception as e:
          logger.error(f"Error in timer callback: {e}", exc_info=True)
-         # Consider returning None to stop the timer if errors persist
-    return _timer_interval
+         # Optionally stop timer on error
+         # return None
+    return _TIMER_INTERVAL_SECONDS
 
 
 # --- Operators ---
@@ -271,19 +386,39 @@ class MESH_OT_clear_all_indicators(Operator):
     def execute(self, context):
         """Runs the clear operation."""
         count = 0
-        for obj in bpy.data.objects:
-            if obj.type == "MESH" and EXPORT_TIME_PROP in obj:
-                restore_object_color(obj)
-                cleanup_export_props(obj)
-                count += 1
+        if not bpy.data or not bpy.data.objects:
+            logger.warning("Clear Indicators: No Blender data found.")
+            return {'CANCELLED'}
+
+        logger.info("Clearing all export indicators...")
+        # Iterate over list copy for safety
+        for obj in list(bpy.data.objects):
+            if obj and obj.type == "MESH" and \
+               (EXPORT_TIME_PROP in obj or ORIGINAL_COLOUR_PROP in obj):
+                obj_name = obj.name
+                try:
+                    # Handles original colour prop removal
+                    restore_object_colour(obj) 
+                    _delete_prop(obj, EXPORT_TIME_PROP)
+                    _delete_prop(obj, EXPORT_STATUS_PROP)
+                    count += 1
+                except Exception as e:
+                    logger.warning(f"Error clearing indicators "
+                                   f"for {obj_name}: {e}")
+
         msg = f"Cleared export indicators from {count} objects."
         self.report({"INFO"}, msg)
         logger.info(msg)
 
-        if context.window_manager:
+        # Trigger redraw after clearing
+        if context and context.window_manager:
             for window in context.window_manager.windows:
+                if not window.screen: continue
                 for area in window.screen.areas:
-                    area.tag_redraw()
+                    try:
+                        area.tag_redraw()
+                    except ReferenceError: 
+                        pass # Area might close
         return {"FINISHED"}
 
 
@@ -296,18 +431,19 @@ operators_to_register = (
 
 def register():
     """Registers classes and starts the timer."""
+    logger.debug("Registering export indicator classes...")
     for cls in operators_to_register:
         try:
             bpy.utils.register_class(cls)
         except ValueError:
-            logger.warning(f"Class {cls.__name__} already registered.")
+            logger.debug(f"Class {cls.__name__} already registered.")
             pass
 
     if not bpy.app.timers.is_registered(update_timer_callback):
         try:
-            configure_viewport_for_object_colors()
             bpy.app.timers.register(
-                update_timer_callback, first_interval=_timer_interval
+                update_timer_callback,
+                first_interval=_TIMER_INTERVAL_SECONDS
             )
             logger.info("Export indicator timer registered.")
         except Exception as e:
@@ -315,8 +451,9 @@ def register():
 
 
 def unregister():
-    """Unregisters classes, stops timer, restores viewport & objects."""
+    """Unregisters classes, stops timer, and cleans up objects."""
     logger.info("Unregistering export indicators...")
+    # Stop and unregister timer
     if bpy.app.timers.is_registered(update_timer_callback):
         try:
             bpy.app.timers.unregister(update_timer_callback)
@@ -324,35 +461,35 @@ def unregister():
         except Exception as e:
             logger.error(f"Failed to unregister timer: {e}")
 
-    try:
-        restore_viewport_settings()
-    except Exception as e:
-        logger.error(f"Failed to restore viewport settings: {e}")
+    # No longer restoring viewport settings automatically
 
+    # Cleanup object properties and colours
     try:
         count_cleaned = 0
-        # Check if bpy.data exists (might be None during final shutdown)
-        if bpy.data:
-            for obj in bpy.data.objects:
-                if obj.type == "MESH":
-                    props_found = False
-                    if ORIGINAL_COLOR_PROP in obj:
-                        restore_object_color(obj)
-                        props_found = True
-                    # cleanup_export_props handles multiple props
-                    if EXPORT_TIME_PROP in obj:
-                        cleanup_export_props(obj)
-                        props_found = True
-                    if props_found:
+        if bpy.data and bpy.data.objects:
+            for obj in list(bpy.data.objects): # Use list copy
+                if obj and obj.type == "MESH" and \
+                   (EXPORT_TIME_PROP in obj or ORIGINAL_COLOUR_PROP in obj):
+                    obj_name = obj.name
+                    try:
+                        restore_object_colour(obj)
+                        _delete_prop(obj, EXPORT_TIME_PROP)
+                        _delete_prop(obj, EXPORT_STATUS_PROP)
                         count_cleaned += 1
-        if count_cleaned > 0:
-            logger.info(f"Cleaned up props/color for {count_cleaned} objects.")
+                    except Exception as inner_e:
+                        logger.warning(f"Error cleaning up {obj_name}: "
+                                       f"{inner_e}")
+            if count_cleaned > 0:
+                logger.info(f"Cleaned up indicators for "
+                            f"{count_cleaned} objects.")
     except Exception as e:
         logger.error(f"Error during object property cleanup: {e}")
 
+    # Unregister operators
     for cls in reversed(operators_to_register):
         try:
             bpy.utils.unregister_class(cls)
         except RuntimeError:
-             logger.warning(f"Class {cls.__name__} already unregistered.")
+             logger.debug(f"Class {cls.__name__} already unregistered.")
              pass
+    logger.debug("Export indicator unregistration finished.")

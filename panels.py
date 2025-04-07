@@ -1,4 +1,10 @@
-import bpy
+#panels.py
+""" 
+EasyMesh Batch Exporter UI Panels
+This module contains the UI panels for the EasyMesh Batch Exporter add-on. 
+It includes the main exporter panel, LOD settings, and recent exports
+"""
+
 import time
 from bpy.types import Panel
 from . import export_indicators
@@ -13,11 +19,11 @@ class MESH_PT_exporter_panel(Panel):
 
     # Helper functions
     def format_has_scale(self, format):
-        # Check if the format is compatible with scale export setting
+        """Check if the format is compatible with scale export setting"""
         return format in {"FBX", "OBJ", "STL"}
 
     def format_has_coordinates(self, format):
-        # Check if the format is compatible with coordinate export settings
+        """Check if the format is compatible with coordinate export settings"""
         return format in {"FBX", "OBJ", "USD", "STL"}
 
 
@@ -51,10 +57,10 @@ class MESH_PT_exporter_panel(Panel):
 
         # Triangulate settings
         col = layout.column(heading="Triangulate", align=True)
-        col.prop(scene, "mesh_export_triangulate")
+        col.prop(scene, "mesh_export_tri")
         sub = col.column(align=True)
-        sub.enabled = scene.mesh_export_triangulate # Enable/disable sub-options
-        sub.prop(scene, "mesh_export_triangulate_method")
+        sub.enabled = scene.mesh_export_tri # Enable/disable sub-option
+        sub.prop(scene, "mesh_export_tri_method")
         sub.prop(scene, "mesh_export_keep_normals")
 
         # Rename file settings
@@ -65,7 +71,9 @@ class MESH_PT_exporter_panel(Panel):
         layout.separator()
 
         # Export Button 
-        mesh_count = sum(1 for obj in context.selected_objects if obj.type == "MESH")
+        mesh_count = sum(
+            1 for obj in context.selected_objects if obj.type == "MESH"
+        )
         # col = layout.column(heading="Export Control", align=True)
         # box = col.box()
         # row = box.row()
@@ -73,7 +81,9 @@ class MESH_PT_exporter_panel(Panel):
         # Export button (always enabled unless poll() fails)
         row = layout.row()
         # Generate the button text first
-        button_text = f"Export Meshes ({mesh_count})" if mesh_count > 0 else "Export Meshes"
+        button_text = (
+            f"Export Meshes ({mesh_count})" if mesh_count > 0 
+            else "Export Meshes")
         # Pass the generated text to the "text" parameter
         row.operator("mesh.batch_export", text=button_text, icon="EXPORT")
 
@@ -163,7 +173,9 @@ class MESH_EXPORT_PT_recent_exports(Panel):
 
         try:
             # Use the function from the export_indicators module
-            recently_exported = export_indicators.get_recently_exported_objects()
+            recently_exported = (
+                export_indicators.get_recently_exported_objects()
+            )
         except AttributeError:
             layout.label(text="Indicator system not fully loaded.")
             return
@@ -179,35 +191,40 @@ class MESH_EXPORT_PT_recent_exports(Panel):
 
         max_items = 10 # Limit display length
         for i, (obj, export_time) in enumerate(recently_exported):
-             if i >= max_items:
-                  row = col.row()
-                  row.label(text=f"... and {len(recently_exported) - max_items} more")
-                  break
+            if i >= max_items:
+                row = col.row()
+                row.label(text=f"... and "
+                          f"{len(recently_exported) - max_items} more")
+                break
 
-             if not obj: continue # Skip if object deleted
+            if not obj: 
+                continue # Skip if object deleted
 
-             row = col.row(align=True)
-             icon = "HIDE_OFF" # Default icon
+            row = col.row(align=True)
+            icon = "HIDE_OFF" # Default icon
 
-             # Button to select object
-             op = row.operator("object.select_by_name", text="", icon=icon)
-             op.object_name = obj.name # Custom operator needed here
+            # Button to select object
+            op = row.operator("object.select_by_name", text="", icon=icon)
+            op.object_name = obj.name # Custom operator needed here
 
-             row.label(text=obj.name)
+            row.label(text=obj.name)
 
-             # Time since export
-             time_diff = time.time() - export_time
-             if time_diff < 60:
-                 time_str = f"{int(time_diff)}s ago"
-             elif time_diff < 3600:
-                 time_str = f"{int(time_diff/60)}m ago"
-             else:
-                 time_str = f"{int(time_diff/3600)}h ago"
-             row.label(text=time_str)
+            # Time since export
+            time_diff = time.time() - export_time
+            if time_diff < 60:
+                time_str = f"{int(time_diff)}s ago"
+            elif time_diff < 3600:
+                time_str = f"{int(time_diff/60)}m ago"
+            else:
+                time_str = f"{int(time_diff/3600)}h ago"
+            row.label(text=time_str)
 
         # Clear Indicators button if indicators are present
         if hasattr(export_indicators, "MESH_OT_clear_all_indicators"):
-             layout.operator(export_indicators.MESH_OT_clear_all_indicators.bl_idname, icon="TRASH")
+            layout.operator(
+                export_indicators.MESH_OT_clear_all_indicators.bl_idname, 
+                icon="TRASH"
+            )
 
 
 

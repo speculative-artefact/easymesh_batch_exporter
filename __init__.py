@@ -13,26 +13,7 @@
 #
 # Copyright (C) 2025 Bradley Walker
 
-bl_info = {
-    "name": "EasyMesh Batch Exporter",
-    "author": "Bradley Walker",
-    "version": (1, 1, 0),
-    "blender": (4, 2, 0), 
-    "location": "View3D > Sidebar > Exporter",
-    "description": (
-        "Batch export multiple selected mesh objects with customisable "
-        "settings like LOD generation, triangulation, prefix/suffix "
-        "naming, and transform options. Useful for game development "
-        "pipelines."
-    ),
-    "warning": "",
-    "doc_url": "",
-    "category": "Import-Export",
-}
-
 import bpy
-
-# Import other modules
 from . import properties
 from . import operators
 from . import panels
@@ -49,7 +30,7 @@ def register():
     properties.register_properties()
     for cls in classes:
         bpy.utils.register_class(cls)
-    export_indicators.register() # Register timer and indicator operators/panels
+    export_indicators.register() # Register timer and indic operators/panels
 
 def unregister():
     export_indicators.unregister() # Unregister timer first
