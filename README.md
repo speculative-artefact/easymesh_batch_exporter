@@ -23,7 +23,7 @@ A Blender add-on for batch exporting multiple selected mesh objects with customi
 
 ## Installation
 
-1.  Download the latest release `.zip` file from the [Releases page](https://github.com/doommchips/blender_mesh_exporter/releases).
+1.  Download the latest release `.zip` file from the [Releases page](https://github.com/speculative-artefact/easymesh_batch_exporter/releases).
 2.  In Blender, go to `Edit` > `Preferences...`.
 3.  Navigate to the `Add-ons` tab.
 4.  Click `Install...` and select the downloaded `.zip` file.

@@ -8,7 +8,7 @@ maintainer = "Bradley Walker"
 type = "add-on"
 
 # Optional: Add URL to GitHub repo or documentation if available
-website = "https://github.com/doommchips/blender_mesh_exporter/releases"
+website = "https://github.com/speculative-artefact/easymesh_batch_exporter/releases"
 
 tags = [
   "Import-Export",
