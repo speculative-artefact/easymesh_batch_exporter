@@ -1,6 +1,6 @@
 # EasyMesh Batch Exporter for Blender
 
-![License: GPL-2.0-or-later](https://img.shields.io/badge/License-GPL--2.0--or--later-blue.svg)
+![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)
 ![Blender: 4.2+](https://img.shields.io/badge/Blender-4.2+-orange.svg)
 
 A Blender add-on for batch exporting multiple selected mesh objects with customisable settings, including LOD generation and viewport indicators for recent exports.
@@ -56,3 +56,11 @@ A Blender add-on for batch exporting multiple selected mesh objects with customi
     [[Viewport Shading Docs]](https://docs.blender.org/manual/en/latest/editors/3dview/display/shading.html#solid)
 * **Recent Exports Panel:** A list of recently exported objects (still FRESH or STALE) appears in a sub-panel. Clicking the icon selects the object.
 * **Clear Indicators:** The "Clear All Export Indicators" button at the bottom of the "Recent Exports" panel will immediately remove the status from all objects and restore their original viewport colors.
+
+## Support Development
+
+If you find EasyMesh Batch Exporter useful in your workflow, consider supporting continued development:
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Development-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/speculative_artefact)
+
+Your support helps maintain and improve this add-on. Thank you!
