@@ -24,7 +24,6 @@ copyright = [
   "2025 Bradley Walker"
 ]
 
-platforms = ["windows-x64", "macos-arm64", "linux-x64"]
 # wheels = []
 
 # Declare necessary permissions
