@@ -29,44 +29,44 @@ class MESH_PT_exporter_panel(Panel):
 
     def draw(self, context):
         layout = self.layout
-        scene = context.scene
+        settings = context.scene.mesh_exporter
 
         layout.use_property_split = True
         layout.use_property_decorate = False
 
         # Export path settings
-        layout.prop(scene, "mesh_export_path")
-        layout.prop(scene, "mesh_export_format")
+        layout.prop(settings, "mesh_export_path")
+        layout.prop(settings, "mesh_export_format")
 
         # Coordinate system settings
-        if self.format_has_coordinates(scene.mesh_export_format):
+        if self.format_has_coordinates(settings.mesh_export_format):
             col = layout.column(heading="Coordinate system", align=True)
             row = col.row(align=True)
-            row.prop(scene, "mesh_export_coord_up", expand=True)
+            row.prop(settings, "mesh_export_coord_up", expand=True)
             row = col.row(align=True)
-            row.prop(scene, "mesh_export_coord_forward", expand=True)
+            row.prop(settings, "mesh_export_coord_forward", expand=True)
 
         # Scale settings
-        if self.format_has_scale(scene.mesh_export_format):
+        if self.format_has_scale(settings.mesh_export_format):
             col = layout.column(heading="Scale", align=True)
-            col.prop(scene, "mesh_export_scale")
+            col.prop(settings, "mesh_export_scale")
 
         col = layout.column(align=True)
-        col.prop(scene, "mesh_export_zero_location")
+        col.prop(settings, "mesh_export_zero_location")
 
 
         # Triangulate settings
         col = layout.column(heading="Triangulate", align=True)
-        col.prop(scene, "mesh_export_tri")
+        col.prop(settings, "mesh_export_tri")
         sub = col.column(align=True)
-        sub.enabled = scene.mesh_export_tri # Enable/disable sub-option
-        sub.prop(scene, "mesh_export_tri_method")
-        sub.prop(scene, "mesh_export_keep_normals")
+        sub.enabled = settings.mesh_export_tri # Enable/disable sub-option
+        sub.prop(settings, "mesh_export_tri_method")
+        sub.prop(settings, "mesh_export_keep_normals")
 
         # Rename file settings
         col = layout.column(heading="Rename file", align=True)
-        col.prop(scene, "mesh_export_prefix")
-        col.prop(scene, "mesh_export_suffix")
+        col.prop(settings, "mesh_export_prefix")
+        col.prop(settings, "mesh_export_suffix")
 
         layout.separator()
 
@@ -105,52 +105,52 @@ class MESH_PT_exporter_panel_lod(Panel):
 
     def draw_header(self, context):
         layout = self.layout
-        scene = context.scene
-        layout.prop(scene, "mesh_export_lod", text="") # Checkbox in header
+        settings = context.scene.mesh_exporter
+        layout.prop(settings, "mesh_export_lod", text="") # Checkbox in header
 
     def draw(self, context):
         layout = self.layout
-        scene = context.scene
+        settings = context.scene.mesh_exporter
         layout.use_property_split = True
         layout.use_property_decorate = False
 
         # Enable/disable based on the header checkbox
-        layout.enabled = scene.mesh_export_lod
+        layout.enabled = settings.mesh_export_lod
 
         col = layout.column(align=True)
-        col.prop(scene, "mesh_export_lod_count")
+        col.prop(settings, "mesh_export_lod_count")
         # Hide the decimate type bc I'm not sure if it's needed yet
-        # col.prop(scene, "mesh_export_lod_type")
+        # col.prop(settings, "mesh_export_lod_type")
 
         box = layout.box()
         col = box.column(align=True)
         # col.label(text="Ratios:")
         # Display relevant properties based on type
-        if scene.mesh_export_lod_type == "COLLAPSE":
+        if settings.mesh_export_lod_type == "COLLAPSE":
             row = col.row(align=True)
-            row.prop(scene, "mesh_export_lod_ratio_01", text="LOD1")
+            row.prop(settings, "mesh_export_lod_ratio_01", text="LOD1")
             row = col.row(align=True)
-            row.prop(scene, "mesh_export_lod_ratio_02", text="LOD2")
-            if scene.mesh_export_lod_count < 2:
+            row.prop(settings, "mesh_export_lod_ratio_02", text="LOD2")
+            if settings.mesh_export_lod_count < 2:
                 # Visual indicator for which LODs are disabled
                 row.enabled = False
             row = col.row(align=True)
-            row.prop(scene, "mesh_export_lod_ratio_03", text="LOD3")
-            if scene.mesh_export_lod_count < 3:
+            row.prop(settings, "mesh_export_lod_ratio_03", text="LOD3")
+            if settings.mesh_export_lod_count < 3:
                 # Visual indicator for which LODs are disabled
                 row.enabled = False
             row = col.row(align=True)
-            row.prop(scene, "mesh_export_lod_ratio_04", text="LOD4")
-            if scene.mesh_export_lod_count < 4:
+            row.prop(settings, "mesh_export_lod_ratio_04", text="LOD4")
+            if settings.mesh_export_lod_count < 4:
                 # Visual indicator for which LODs are disabled
                 row.enabled = False
-        elif scene.mesh_export_lod_type == "UNSUBDIVIDE":
+        elif settings.mesh_export_lod_type == "UNSUBDIVIDE":
             # Unsudivide should use Int for iterations
             # Can fix this later if needed
-            col.prop(scene, "mesh_export_lod_ratio_01", text="LOD1 Iter.")
-            col.prop(scene, "mesh_export_lod_ratio_02", text="LOD2 Iter.")
-            col.prop(scene, "mesh_export_lod_ratio_03", text="LOD3 Iter.")
-            col.prop(scene, "mesh_export_lod_ratio_04", text="LOD4 Iter.")
+            col.prop(settings, "mesh_export_lod_ratio_01", text="LOD1 Iter.")
+            col.prop(settings, "mesh_export_lod_ratio_02", text="LOD2 Iter.")
+            col.prop(settings, "mesh_export_lod_ratio_03", text="LOD3 Iter.")
+            col.prop(settings, "mesh_export_lod_ratio_04", text="LOD4 Iter.")
 
 
 # Recent Exports Panel

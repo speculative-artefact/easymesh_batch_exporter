@@ -7,13 +7,16 @@ triangulation, LOD generation, and more.
 
 import bpy
 from bpy.props import (StringProperty, EnumProperty, 
-                       FloatProperty, IntProperty, BoolProperty)
+                      FloatProperty, IntProperty, BoolProperty,
+                      PointerProperty)
+from bpy.types import PropertyGroup
 
-def register_properties():
+
+class MeshExporterSettings(PropertyGroup):
     # Export path property
     # Default to the current blend file directory 
     # with a subfolder "exported_meshes"
-    bpy.types.Scene.mesh_export_path = StringProperty(
+    mesh_export_path = StringProperty(
         name="Export Path",
         description="Path to export meshes",
         default="//exported_meshes/",
@@ -21,7 +24,7 @@ def register_properties():
     )
 
     # Export format property
-    bpy.types.Scene.mesh_export_format = EnumProperty(
+    mesh_export_format = EnumProperty(
         name="Format",
         description="File format to export meshes",
         items=[
@@ -35,7 +38,7 @@ def register_properties():
     )
 
     # Scale property
-    bpy.types.Scene.mesh_export_scale = FloatProperty(
+    mesh_export_scale = FloatProperty(
         name="Scale",
         description="Scale factor for exported meshes",
         default=1.0,
@@ -46,7 +49,7 @@ def register_properties():
     )
 
     # Coordinate system properties
-    bpy.types.Scene.mesh_export_coord_up = EnumProperty(
+    mesh_export_coord_up = EnumProperty(
         name="Up Axis",
         description="Up axis for exported meshes",
         items=[
@@ -56,7 +59,7 @@ def register_properties():
         default="Z"
     )
 
-    bpy.types.Scene.mesh_export_coord_forward = EnumProperty(
+    mesh_export_coord_forward = EnumProperty(
         name="Forward Axis",
         description="Forward axis for exported meshes",
         items=[
@@ -67,21 +70,21 @@ def register_properties():
     )
 
     # Zero location property
-    bpy.types.Scene.mesh_export_zero_location = BoolProperty(
+    mesh_export_zero_location = BoolProperty(
         name="Zero Location",
         description="Zero location of the object copy before export",
         default=True
     )
 
     # Triangulate properties
-    bpy.types.Scene.mesh_export_tri = BoolProperty(
+    mesh_export_tri = BoolProperty(
         name="Triangulate Faces",
         description="Convert all faces to triangles on the copy",
         default=True
     )
 
     # Triangulate method property
-    bpy.types.Scene.mesh_export_tri_method = EnumProperty(
+    mesh_export_tri_method = EnumProperty(
         name="Method",
         description="Method used for triangulating quads",
         items=[
@@ -98,34 +101,34 @@ def register_properties():
     )
 
     # Keep normals property
-    bpy.types.Scene.mesh_export_keep_normals = BoolProperty(
+    mesh_export_keep_normals = BoolProperty(
         name="Keep Normals",
         description="Preserve normal vectors during triangulation",
         default=True
     )
 
     # Prefix and suffix properties
-    bpy.types.Scene.mesh_export_prefix = StringProperty(
+    mesh_export_prefix = StringProperty(
         name="Prefix",
         description="Prefix for exported file names",
         default=""
     )
 
-    bpy.types.Scene.mesh_export_suffix = StringProperty(
+    mesh_export_suffix = StringProperty(
         name="Suffix",
         description="Suffix for exported file names",
         default=""
     )
 
     # LOD properties
-    bpy.types.Scene.mesh_export_lod = BoolProperty(
+    mesh_export_lod = BoolProperty(
         name="Generate LODs",
         description="Generate additional LODs using Decimate (modifies copy)",
         default=False
     )
 
     # LOD count property
-    bpy.types.Scene.mesh_export_lod_count = IntProperty(
+    mesh_export_lod_count = IntProperty(
         name="Additional LODs",
         description="How many additional LODs to generate (LOD1 to LOD4)",
         default=4, min=1, max=4, # Max 4 due to 4 ratio properties
@@ -133,7 +136,7 @@ def register_properties():
 
     # LOD type property
     # Note: I've excluded "UNSUBDIVIDE" and "DISSOLVE"
-    bpy.types.Scene.mesh_export_lod_type = EnumProperty(
+    mesh_export_lod_type = EnumProperty(
         name="Decimation Type",
         description="Type of decimation to use for generating LODs",
         items=[
@@ -145,49 +148,36 @@ def register_properties():
     )
 
     # LOD ratio properties
-    bpy.types.Scene.mesh_export_lod_ratio_01 = FloatProperty(
+    mesh_export_lod_ratio_01 = FloatProperty(
         name="LOD1 Ratio", 
         description="Decimate factor for LOD 1",
         default=0.75, min=0.0, max=1.0, subtype="FACTOR"
     )
-    bpy.types.Scene.mesh_export_lod_ratio_02 = FloatProperty(
+    mesh_export_lod_ratio_02 = FloatProperty(
         name="LOD2 Ratio", 
         description="Decimate factor for LOD 2",
         default=0.50, min=0.0, max=1.0, subtype="FACTOR"
     )
-    bpy.types.Scene.mesh_export_lod_ratio_03 = FloatProperty(
+    mesh_export_lod_ratio_03 = FloatProperty(
         name="LOD3 Ratio", 
         description="Decimate factor for LOD 3",
         default=0.25, min=0.0, max=1.0, subtype="FACTOR"
     )
-    bpy.types.Scene.mesh_export_lod_ratio_04 = FloatProperty(
+    mesh_export_lod_ratio_04 = FloatProperty(
         name="LOD4 Ratio", 
         description="Decimate factor for LOD 4",
         default=0.10, min=0.0, max=1.0, subtype="FACTOR"
     )
 
 
+def register_properties():
+    """Register the property group and create the Scene property"""
+    bpy.utils.register_class(MeshExporterSettings)
+    bpy.types.Scene.mesh_exporter = PointerProperty(type=MeshExporterSettings)
+
+
 def unregister_properties():
-    props_to_delete = [
-        "mesh_export_path", 
-        "mesh_export_format", 
-        "mesh_export_scale",
-        "mesh_export_coord_up", 
-        "mesh_export_coord_forward",
-        "mesh_export_zero_location", 
-        "mesh_export_tri",
-        "mesh_export_tri_method", 
-        "mesh_export_keep_normals",
-        "mesh_export_prefix", 
-        "mesh_export_suffix", 
-        "mesh_export_lod",
-        "mesh_export_lod_count", 
-        "mesh_export_lod_type",
-        "mesh_export_lod_ratio_01", 
-        "mesh_export_lod_ratio_02",
-        "mesh_export_lod_ratio_03", 
-        "mesh_export_lod_ratio_04",
-    ]
-    for prop_name in props_to_delete:
-         if hasattr(bpy.types.Scene, prop_name):
-              delattr(bpy.types.Scene, prop_name)
+    """Unregister the property group and remove the Scene property"""
+    if hasattr(bpy.types.Scene, "mesh_exporter"):
+        delattr(bpy.types.Scene, "mesh_exporter")
+    bpy.utils.unregister_class(MeshExporterSettings)
