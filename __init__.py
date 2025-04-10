@@ -27,10 +27,13 @@ classes = (
 )
 
 def register():
-    properties.register_properties()
-    for cls in classes:
-        bpy.utils.register_class(cls)
-    export_indicators.register() # Register timer and indic operators/panels
+    # First register export indicators (including the timer)
+    from . import export_indicators
+    export_indicators.register()
+    
+    # Then register operators which may use the timer
+    from . import operators
+    operators.register()
 
 def unregister():
     export_indicators.unregister() # Unregister timer first
