@@ -36,10 +36,10 @@ class ExportStatus(Enum):
 
 
 # Timing constants (in seconds)
-# FRESH_DURATION_SECONDS = 60     # 1 minute
-# STALE_DURATION_SECONDS = 300    # 5 minutes
-FRESH_DURATION_SECONDS = 5     # debug
-STALE_DURATION_SECONDS = 10    # debug
+FRESH_DURATION_SECONDS = 60     # 1 minute
+STALE_DURATION_SECONDS = 300    # 5 minutes
+# FRESH_DURATION_SECONDS = 5     # debug
+# STALE_DURATION_SECONDS = 10    # debug
 
 
 # Custom property names
