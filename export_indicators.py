@@ -36,10 +36,10 @@ class ExportStatus(Enum):
 
 
 # Timing constants (in seconds)
-FRESH_DURATION_SECONDS = 60     # 1 minute
-STALE_DURATION_SECONDS = 300    # 5 minutes
-# FRESH_DURATION_SECONDS = 5     # debug
-# STALE_DURATION_SECONDS = 10    # debug
+# FRESH_DURATION_SECONDS = 60     # 1 minute
+# STALE_DURATION_SECONDS = 300    # 5 minutes
+FRESH_DURATION_SECONDS = 5     # debug
+STALE_DURATION_SECONDS = 10    # debug
 
 
 # Custom property names
@@ -58,6 +58,39 @@ _TIMER_INTERVAL_SECONDS = 5.0
 
 
 # --- Core Functions ---
+
+
+def mark_object_as_exported(obj):
+    """
+    Mark an object as just exported by setting custom properties.
+    This is used to track the export status of objects.
+    
+    Args:
+        obj (bpy.types.Object): The object to mark as exported.
+    
+    Returns:
+        None
+    """
+    if obj is None or obj.type != "MESH":
+        return
+        
+    # Ensure timer is registered
+    if not bpy.app.timers.is_registered(update_timer_callback):
+        logger.warning("Export indicators timer not registered - registering now")
+        try:
+            bpy.app.timers.register(
+                update_timer_callback,
+                first_interval=_TIMER_INTERVAL_SECONDS,
+                persistent=True
+            )
+        except Exception as e:
+            logger.error(f"Failed to register timer in mark_object_as_exported: {e}")
+    
+    # Mark the object
+    obj[EXPORT_TIME_PROP] = time.time()
+    obj[EXPORT_STATUS_PROP] = ExportStatus.FRESH.value
+    set_object_colour(obj)
+    logger.info(f"Marked {obj.name} as freshly exported")
 
 def _delete_prop(obj, prop_name):
     """
@@ -263,8 +296,10 @@ def update_all_export_statuses():
     """
     current_time = time.time()
     needs_redraw = False
+    status_changes = []
 
     if not bpy.data or not bpy.data.objects:
+        logger.debug("No objects found to update statuses")
         return False
 
     # Iterate safely over object list copy
@@ -279,8 +314,8 @@ def update_all_export_statuses():
                 continue
 
             elapsed_time = current_time - export_time
-            old_status_val = obj.get(EXPORT_STATUS_PROP, 
-                                     ExportStatus.NONE.value)
+            old_status_val = obj.get(EXPORT_STATUS_PROP, ExportStatus.NONE.value)
+            old_status_name = ExportStatus(old_status_val).name if isinstance(old_status_val, int) else "UNKNOWN"
 
             new_status = ExportStatus.NONE
             if elapsed_time < FRESH_DURATION_SECONDS:
@@ -289,22 +324,16 @@ def update_all_export_statuses():
                 new_status = ExportStatus.STALE
 
             new_status_val = new_status.value
-
+            
+            # Only log when there's a status change
             if new_status_val != old_status_val:
+                status_changes.append((obj.name, old_status_name, new_status.name, elapsed_time))
                 needs_redraw = True
-                logger.debug(
-                    f"Updating status for {obj.name}: "
-                    f"{ExportStatus(old_status_val).name} -> {new_status.name}"
-                )
-
-                # --- State Transition Logic ---
+                
+                # State transition logic
                 if new_status == ExportStatus.NONE:
                     # Restores colour, removes original prop
-                    if restore_object_colour(obj):
-                        logger.debug(f"Colour restore done for {obj.name}.")
-                    else:
-                        logger.warning(f"Colour restore failed/skipped "
-                                       f"for {obj.name}.")
+                    restore_object_colour(obj)
                     # Remove remaining tracking props
                     _delete_prop(obj, EXPORT_TIME_PROP)
                     _delete_prop(obj, EXPORT_STATUS_PROP)
@@ -312,17 +341,22 @@ def update_all_export_statuses():
                     # Becoming FRESH or STALE: Set new status prop, then colour
                     obj[EXPORT_STATUS_PROP] = new_status_val
                     set_object_colour(obj)
-                # --- End State Transition Logic ---
 
         except ReferenceError:
             logger.debug("Object became invalid during status update loop.")
             continue
         except Exception as e:
             obj_name = obj.name if obj and hasattr(obj, 'name') else 'N/A'
-            logger.error(f"Error updating status for object {obj_name}: {e}",
-                         exc_info=True)
+            logger.error(f"Error updating status for object {obj_name}: {e}")
             continue
-
+    
+    # Log status changes together for easier debugging
+    if status_changes:
+        logger.info(f"Status changes detected: {len(status_changes)} objects updated")
+        for change in status_changes:
+            name, old, new, elapsed = change
+            logger.info(f"  → {name}: {old} → {new} (elapsed: {elapsed:.1f}s)")
+    
     return needs_redraw
 
 
@@ -350,28 +384,31 @@ def get_recently_exported_objects():
 def update_timer_callback():
     """Function called periodically by Blender's timer."""
     try:
-        if update_all_export_statuses():
+        current_time = time.time()
+        logger.debug(f"[MESH_EXPORTER] Timer tick at {current_time}")
+        
+        status_updated = update_all_export_statuses()
+        
+        if status_updated:
+            # More aggressive UI updating
             context = bpy.context
-            if context and getattr(context, "window_manager", None):
-                 for window in context.window_manager.windows:
-                     if not getattr(window, "screen", None): continue
-                     for area in window.screen.areas:
-                         if area.type == 'VIEW_3D':
-                             for region in area.regions:
-                                 if region.type == 'UI':
-                                     try:
-                                         region.tag_redraw()
-                                     except ReferenceError: pass
-                                     # Redraw only one relevant 
-                                     # UI region per area
-                                     break
+            if context and hasattr(context, "window_manager") and context.window_manager:
+                for window in context.window_manager.windows:
+                    if not hasattr(window, "screen") or not window.screen:
+                        continue
+                    for area in window.screen.areas:
+                        try:
+                            # Force update for all area types
+                            area.tag_redraw()
+                        except:
+                            pass
             else:
-                 logger.debug("Timer callback skipped redraw: "
-                              "invalid context.")
+                logger.warning("Timer callback couldn't redraw: invalid context")
     except Exception as e:
-         logger.error(f"Error in timer callback: {e}", exc_info=True)
-         # Optionally stop timer on error
-         # return None
+        # Log but don't stop the timer
+        logger.error(f"[MESH_EXPORTER] Timer error: {e}", exc_info=True)
+    
+    # Always return the interval to keep the timer running
     return _TIMER_INTERVAL_SECONDS
 
 
@@ -420,12 +457,36 @@ class MESH_OT_clear_all_indicators(Operator):
                     except ReferenceError: 
                         pass # Area might close
         return {"FINISHED"}
+    
+
+class MESH_OT_debug_update_indicators(Operator):
+    """Forces an immediate update of all export indicators."""
+    bl_idname = "mesh.debug_update_indicators"
+    bl_label = "Update Export Indicators"
+    bl_options = {"REGISTER"}
+
+    def execute(self, context):
+        """Runs the update operation."""
+        status_changed = update_all_export_statuses()
+        
+        msg = f"Export indicators updated. Status changed: {status_changed}"
+        self.report({"INFO"}, msg)
+        logger.info(msg)
+        
+        # Force redraw
+        for window in context.window_manager.windows:
+            if window.screen:
+                for area in window.screen.areas:
+                    area.tag_redraw()
+                    
+        return {"FINISHED"}
 
 
 # --- Registration ---
 
 operators_to_register = (
     MESH_OT_clear_all_indicators,
+    MESH_OT_debug_update_indicators,
 )
 
 
@@ -439,15 +500,24 @@ def register():
             logger.debug(f"Class {cls.__name__} already registered.")
             pass
 
-    if not bpy.app.timers.is_registered(update_timer_callback):
+    # Always unregister first to prevent duplicate timers
+    if bpy.app.timers.is_registered(update_timer_callback):
         try:
-            bpy.app.timers.register(
-                update_timer_callback,
-                first_interval=_TIMER_INTERVAL_SECONDS
-            )
-            logger.info("Export indicator timer registered.")
+            bpy.app.timers.unregister(update_timer_callback)
+            logger.debug("Unregistered existing timer before re-registering")
         except Exception as e:
-             logger.error(f"Failed to register timer: {e}", exc_info=True)
+            logger.warning(f"Failed to unregister existing timer: {e}")
+
+    # Now register a fresh timer with persistence
+    try:
+        bpy.app.timers.register(
+            update_timer_callback,
+            first_interval=_TIMER_INTERVAL_SECONDS,
+            persistent=True  # Make timer survive file loads
+        )
+        logger.info(f"Export indicator timer registered (interval: {_TIMER_INTERVAL_SECONDS}s, persistent)")
+    except Exception as e:
+        logger.error(f"Failed to register timer: {e}", exc_info=True)
 
 
 def unregister():

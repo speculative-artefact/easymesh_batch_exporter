@@ -32,24 +32,6 @@ EXPORT_STATUS_PROP = "mesh_export_status"
 
 # --- Core Functions ---
 
-def mark_object_as_exported(obj):
-    """
-    Mark an object as just exported by setting custom properties.
-    This is used to track the export status of objects.
-    
-    Args:
-        obj (bpy.types.Object): The object to mark as exported.
-    
-    Returns:
-        None
-    """
-    if obj is None or obj.type != "MESH":
-        return
-    obj[EXPORT_TIME_PROP] = time.time()
-    obj[EXPORT_STATUS_PROP] = 0  # Assuming 0 is FRESH status
-    if hasattr(export_indicators, "set_object_colour"):
-        export_indicators.set_object_colour(obj)
-
 
 @contextlib.contextmanager
 def temp_selection_context(context, active_object=None, selected_objects=None):
@@ -905,7 +887,7 @@ class MESH_OT_batch_export(Operator):
                 finally:
                     # Mark Original Object
                     if original_obj and object_processed_successfully:
-                        mark_object_as_exported(original_obj)
+                        export_indicators.mark_object_as_exported(original_obj)
                         logger.info(
                             f"Marked original {original_obj.name} as exported."
                         )
