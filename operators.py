@@ -53,94 +53,63 @@ def mark_object_as_exported(obj):
 
 @contextlib.contextmanager
 def temp_selection_context(context, active_object=None, selected_objects=None):
-    """Temporarily set the active object and selection."""
+    """Temporarily set the active object and selection using direct API."""
+    # Store original state
     original_active = context.view_layer.objects.active
-    original_selected = context.selected_objects[:]
-    scene_objects = context.scene.objects
-
+    original_selected = [obj for obj in context.scene.objects if obj.select_get()]
+    original_mode = original_active.mode if original_active else 'OBJECT'
+    
     try:
-        current_mode = context.mode
-        if current_mode != "OBJECT":
-            bpy.ops.object.mode_set(mode="OBJECT")
-        bpy.ops.object.select_all(action="DESELECT")
-
-        active_obj_to_set = None
+        # Deselect all objects directly
+        for obj in context.scene.objects:
+            if obj.select_get():
+                obj.select_set(False)
+        
+        # Select requested objects directly
         if selected_objects:
             if not isinstance(selected_objects, list):
                 selected_objects = [selected_objects]
+            
             for obj in selected_objects:
-                if obj and obj.name in scene_objects:
+                if obj and obj.name in context.scene.objects:
                     try:
                         obj.select_set(True)
                     except ReferenceError:
-                        logger.warning(
-                            f"Could not select '{obj.name}' - "
-                            f"object reference invalid."
-                        )
-                elif obj:
-                    logger.warning(
-                        f"Object reference '{obj.name}' exists but not found "
-                        f"in scene during selection."
-                    )
-
-        if active_object and active_object.name in scene_objects:
-            active_obj_to_set = active_object
+                        logger.warning(f"Could not select '{obj.name}' - object reference invalid.")
+        
+        # Set active object directly
+        if active_object and active_object.name in context.scene.objects:
+            context.view_layer.objects.active = active_object
         elif selected_objects:
-            first_valid = next(
-                (obj for obj in selected_objects
-                 if obj and obj.name in scene_objects),
-                None
-            )
-            if first_valid:
-                active_obj_to_set = first_valid
-
-        context.view_layer.objects.active = active_obj_to_set
-
-        if context.mode != current_mode:
-            bpy.ops.object.mode_set(mode=current_mode)
+            for obj in selected_objects:
+                if obj and obj.name in context.scene.objects:
+                    context.view_layer.objects.active = obj
+                    break
+        
         yield
+    
     finally:
-        # Restore selection state
-        current_mode = context.mode
-        if current_mode != "OBJECT":
-            bpy.ops.object.mode_set(mode="OBJECT")
-        bpy.ops.object.select_all(action="DESELECT")
-        restored_selection = []
+        # Restore original state directly
+        for obj in context.scene.objects:
+            obj.select_set(False)
+            
         for obj in original_selected:
-            if obj and obj.name in scene_objects:
+            if obj and obj.name in context.scene.objects:
                 try:
                     obj.select_set(True)
-                    restored_selection.append(obj)
                 except ReferenceError:
-                    pass  # Object already gone
-
-        # Restore active object
-        if original_active and original_active.name in scene_objects:
+                    pass
+        
+        if original_active and original_active.name in context.scene.objects:
             try:
                 context.view_layer.objects.active = original_active
             except ReferenceError:
-                pass  # Original active already gone
-        else:
-            context.view_layer.objects.active = (
-                restored_selection[0] if restored_selection else None
-            )
-
-        # Restore original mode
-        if context.mode != current_mode:
-            obj_to_switch = context.view_layer.objects.active
-            if obj_to_switch:
-                try:
-                    bpy.ops.object.mode_set(mode=current_mode)
-                except TypeError:
-                    if context.mode != "OBJECT":
-                        bpy.ops.object.mode_set(mode="OBJECT")
-            elif context.mode != "OBJECT":
-                bpy.ops.object.mode_set(mode="OBJECT")
+                pass
 
 
 def create_export_copy(original_obj, context):
     """
-    Creates a linked copy of the object and its data.
+    Creates a linked copy of the object and its data without mode switching.
     
     Args:
         original_obj (bpy.types.Object): The original object to copy.
@@ -151,15 +120,13 @@ def create_export_copy(original_obj, context):
     """
     if not original_obj or original_obj.type != "MESH":
         raise ValueError("Invalid object provided for copying.")
-    if original_obj.mode != "OBJECT":
-        bpy.ops.object.mode_set(mode="OBJECT")
+        
     try:
+        # Direct API calls - no mode switching needed
         copy_obj = original_obj.copy()
         copy_obj.data = original_obj.data.copy()
         context.collection.objects.link(copy_obj)
-        logger.info(
-            f"Created copy: {copy_obj.name} from {original_obj.name}"
-        )
+        logger.info(f"Created copy: {copy_obj.name} from {original_obj.name}")
         return copy_obj
     except Exception as e:
         raise RuntimeError(
@@ -993,63 +960,26 @@ class OBJECT_OT_select_by_name(Operator):
     object_name: StringProperty()
 
     def execute(self, context):
-        """Executes the selection."""
+        """Executes the selection using direct API."""
         target_obj = bpy.data.objects.get(self.object_name)
         if not target_obj:
-            logger.warning(f"Object '{self.object_name}' not found for slctn.")
+            logger.warning(f"Object '{self.object_name}' not found for selection.")
             return {"CANCELLED"}
 
-        original_mode = context.mode
-        try:
-            if original_mode != "OBJECT":
-                # Only switch if active object allows it or no active object
-                active = context.active_object
-                can_switch = not active or active.mode == "OBJECT"
-                if can_switch:
-                    bpy.ops.object.mode_set(mode="OBJECT")
-                else:
-                    logger.warning(
-                        f"Cannot switch from {original_mode} on "
-                        f"{active.name if active else 'None'} to select."
-                    )
-                    return {"CANCELLED"}
+        # Store original mode
+        original_mode = context.active_object.mode if context.active_object else 'OBJECT'
+        
+        # Deselect all objects directly
+        for obj in context.scene.objects:
+            if obj.select_get():
+                obj.select_set(False)
+                
+        # Select target and make it active
+        target_obj.select_set(True)
+        context.view_layer.objects.active = target_obj
 
-            bpy.ops.object.select_all(action="DESELECT")
-            target_obj.select_set(True)
-            context.view_layer.objects.active = target_obj
-
-        except (ReferenceError, RuntimeError) as e:
-            logger.error(f"Error selecting object '{self.object_name}': {e}")
-            # Attempt to restore original mode on error
-            if context.mode != original_mode:
-                try:
-                    bpy.ops.object.mode_set(mode=original_mode)
-                except Exception:
-                    pass
-            return {"CANCELLED"}
-
-        # Attempt to restore original mode if we changed it
-        if context.mode != original_mode:
-            try:
-                # Check if the newly active object supports the original mode
-                active = context.active_object
-                can_restore = (
-                    active and active.type == "MESH" 
-                    or original_mode == "OBJECT"
-                )
-                if can_restore:
-                    bpy.ops.object.mode_set(mode=original_mode)
-                elif context.mode != "OBJECT":
-                    bpy.ops.object.mode_set(mode="OBJECT") # Fallback
-            except Exception as mode_e:
-                logger.error(
-                    f"Could not restore original mode "
-                    f"({original_mode}): {mode_e}"
-                )
-                if context.mode != "OBJECT": 
-                    # Ensure Object mode if restore fails
-                    bpy.ops.object.mode_set(mode="OBJECT")
-
+        # No need to change modes just for selection
+        
         return {"FINISHED"}
 
 
