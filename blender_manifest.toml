@@ -1,4 +1,4 @@
-schema_version = "1.0.0"
+schema_version = "1.0."
 
 id = "easymesh_batch_exporter"
 version = "1.0.0"
@@ -11,13 +11,7 @@ type = "add-on"
 website = "https://github.com/speculative-artefact/easymesh_batch_exporter/releases"
 
 tags = [
-  "Import-Export",
-  "Mesh",
-  "Object",
-  "Pipeline",
-  "User Interface",
-  "3D View",
-  "Game Engine"
+  "Import-Export"
 ]
 
 blender_version_min = "4.2.0"
