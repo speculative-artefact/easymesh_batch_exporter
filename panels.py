@@ -6,8 +6,18 @@ It includes the main exporter panel, LOD settings, and recent exports
 """
 
 import time
+import logging
 from bpy.types import Panel
 from . import export_indicators
+
+# --- Setup Logger ---
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter("%(name)s:%(levelname)s: %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)  # Default level
 
 # Main UI Panel
 class MESH_PT_exporter_panel(Panel):
@@ -29,7 +39,29 @@ class MESH_PT_exporter_panel(Panel):
 
     def draw(self, context):
         layout = self.layout
+
+        # --- Debugging Start ---
+        logger.info("--- Drawing MESH_PT_exporter_panel ---")
+        if not hasattr(context.scene, "mesh_exporter"):
+            logger.error("context.scene has no 'mesh_exporter' attribute!")
+            layout.label(text="Error: Property group not registered?")
+            return # Stop drawing if the group isn't there
+        
         settings = context.scene.mesh_exporter
+
+        if settings is None:
+            logger.error("context.scene.mesh_exporter is None!")
+            layout.label(text="Error: Property group is None?")
+            return # Stop drawing if the group is None
+        
+        logger.info(f"Settings object: {settings}")
+        try:
+            # Try accessing a property directly
+            path_value = settings.mesh_export_path
+            logger.info(f"Value of mesh_export_path: {path_value}")
+        except AttributeError:
+            logger.error("Could not access settings.mesh_export_path!")
+        # --- Debugging End ---
 
         layout.use_property_split = True
         layout.use_property_decorate = False
@@ -59,7 +91,7 @@ class MESH_PT_exporter_panel(Panel):
         col = layout.column(heading="Triangulate", align=True)
         col.prop(settings, "mesh_export_tri")
         sub = col.column(align=True)
-        sub.enabled = settings.mesh_export_tri # Enable/disable sub-option
+        # sub.enabled = context.scene.mesh_exporter.mesh_export_tri # Enable/disable sub-option
         sub.prop(settings, "mesh_export_tri_method")
         sub.prop(settings, "mesh_export_keep_normals")
 
@@ -100,8 +132,10 @@ class MESH_PT_exporter_panel_lod(Panel):
 
     @classmethod
     def poll(cls, context):
-         # Show only if the main panel exists
-         return context.scene.mesh_export_path is not None
+        # Show only if the main panel exists and path is set
+        settings = context.scene.mesh_exporter
+        # Check if the path property itself exists and is not None/empty
+        return settings and settings.mesh_export_path is not None and settings.mesh_export_path != ""
 
     def draw_header(self, context):
         layout = self.layout
@@ -115,7 +149,7 @@ class MESH_PT_exporter_panel_lod(Panel):
         layout.use_property_decorate = False
 
         # Enable/disable based on the header checkbox
-        layout.enabled = settings.mesh_export_lod
+        # layout.enabled = context.scene.mesh_exporter.mesh_export_lod
 
         col = layout.column(align=True)
         col.prop(settings, "mesh_export_lod_count")
