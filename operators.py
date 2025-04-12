@@ -35,11 +35,22 @@ EXPORT_STATUS_PROP = "mesh_export_status"
 
 @contextlib.contextmanager
 def temp_selection_context(context, active_object=None, selected_objects=None):
-    """Temporarily set the active object and selection using direct API."""
+    """
+    Temporarily set the active object and selection using direct API.
+    
+    Args:
+        context (bpy.context): The current Blender context.
+        active_object (bpy.types.Object, optional): 
+            The object to set as active.
+        selected_objects (list, optional): List of objects to select.
+    
+    Returns:
+        None
+    """
     # Store original state
     original_active = context.view_layer.objects.active
-    original_selected = [obj for obj in context.scene.objects if obj.select_get()]
-    original_mode = original_active.mode if original_active else 'OBJECT'
+    original_selected = [obj for obj in context.scene.objects 
+                         if obj.select_get()]
     
     try:
         # Deselect all objects directly
@@ -57,7 +68,8 @@ def temp_selection_context(context, active_object=None, selected_objects=None):
                     try:
                         obj.select_set(True)
                     except ReferenceError:
-                        logger.warning(f"Could not select '{obj.name}' - object reference invalid.")
+                        logger.warning(f"Could not select '{obj.name}' "
+                                       f"- object reference invalid.")
         
         # Set active object directly
         if active_object and active_object.name in context.scene.objects:
@@ -715,7 +727,7 @@ class MESH_OT_batch_export(Operator):
     def execute(self, context):
         """Runs the batch export process."""
         scene = context.scene
-        scene_props = scene
+        scene_props = scene.mesh_exporter
         wm = context.window_manager
         start_time = time.time()
 
@@ -945,11 +957,9 @@ class OBJECT_OT_select_by_name(Operator):
         """Executes the selection using direct API."""
         target_obj = bpy.data.objects.get(self.object_name)
         if not target_obj:
-            logger.warning(f"Object '{self.object_name}' not found for selection.")
+            logger.warning(f"Object '{self.object_name}' "
+                           f"not found for selection.")
             return {"CANCELLED"}
-
-        # Store original mode
-        original_mode = context.active_object.mode if context.active_object else 'OBJECT'
         
         # Deselect all objects directly
         for obj in context.scene.objects:

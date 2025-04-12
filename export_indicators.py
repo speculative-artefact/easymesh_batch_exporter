@@ -76,7 +76,8 @@ def mark_object_as_exported(obj):
         
     # Ensure timer is registered
     if not bpy.app.timers.is_registered(update_timer_callback):
-        logger.warning("Export indicators timer not registered - registering now")
+        logger.warning("Export indicators timer not registered - "
+                       "registering now")
         try:
             bpy.app.timers.register(
                 update_timer_callback,
@@ -84,7 +85,8 @@ def mark_object_as_exported(obj):
                 persistent=True
             )
         except Exception as e:
-            logger.error(f"Failed to register timer in mark_object_as_exported: {e}")
+            logger.error(f"Failed to register timer in "
+                         f"mark_object_as_exported: {e}")
     
     # Mark the object
     obj[EXPORT_TIME_PROP] = time.time()
@@ -315,7 +317,9 @@ def update_all_export_statuses():
 
             elapsed_time = current_time - export_time
             old_status_val = obj.get(EXPORT_STATUS_PROP, ExportStatus.NONE.value)
-            old_status_name = ExportStatus(old_status_val).name if isinstance(old_status_val, int) else "UNKNOWN"
+            old_status_name = (ExportStatus(old_status_val).name 
+                               if isinstance(old_status_val, int) 
+                               else "UNKNOWN")
 
             new_status = ExportStatus.NONE
             if elapsed_time < FRESH_DURATION_SECONDS:
@@ -327,7 +331,8 @@ def update_all_export_statuses():
             
             # Only log when there's a status change
             if new_status_val != old_status_val:
-                status_changes.append((obj.name, old_status_name, new_status.name, elapsed_time))
+                status_changes.append((obj.name, old_status_name, 
+                                       new_status.name, elapsed_time))
                 needs_redraw = True
                 
                 # State transition logic
@@ -352,7 +357,8 @@ def update_all_export_statuses():
     
     # Log status changes together for easier debugging
     if status_changes:
-        logger.info(f"Status changes detected: {len(status_changes)} objects updated")
+        logger.info(f"Status changes detected: {len(status_changes)} "
+                    f"objects updated")
         for change in status_changes:
             name, old, new, elapsed = change
             logger.info(f"  → {name}: {old} → {new} (elapsed: {elapsed:.1f}s)")
@@ -392,7 +398,9 @@ def update_timer_callback():
         if status_updated:
             # More aggressive UI updating
             context = bpy.context
-            if context and hasattr(context, "window_manager") and context.window_manager:
+            if (context 
+                and hasattr(context, "window_manager") 
+                and context.window_manager):
                 for window in context.window_manager.windows:
                     if not hasattr(window, "screen") or not window.screen:
                         continue
@@ -403,7 +411,8 @@ def update_timer_callback():
                         except:
                             pass
             else:
-                logger.warning("Timer callback couldn't redraw: invalid context")
+                logger.warning("Timer callback couldn't redraw: "
+                               "invalid context")
     except Exception as e:
         # Log but don't stop the timer
         logger.error(f"[MESH_EXPORTER] Timer error: {e}", exc_info=True)
@@ -515,7 +524,8 @@ def register():
             first_interval=_TIMER_INTERVAL_SECONDS,
             persistent=True  # Make timer survive file loads
         )
-        logger.info(f"Export indicator timer registered (interval: {_TIMER_INTERVAL_SECONDS}s, persistent)")
+        logger.info(f"Export indicator timer registered (interval: "
+                    f"{_TIMER_INTERVAL_SECONDS}s, persistent)")
     except Exception as e:
         logger.error(f"Failed to register timer: {e}", exc_info=True)
 

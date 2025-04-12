@@ -91,7 +91,7 @@ class MESH_PT_exporter_panel(Panel):
         col = layout.column(heading="Triangulate", align=True)
         col.prop(settings, "mesh_export_tri")
         sub = col.column(align=True)
-        # sub.enabled = context.scene.mesh_exporter.mesh_export_tri # Enable/disable sub-option
+        sub.enabled = settings.mesh_export_tri # Enable/disable sub-option
         sub.prop(settings, "mesh_export_tri_method")
         sub.prop(settings, "mesh_export_keep_normals")
 
@@ -135,7 +135,10 @@ class MESH_PT_exporter_panel_lod(Panel):
         # Show only if the main panel exists and path is set
         settings = context.scene.mesh_exporter
         # Check if the path property itself exists and is not None/empty
-        return settings and settings.mesh_export_path is not None and settings.mesh_export_path != ""
+        return (settings 
+                and settings.mesh_export_path 
+                is not None 
+                and settings.mesh_export_path != "")
 
     def draw_header(self, context):
         layout = self.layout
@@ -149,7 +152,7 @@ class MESH_PT_exporter_panel_lod(Panel):
         layout.use_property_decorate = False
 
         # Enable/disable based on the header checkbox
-        # layout.enabled = context.scene.mesh_exporter.mesh_export_lod
+        layout.enabled = settings.mesh_export_lod
 
         col = layout.column(align=True)
         col.prop(settings, "mesh_export_lod_count")

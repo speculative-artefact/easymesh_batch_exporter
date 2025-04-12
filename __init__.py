@@ -40,31 +40,44 @@ classes = (
 
 def register():
     logger.info("Begin registration.")
-    # First register properties
+    # 1. Properties FIRST
     properties.register_properties()
-    
-    # Then register our classes
+    logger.info("Properties registered.")
+
+    # Debug code to verify registration
+    test = hasattr(bpy.types.Scene, "mesh_exporter")
+    logger.info(f"Verification - mesh_exporter exists: {test}")
+
+    # 2. Other Classes (Operators, Panels)
     for cls in classes:
         bpy.utils.register_class(cls)
-    
-    # Finally register export indicators (including the timer)
+    logger.info("Panel/Operator classes registered.")
+
+    # 3. Indicators
     export_indicators.register()
     logger.info("Export indicators registered.")
+    logger.info("Registration complete.")
 
 
 def unregister():
-    # First unregister export indicators (handles its own classes)
+    logger.info("Begin unregistration.")
+    # Unregister in REVERSE order
+
+    # 1. Indicators
     export_indicators.unregister()
-    
-    # Then unregister our other classes
+    logger.info("Export indicators unregistered.")
+
+    # 2. Other Classes
     for cls in reversed(classes):
         try:
             bpy.utils.unregister_class(cls)
         except RuntimeError as e:
-            print(f"Couldn't unregister {cls}: {e}")
-    
-    # Finally unregister properties
+            logger.error(f"Couldn't unregister {cls}: {e}")
+    logger.info("Panel/Operator classes unregistered.")
+
+    # 3. Properties LAST
     properties.unregister_properties()
+    logger.info("Properties unregistered.")
     logger.info("Unregistration complete.")
 
 
