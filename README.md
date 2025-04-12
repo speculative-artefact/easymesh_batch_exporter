@@ -23,12 +23,23 @@ A Blender add-on for batch exporting multiple selected mesh objects with customi
 
 ## Installation
 
-1.  Download the latest release `.zip` file from the [Releases page](https://github.com/speculative-artefact/easymesh_batch_exporter/releases).
-2.  In Blender, go to `Edit` > `Preferences...`.
-3.  Navigate to the `Add-ons` tab.
-4.  Click `Install...` and select the downloaded `.zip` file.
-5.  Find the add-on named "EasyMesh Batch Exporter" in the list (you can search for it).
-6.  Enable the add-on by checking the checkbox next to its name.
+### Method 1: Blender Extensions
+
+1. In Blender, go to `Edit` > `Preferences...`.
+2. Navigate to the `Get Extensions` tab.
+3. Search for "EasyMesh Batch Exporter" and click the `Install` button.
+
+You can also find the add-on directly on [Blender Extensions](https://extensions.blender.org/add-ons/easymesh-batch-exporter/).
+
+### Method 2: Manual Installation
+
+1. Download the latest release `.zip` file from the [Releases page](https://github.com/speculative-artefact/easymesh_batch_exporter/releases).
+2. In Blender, go to `Edit` > `Preferences...`.
+3. Navigate to the `Get Extensions` tab.
+4. In the top right next to `Repositories`, click the `⌄` dropdown menu.
+5. Choose `Install from Disk...` from the dropdown.
+6. Navigate to where you downloaded the `.zip` file in step 1.
+7. Select the `.zip` file and click `Install from Disk`.
 
 ## Usage
 
