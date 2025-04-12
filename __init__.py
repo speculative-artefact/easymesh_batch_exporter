@@ -19,6 +19,7 @@ from . import operators
 from . import panels
 from . import export_indicators # Still needed for timer and recent list
 
+
 # Registration
 classes = (
     *operators.classes,
@@ -26,19 +27,30 @@ classes = (
     # export_indicators registers its own classes/timer
 )
 
+
 def register():
-    # First register export indicators (including the timer)
-    from . import export_indicators
-    export_indicators.register()
+    # First register properties
+    properties.register_properties()
     
-    # Then register operators which may use the timer
-    from . import operators
-    operators.register()
+    # Then register our classes
+    for cls in classes:
+        bpy.utils.register_class(cls)
+    
+    # Finally register export indicators (including the timer)
+    export_indicators.register()
 
 def unregister():
-    export_indicators.unregister() # Unregister timer first
+    # First unregister export indicators (handles its own classes)
+    export_indicators.unregister()
+    
+    # Then unregister our other classes
     for cls in reversed(classes):
-        bpy.utils.unregister_class(cls)
+        try:
+            bpy.utils.unregister_class(cls)
+        except RuntimeError as e:
+            print(f"Couldn't unregister {cls}: {e}")
+    
+    # Finally unregister properties
     properties.unregister_properties()
 
 if __name__ == "__main__":
