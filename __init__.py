@@ -14,10 +14,20 @@
 # Copyright (C) 2025 Bradley Walker
 
 import bpy
+import logging
 from . import properties
 from . import operators
 from . import panels
 from . import export_indicators # Still needed for timer and recent list
+
+# --- Setup Logger ---
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter("%(name)s:%(levelname)s: %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)  # Default level
 
 
 # Registration
@@ -29,6 +39,7 @@ classes = (
 
 
 def register():
+    logger.info("Begin registration.")
     # First register properties
     properties.register_properties()
     
@@ -38,6 +49,8 @@ def register():
     
     # Finally register export indicators (including the timer)
     export_indicators.register()
+    logger.info("Export indicators registered.")
+
 
 def unregister():
     # First unregister export indicators (handles its own classes)
@@ -52,6 +65,8 @@ def unregister():
     
     # Finally unregister properties
     properties.unregister_properties()
+    logger.info("Unregistration complete.")
+
 
 if __name__ == "__main__":
     register()
