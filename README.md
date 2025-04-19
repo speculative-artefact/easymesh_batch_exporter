@@ -23,7 +23,6 @@ A Blender add-on for batch exporting multiple selected mesh objects with customi
     * Apply symmetry during LOD generation to maintain model symmetry.
 * **Advanced Texture Handling:** Automatic downscaling of textures for different LOD levels to optimise file size.
 * **Export Indicators:** Provides visual feedback in the viewport for recently exported objects (Green = fresh, Yellow = stale) and lists them in the panel.
-* **Status Bar Progress:** Shows export progress in Blender's status bar for longer operations.
 
 ## Installation
 
