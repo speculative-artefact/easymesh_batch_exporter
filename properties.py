@@ -80,6 +80,18 @@ class MeshExporterSettings(PropertyGroup):
         default="X"
     )
 
+    mesh_export_smoothing: EnumProperty(
+        name="Smoothing",
+        description="Smoothing method for exported meshes",
+        items=[
+            ("OFF", "Off", "Export only normals instead "
+            "of writing edge or face smoothing data"),
+            ("FACE", "Face", "Write face smoothing"),
+            ("EDGE", "Edge", "Write edge smoothing"),
+        ],
+        default="FACE"
+    )
+
     # Zero location property
     mesh_export_zero_location: BoolProperty(
         name="Zero Location",

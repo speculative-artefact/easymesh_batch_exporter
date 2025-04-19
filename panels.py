@@ -35,6 +35,10 @@ class MESH_PT_exporter_panel(Panel):
     def format_has_coordinates(self, format):
         """Check if the format is compatible with coordinate export settings"""
         return format in {"FBX", "OBJ", "USD", "STL"}
+    
+    def format_has_smoothing(self, format):
+        """Check if the format is compatible with smoothing export settings"""
+        return format in {"FBX"}
 
 
     def draw(self, context):
@@ -87,6 +91,13 @@ class MESH_PT_exporter_panel(Panel):
         col = layout.column(heading="Units", align=True)
         row = col.row(align=True)
         row.prop(settings, "mesh_export_units", expand=True)
+
+        # Smoothing settings
+        if self.format_has_smoothing(settings.mesh_export_format):
+            # Only show if the format supports smoothing
+            col = layout.column(heading="Smoothing", align=True)
+            row = col.row(align=True)
+            row.prop(settings, "mesh_export_smoothing", expand=True)
 
         # Zero location settings
         col = layout.column(align=True)

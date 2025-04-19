@@ -700,6 +700,7 @@ def export_object(obj, file_path, scene_props):
                     object_types={"MESH"},
                     path_mode="COPY",
                     embed_textures=True,
+                    mesh_smooth_type=scene_props.mesh_export_smoothing,
                     use_mesh_modifiers=False, # Handled by apply_mesh_modifiers
                     use_triangles=False,      # Handled by triangulate_mesh
                 )
@@ -712,6 +713,8 @@ def export_object(obj, file_path, scene_props):
                     up_axis=scene_props.mesh_export_coord_up,
                     export_materials=True,
                     path_mode="COPY",
+                    export_normals=True,
+                    export_smooth_groups=True,
                     apply_modifiers=False, # Handled by apply_mesh_modifiers
                     export_triangulated_mesh=False, # Handled triangulate_mesh
                 )
@@ -722,6 +725,7 @@ def export_object(obj, file_path, scene_props):
                     export_format="GLTF_SEPARATE", # or GLB
                     export_apply=False, # Transforms/Mods applied manually
                     export_attributes=True,
+                    export_normals=True,
                     export_extras=True,
                     export_yup=(scene_props.mesh_export_coord_up == "Y"),
                     # Need to add a prop to track material quality
@@ -738,6 +742,7 @@ def export_object(obj, file_path, scene_props):
                         scene_props.mesh_export_coord_up),
                     export_meshes=True,
                     export_materials=True,
+                    export_normals=True,
                     generate_preview_surface=False,
                     use_instancing=False,
                     evaluation_mode="RENDER",
@@ -752,6 +757,7 @@ def export_object(obj, file_path, scene_props):
                 bpy.ops.wm.stl_export(
                     filepath=export_filepath,
                     export_selected_objects=True,
+                    use_selection=True,
                     global_scale=1.0, # Scale applied setup_export_object
                     forward_axis=scene_props.mesh_export_coord_forward,
                     up_axis=scene_props.mesh_export_coord_up,
