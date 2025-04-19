@@ -316,7 +316,8 @@ def update_all_export_statuses():
                 continue
 
             elapsed_time = current_time - export_time
-            old_status_val = obj.get(EXPORT_STATUS_PROP, ExportStatus.NONE.value)
+            old_status_val = obj.get(EXPORT_STATUS_PROP, 
+                                     ExportStatus.NONE.value)
             old_status_name = (ExportStatus(old_status_val).name 
                                if isinstance(old_status_val, int) 
                                else "UNKNOWN")
@@ -408,7 +409,11 @@ def update_timer_callback():
                         try:
                             # Force update for all area types
                             area.tag_redraw()
-                        except:
+                        except Exception as e:
+                            # Log potential errors during redraw 
+                            # without stopping timer
+                            logger.debug(f"Error redrawing area "
+                                         f"{area.type}: {e}")
                             pass
             else:
                 logger.warning("Timer callback couldn't redraw: "
@@ -459,7 +464,8 @@ class MESH_OT_clear_all_indicators(Operator):
         # Trigger redraw after clearing
         if context and context.window_manager:
             for window in context.window_manager.windows:
-                if not window.screen: continue
+                if not window.screen: 
+                    continue
                 for area in window.screen.areas:
                     try:
                         area.tag_redraw()

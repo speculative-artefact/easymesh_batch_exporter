@@ -115,17 +115,53 @@ def create_export_copy(original_obj, context):
     if not original_obj or original_obj.type != "MESH":
         raise ValueError("Invalid object provided for copying.")
         
-    try:
-        # Direct API calls - no mode switching needed
-        copy_obj = original_obj.copy()
-        copy_obj.data = original_obj.data.copy()
-        context.collection.objects.link(copy_obj)
-        logger.info(f"Created copy: {copy_obj.name} from {original_obj.name}")
-        return copy_obj
-    except Exception as e:
-        raise RuntimeError(
-            f"Failed to create copy of {original_obj.name}: {e}"
-        ) from e
+    logger.info(f"Attempting to duplicate '{original_obj.name}' using operator...")
+    
+    # Use the context manager to handle selection and active object
+    with temp_selection_context(context, 
+                                active_object=original_obj, 
+                                selected_objects=[original_obj]):
+        try:
+            # Duplicate the active object (linked)
+            # more direct and conventional way to perform a non-interactive 
+            # linked duplication than bpy.ops.object.duplicate(linked=True)
+            bpy.ops.object.duplicate_move_linked(
+                OBJECT_OT_duplicate={"linked":True, "mode":'TRANSLATION'}, 
+                TRANSFORM_OT_translate={"value":(0, 0, 0)} # No actual move
+            ) 
+            
+            # The new duplicate becomes the active object 
+            # after the operator runs
+            copy_obj = context.view_layer.objects.active
+            logger.info(f"Successfully created duplicate "
+                        f"'{copy_obj.name}' via operator.")
+            
+            # Make Mesh Data Single User
+            if copy_obj and copy_obj.data and copy_obj.data.users > 1:
+                logger.info(f"Making mesh data single user for "
+                            f"'{copy_obj.name}'")
+                copy_obj.data = copy_obj.data.copy()
+
+            return copy_obj
+            
+        except Exception as e:
+            logger.error(f"Error using duplicate_move_linked operator for "
+                         f"'{original_obj.name}': {e}", exc_info=True)
+            # Attempt cleanup if copy_obj was created but failed later
+            copy_obj_ref = None
+            try:
+                copy_obj_ref = context.view_layer.objects.active 
+                if copy_obj_ref and copy_obj_ref != original_obj:
+                    logger.info(f"Attempting cleanup of partially created "
+                                f"copy: {copy_obj_ref.name}")
+                    bpy.data.objects.remove(copy_obj_ref, do_unlink=True)
+            except Exception as cleanup_e:
+                 logger.warning(f"Issue during cleanup after copy "
+                                f"failure: {cleanup_e}")
+
+            raise RuntimeError(
+                f"Failed to create operator copy of {original_obj.name}: {e}"
+            ) from e
 
 
 def sanitise_filename(name):
@@ -182,9 +218,47 @@ def setup_export_object(obj, original_obj_name, scene_props, lod_level=None):
         obj.name = final_name
         logger.info(f"Renamed to: {obj.name}")
 
+        # Check if object's scale is already 1.0
+        if obj.scale != (1.0, 1.0, 1.0):
+            # Apply scale transform if not 1.0
+            logger.info(f"Object scale is not 1.0: {obj.scale}, applying...")
+            with bpy.context.temp_override(
+                selected_editable_objects=[obj], 
+                selected_objects=[obj], active_object=obj): 
+                bpy.ops.object.transform_apply(location=False, 
+                                            rotation=False, 
+                                            scale=True)
+
+        # Zero location if specified in scene properties
         if scene_props.mesh_export_zero_location:
             obj.location = (0.0, 0.0, 0.0)
             logger.info(f"Zeroed location for {obj.name}")
+
+        # Calculate final scale factor
+        final_scale_factor = scene_props.mesh_export_scale
+        if scene_props.mesh_export_units == "CENTIMETERS":
+            # Apply 100x scale for Meters (Blender default) 
+            # to Centimeters (UE default)
+            final_scale_factor *= 100.0 
+            logger.info("Applying M to CM scale factor (x100)")
+
+        # Set the object's scale
+        if abs(final_scale_factor - 1.0) > 1e-6: # Check if scaling is needed
+            obj.scale = (final_scale_factor, 
+                         final_scale_factor, 
+                         final_scale_factor)
+            logger.info(f"Set object scale to {final_scale_factor:.2f}")
+        else:
+            logger.info(f"Final scale factor is 1.0. No scaling needed.")
+
+        # Apply the calculated scale transform using temp_override
+        with bpy.context.temp_override(
+            selected_editable_objects=[obj], 
+            selected_objects=[obj], active_object=obj): 
+            bpy.ops.object.transform_apply(location=False, 
+                                           rotation=True, 
+                                           scale=True)
+            logger.info(f"Applied final scale transform for {obj.name}")
 
         return obj.name, base_name
     except Exception as e:
@@ -428,7 +502,8 @@ def restore_original_textures(obj):
             bpy.data.images.remove(img)
 
 
-def apply_decimate_modifier(obj, ratio, decimate_type, sym_axis="X", sym=False):
+def apply_decimate_modifier(obj, ratio, decimate_type, 
+                            sym_axis="X", sym=False):
     """
     Adds, configures, and applies a Decimate modifier.
     
@@ -476,7 +551,8 @@ def apply_decimate_modifier(obj, ratio, decimate_type, sym_axis="X", sym=False):
             # Ensure axis is valid before setting
             axis_upper = sym_axis.upper()
             if axis_upper not in {'X', 'Y', 'Z'}:
-                 logger.error(f"Invalid symmetry axis value received: {sym_axis}. Aborting modifier application.")
+                 logger.error(f"Invalid symmetry axis value received: "
+                              f"{sym_axis}. Aborting modifier application.")
                  obj.modifiers.remove(dec_mod) # Clean up modifier
                  raise ValueError(f"Invalid symmetry axis: {sym_axis}")
 
@@ -604,7 +680,7 @@ def export_object(obj, file_path, scene_props):
     # logger.info(f"[[quality: {export_quality}]]")
     # logger.info(f"[[downscale: {downscale_size}]]")
     
-    logger.info(f"File path: {file_path}")
+    # logger.info(f"File path: {file_path}")
     logger.info(
         f"Exporting {os.path.basename(export_filepath)} ({fmt})..."
     )
@@ -616,9 +692,10 @@ def export_object(obj, file_path, scene_props):
                 bpy.ops.export_scene.fbx(
                     filepath=export_filepath,
                     use_selection=True,
-                    global_scale=scene_props.mesh_export_scale,
+                    global_scale=1.0, # Scale applied setup_export_object
                     axis_forward=scene_props.mesh_export_coord_forward,
                     axis_up=scene_props.mesh_export_coord_up,
+                    apply_unit_scale=False,
                     apply_scale_options="FBX_SCALE_ALL",
                     object_types={"MESH"},
                     path_mode="COPY",
@@ -630,7 +707,7 @@ def export_object(obj, file_path, scene_props):
                 bpy.ops.wm.obj_export(
                     filepath=export_filepath,
                     export_selected_objects=True,
-                    global_scale=scene_props.mesh_export_scale,
+                    global_scale=1.0, # Scale applied setup_export_object
                     forward_axis=scene_props.mesh_export_coord_forward,
                     up_axis=scene_props.mesh_export_coord_up,
                     export_materials=True,
@@ -675,7 +752,7 @@ def export_object(obj, file_path, scene_props):
                 bpy.ops.wm.stl_export(
                     filepath=export_filepath,
                     export_selected_objects=True,
-                    global_scale=scene_props.mesh_export_scale,
+                    global_scale=1.0, # Scale applied setup_export_object
                     forward_axis=scene_props.mesh_export_coord_forward,
                     up_axis=scene_props.mesh_export_coord_up,
                     apply_modifiers=False, # Handled by apply_mesh_modifiers

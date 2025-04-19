@@ -47,6 +47,17 @@ class MeshExporterSettings(PropertyGroup):
         soft_min=0.01,
         soft_max=100.0
     )
+    
+    # Units property
+    mesh_export_units: EnumProperty(
+        name="Units",
+        description="Unit system for exported meshes",
+        items=[
+            ("METERS", "M", "Use meters as unit"),
+            ("CENTIMETERS", "CM", "Use centimeters as unit"),
+        ],
+        default="METERS",
+    )
 
     # Coordinate system properties
     mesh_export_coord_up: EnumProperty(

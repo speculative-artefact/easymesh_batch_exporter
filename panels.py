@@ -41,7 +41,7 @@ class MESH_PT_exporter_panel(Panel):
         layout = self.layout
 
         # --- Debugging Start ---
-        logger.info("--- Drawing MESH_PT_exporter_panel ---")
+        # logger.info("--- Drawing MESH_PT_exporter_panel ---")
         if not hasattr(context.scene, "mesh_exporter"):
             logger.error("context.scene has no 'mesh_exporter' attribute!")
             layout.label(text="Error: Property group not registered?")
@@ -54,13 +54,13 @@ class MESH_PT_exporter_panel(Panel):
             layout.label(text="Error: Property group is None?")
             return # Stop drawing if the group is None
         
-        logger.info(f"Settings object: {settings}")
-        try:
+        # logger.info(f"Settings object: {settings}")
+        # try:
             # Try accessing a property directly
-            path_value = settings.mesh_export_path
-            logger.info(f"Value of mesh_export_path: {path_value}")
-        except AttributeError:
-            logger.error("Could not access settings.mesh_export_path!")
+            # path_value = settings.mesh_export_path
+            # logger.info(f"Value of mesh_export_path: {path_value}")
+        # except AttributeError:
+        #     logger.error("Could not access settings.mesh_export_path!")
         # --- Debugging End ---
 
         layout.use_property_split = True
@@ -79,10 +79,16 @@ class MESH_PT_exporter_panel(Panel):
             row.prop(settings, "mesh_export_coord_forward", expand=True)
 
         # Scale settings
-        if self.format_has_scale(settings.mesh_export_format):
-            col = layout.column(heading="Scale", align=True)
-            col.prop(settings, "mesh_export_scale")
+        # if self.format_has_scale(settings.mesh_export_format):
+        col = layout.column(heading="Scale", align=True)
+        col.prop(settings, "mesh_export_scale")
 
+        # Units settings
+        col = layout.column(heading="Units", align=True)
+        row = col.row(align=True)
+        row.prop(settings, "mesh_export_units", expand=True)
+
+        # Zero location settings
         col = layout.column(align=True)
         col.prop(settings, "mesh_export_zero_location")
 
