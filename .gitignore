@@ -164,6 +164,11 @@ cython_debug/
 .vscode/
 *.code-workspace
 
+# Mac OS
+.DS_Store
+.AppleDouble
+.LSOverride
+
 # Ruff stuff:
 .ruff_cache/
 
