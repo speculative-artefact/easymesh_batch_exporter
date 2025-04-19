@@ -134,6 +134,25 @@ class MeshExporterSettings(PropertyGroup):
         default=4, min=1, max=4, # Max 4 due to 4 ratio properties
     )
 
+    # LOD symmetry property
+    mesh_export_lod_symmetry: BoolProperty(
+        name="Symmetry",
+        description="Use symmetry for LOD generation",
+        default=False
+    )
+
+    # LOD symmetry axis property
+    mesh_export_lod_symmetry_axis: EnumProperty(
+        name="Symmetry Axis",
+        description="Axis of symmetry for LOD generation",
+        items=[
+            ("X", "X", "X axis"),
+            ("Y", "Y", "Y axis"),
+            ("Z", "Z", "Z axis")
+        ],
+        default="X"
+    )
+
     # LOD type property
     # Note: I've excluded "UNSUBDIVIDE" and "DISSOLVE"
     mesh_export_lod_type: EnumProperty(

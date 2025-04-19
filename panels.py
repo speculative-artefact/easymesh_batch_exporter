@@ -148,11 +148,23 @@ class MESH_PT_exporter_panel_lod(Panel):
     def draw(self, context):
         layout = self.layout
         settings = context.scene.mesh_exporter
+
         layout.use_property_split = True
         layout.use_property_decorate = False
 
         # Enable/disable based on the header checkbox
         layout.enabled = settings.mesh_export_lod
+
+        col = layout.column(heading="Symmetry", align=True)
+        row = col.row(align=True)
+        # Add the symmetry checkbox to the row
+        row.prop(settings, "mesh_export_lod_symmetry", text="")
+        # Create a sub-row for the axis enum that can be disabled
+        sub = row.row(align=True)
+        # Disable the sub-row (and its contents) if symmetry is off
+        sub.enabled = settings.mesh_export_lod_symmetry
+        # Add the axis enum property to the sub-row
+        sub.prop(settings, "mesh_export_lod_symmetry_axis", expand=True)
 
         col = layout.column(align=True)
         col.prop(settings, "mesh_export_lod_count")

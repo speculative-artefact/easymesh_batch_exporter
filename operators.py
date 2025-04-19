@@ -428,7 +428,7 @@ def restore_original_textures(obj):
             bpy.data.images.remove(img)
 
 
-def apply_decimate_modifier(obj, ratio, decimate_type):
+def apply_decimate_modifier(obj, ratio, decimate_type, sym_axis="X", sym=False):
     """
     Adds, configures, and applies a Decimate modifier.
     
@@ -436,6 +436,8 @@ def apply_decimate_modifier(obj, ratio, decimate_type):
         obj (bpy.types.Object): The object to apply the modifier to.
         ratio (float): The decimation ratio (0.0 to 1.0).
         decimate_type (str): The type of decimation to apply.
+        sym_axis (str): The symmetry axis for decimation.
+        sym (bool): Whether to apply symmetry.
 
     Returns:
         None
@@ -459,7 +461,7 @@ def apply_decimate_modifier(obj, ratio, decimate_type):
     # if compressed_textures:
     #     logger.info(f"Compressed {len(compressed_textures)} textures")
 
-    # Create and apply decimate modifier as before
+    # Create and apply decimate modifier
     mod_name = "TempDecimate"
     dec_mod = obj.modifiers.new(name=mod_name, type="DECIMATE")
     dec_mod.decimate_type = decimate_type.upper()
@@ -467,6 +469,21 @@ def apply_decimate_modifier(obj, ratio, decimate_type):
     # Right now it only supports COLLAPSE
     if dec_mod.decimate_type == "COLLAPSE":
         dec_mod.ratio = ratio
+        # Set use_symmetry first
+        dec_mod.use_symmetry = sym
+        # Only set the axis if symmetry is enabled
+        if sym:
+            # Ensure axis is valid before setting
+            axis_upper = sym_axis.upper()
+            if axis_upper not in {'X', 'Y', 'Z'}:
+                 logger.error(f"Invalid symmetry axis value received: {sym_axis}. Aborting modifier application.")
+                 obj.modifiers.remove(dec_mod) # Clean up modifier
+                 raise ValueError(f"Invalid symmetry axis: {sym_axis}")
+
+            dec_mod.symmetry_axis = axis_upper
+            logger.info(
+                f"Using symmetry axis: {axis_upper}"
+            )
 
     override = bpy.context.copy()
     override["object"] = obj
@@ -705,8 +722,19 @@ def cleanup_object(obj, obj_name_for_log):
     
     # Then remove the object
     try:
+        mesh_data = obj.data # Store reference before removing object
+        num_users = mesh_data.users
         bpy.data.objects.remove(obj, do_unlink=True)
-        logger.info(f"Cleaned up: {log_name}")
+        logger.info(f"Cleaned up object: {log_name}")
+        # If the mesh data had only this object as a user, remove it too
+        if num_users == 1 and mesh_data:
+             try:
+                 bpy.data.meshes.remove(mesh_data)
+                 logger.info(f"Cleaned up orphaned mesh data for: {log_name}")
+             except (ReferenceError, Exception) as mesh_remove_e:
+                 logger.warning(f"Issue removing mesh data for {log_name}: "
+                                f"{mesh_remove_e}")
+
     except (ReferenceError, Exception) as remove_e:
         logger.warning(f"Issue during cleanup of {log_name}: {remove_e}")
 
@@ -814,7 +842,9 @@ class MESH_OT_batch_export(Operator):
                                 if lod_level > 0:
                                     apply_decimate_modifier(
                                         lod_obj, ratio,
-                                        scene_props.mesh_export_lod_type
+                                        scene_props.mesh_export_lod_type,
+                                        scene_props.mesh_export_lod_symmetry_axis,
+                                        scene_props.mesh_export_lod_symmetry,
                                     )
                                 if scene_props.mesh_export_tri:
                                     # Trying to avoid long line
