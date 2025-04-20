@@ -222,12 +222,7 @@ def setup_export_object(obj, original_obj_name, scene_props, lod_level=None):
         if obj.scale != (1.0, 1.0, 1.0):
             # Apply scale transform if not 1.0
             logger.info(f"Object scale is not 1.0: {obj.scale}, applying...")
-            with bpy.context.temp_override(
-                selected_editable_objects=[obj], 
-                selected_objects=[obj], active_object=obj): 
-                bpy.ops.object.transform_apply(location=False, 
-                                            rotation=False, 
-                                            scale=True)
+            apply_transforms(obj, apply_scale=True)
 
         # Zero location if specified in scene properties
         if scene_props.mesh_export_zero_location:
@@ -249,22 +244,62 @@ def setup_export_object(obj, original_obj_name, scene_props, lod_level=None):
                          final_scale_factor)
             logger.info(f"Set object scale to {final_scale_factor:.2f}")
         else:
-            logger.info(f"Final scale factor is 1.0. No scaling needed.")
+            logger.info("Final scale factor is 1.0. No scaling needed.")
 
-        # Apply the calculated scale transform using temp_override
-        with bpy.context.temp_override(
-            selected_editable_objects=[obj], 
-            selected_objects=[obj], active_object=obj): 
-            bpy.ops.object.transform_apply(location=False, 
-                                           rotation=True, 
-                                           scale=True)
-            logger.info(f"Applied final scale transform for {obj.name}")
+        # Apply the calculated scale and rotation transforms using the helper
+        # We always want to apply rotation and scale at the end here.
+        apply_transforms(obj, apply_rotation=True, apply_scale=True)
 
         return obj.name, base_name
     except Exception as e:
         raise RuntimeError(
             f"Failed to setup (rename/zero) {obj.name}: {e}"
         ) from e
+    
+
+def apply_transforms(obj, apply_location=False, 
+                     apply_rotation=False, apply_scale=False):
+    """
+    Applies specified transforms to the object.
+
+    Args:
+        obj (bpy.types.Object): The object to apply transforms to.
+        apply_location (bool): Whether to apply location transforms.
+        apply_rotation (bool): Whether to apply rotation transforms.
+        apply_scale (bool): Whether to apply scale transforms.
+
+    Returns:
+        None
+    """
+    if not obj:
+        logger.warning("Attempted to apply transforms to an invalid object.")
+        return
+    if not (apply_location or apply_rotation or apply_scale):
+        logger.info(f"No transforms requested for {obj.name}. Skipping apply.")
+        return
+
+    transforms_to_apply = []
+    if apply_location: 
+        transforms_to_apply.append("location")
+    if apply_rotation: 
+        transforms_to_apply.append("rotation")
+    if apply_scale: 
+        transforms_to_apply.append("scale")
+
+    logger.info(f"Applying {', '.join(transforms_to_apply)} "
+                f"transforms for {obj.name}...")
+    try:
+        with bpy.context.temp_override(
+            selected_editable_objects=[obj],
+            selected_objects=[obj], active_object=obj):
+            bpy.ops.object.transform_apply(location=apply_location,
+                                           rotation=apply_rotation,
+                                           scale=apply_scale)
+        logger.info(f"Successfully applied {', '.join(transforms_to_apply)} "
+                    f"for {obj.name}")
+    except Exception as e:
+        logger.error(f"Failed to apply transforms for {obj.name}: {e}")
+        raise
 
 
 def apply_mesh_modifiers(obj):
