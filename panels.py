@@ -106,11 +106,14 @@ class MESH_PT_exporter_panel(Panel):
 
         # Triangulate settings
         col = layout.column(heading="Triangulate", align=True)
-        col.prop(settings, "mesh_export_tri")
-        sub = col.column(align=True)
+        row = col.row(align=True)
+        row.prop(settings, "mesh_export_tri", text="")
+        sub = row.row(align=True)
         sub.enabled = settings.mesh_export_tri # Enable/disable sub-option
-        sub.prop(settings, "mesh_export_tri_method")
-        sub.prop(settings, "mesh_export_keep_normals")
+        sub.prop(settings, "mesh_export_tri_method", text="")
+        row = col.row(align=True)
+        row.enabled = settings.mesh_export_tri # Enable/disable sub-option
+        row.prop(settings, "mesh_export_keep_normals")
 
         # Rename file settings
         col = layout.column(heading="Rename file", align=True)
