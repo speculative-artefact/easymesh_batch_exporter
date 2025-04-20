@@ -53,8 +53,8 @@ class MeshExporterSettings(PropertyGroup):
         name="Units",
         description="Unit system for exported meshes",
         items=[
-            ("METERS", "M", "Use meters as unit"),
-            ("CENTIMETERS", "CM", "Use centimeters as unit"),
+            ("METERS", "m", "Use meters as export unit"),
+            ("CENTIMETERS", "cm", "Use centimeters as export unit"),
         ],
         default="METERS",
     )

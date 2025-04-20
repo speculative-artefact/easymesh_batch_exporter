@@ -100,7 +100,7 @@ class MESH_PT_exporter_panel(Panel):
             row.prop(settings, "mesh_export_smoothing", expand=True)
 
         # Zero location settings
-        col = layout.column(align=True)
+        col = layout.column(heading="Transform", align=True)
         col.prop(settings, "mesh_export_zero_location")
 
 
