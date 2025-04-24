@@ -83,14 +83,15 @@ class MESH_PT_exporter_panel(Panel):
             row.prop(settings, "mesh_export_coord_forward", expand=True)
 
         # Scale settings
-        # if self.format_has_scale(settings.mesh_export_format):
-        col = layout.column(heading="Scale", align=True)
-        col.prop(settings, "mesh_export_scale")
+        if self.format_has_scale(settings.mesh_export_format):
+            col = layout.column(heading="Scale", align=True)
+            col.prop(settings, "mesh_export_scale")
 
         # Units settings
-        col = layout.column(heading="Units", align=True)
-        row = col.row(align=True)
-        row.prop(settings, "mesh_export_units", expand=True)
+        if self.format_has_scale(settings.mesh_export_format):
+            col = layout.column(heading="Units", align=True)
+            row = col.row(align=True)
+            row.prop(settings, "mesh_export_units", expand=True)
 
         # Smoothing settings
         if self.format_has_smoothing(settings.mesh_export_format):

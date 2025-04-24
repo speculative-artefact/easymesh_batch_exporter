@@ -115,7 +115,8 @@ def create_export_copy(original_obj, context):
     if not original_obj or original_obj.type != "MESH":
         raise ValueError("Invalid object provided for copying.")
         
-    logger.info(f"Attempting to duplicate '{original_obj.name}' using operator...")
+    logger.info(f"Attempting to duplicate '{original_obj.name}' "
+                f"using operator...")
     
     # Use the context manager to handle selection and active object
     with temp_selection_context(context, 
@@ -128,7 +129,7 @@ def create_export_copy(original_obj, context):
             bpy.ops.object.duplicate_move_linked(
                 OBJECT_OT_duplicate={"linked":True, "mode":'TRANSLATION'}, 
                 TRANSFORM_OT_translate={"value":(0, 0, 0)} # No actual move
-            ) 
+            )
             
             # The new duplicate becomes the active object 
             # after the operator runs
@@ -230,25 +231,28 @@ def setup_export_object(obj, original_obj_name, scene_props, lod_level=None):
             logger.info(f"Zeroed location for {obj.name}")
 
         # Calculate final scale factor
-        final_scale_factor = scene_props.mesh_export_scale
-        if scene_props.mesh_export_units == "CENTIMETERS":
-            # Apply 100x scale for Meters (Blender default) 
-            # to Centimeters (UE default)
-            final_scale_factor *= 100.0 
-            logger.info("Applying M to CM scale factor (x100)")
+        if (scene_props.mesh_export_format != "GLTF" 
+            or scene_props.mesh_export_format != "USD"):
+            # For GLTF, we don't want to apply scale here
+            final_scale_factor = scene_props.mesh_export_scale
+            if scene_props.mesh_export_units == "CENTIMETERS":
+                # Apply 100x scale for Meters (Blender default) 
+                # to Centimeters (UE default)
+                final_scale_factor *= 100.0 
+                logger.info("Applying M to CM scale factor (x100)")
 
-        # Set the object's scale
-        if abs(final_scale_factor - 1.0) > 1e-6: # Check if scaling is needed
-            obj.scale = (final_scale_factor, 
-                         final_scale_factor, 
-                         final_scale_factor)
-            logger.info(f"Set object scale to {final_scale_factor:.2f}")
-        else:
-            logger.info("Final scale factor is 1.0. No scaling needed.")
+            # Set the object's scale
+            if abs(final_scale_factor - 1.0) > 1e-6: # Check if scaling is need
+                obj.scale = (final_scale_factor, 
+                            final_scale_factor, 
+                            final_scale_factor)
+                logger.info(f"Set object scale to {final_scale_factor:.2f}")
+            else:
+                logger.info("Final scale factor is 1.0. No scaling needed.")
 
-        # Apply the calculated scale and rotation transforms using the helper
-        # We always want to apply rotation and scale at the end here.
-        apply_transforms(obj, apply_rotation=True, apply_scale=True)
+            # Apply the calculated scale and rotation transforms using the help
+            # We always want to apply rotation and scale at the end here.
+            apply_transforms(obj, apply_rotation=True, apply_scale=True)
 
         return obj.name, base_name
     except Exception as e:
@@ -757,15 +761,24 @@ def export_object(obj, file_path, scene_props):
                 bpy.ops.export_scene.gltf(
                     filepath=export_filepath,
                     use_selection=True,
-                    export_format="GLTF_SEPARATE", # or GLB
+                    export_format="GLTF_SEPARATE", # or 'GLB'
                     export_apply=False, # Transforms/Mods applied manually
-                    export_attributes=True,
+                    export_texcoords=True, # Explicitly export UVs
                     export_normals=True,
+                    export_tangents=False, # Usually calculated on import
+                    export_materials='EXPORT', # Export materials
+                    export_vertex_color='MATERIAL', # Export if material
+                    export_cameras=False,
+                    export_lights=False,
+                    export_skins=True, # Export skinning data if present
+                    export_animations=True, # Export animations if present
                     export_extras=True,
-                    export_yup=(scene_props.mesh_export_coord_up == "Y"),
-                    # Need to add a prop to track material quality
+                    export_yup=True, # Use Y-Up coordinate system
                     export_jpeg_quality=export_quality,
                     export_image_quality=export_quality,
+                    # Considering adding other options like Draco compression
+                    # export_draco_mesh_compression_enable=True,
+                    # export_draco_compression_level=6,
                 )
             elif fmt == "USD":
                 bpy.ops.wm.usd_export(
