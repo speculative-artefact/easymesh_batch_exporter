@@ -37,6 +37,24 @@ class MeshExporterSettings(PropertyGroup):
         default="FBX"
     )
 
+    # GLTF type property
+    mesh_export_gltf_type: EnumProperty(
+        name="glTF type",
+        description="Type of glTF to export",
+        items=[
+            ("GLB", "Binary", "Export as binary glTF (GLB)"),
+            ("GLTF_SEPARATE", "JSON", "Export as JSON glTF (GLTF)"),
+        ],
+        default="GLB"
+    )
+
+    #GLTF export materials property
+    mesh_export_gltf_materials: BoolProperty(
+        name="Export Materials",
+        description="Export materials with glTF",
+        default=True
+    )
+
     # Scale property
     mesh_export_scale: FloatProperty(
         name="Scale",

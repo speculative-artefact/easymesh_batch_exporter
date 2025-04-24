@@ -74,6 +74,17 @@ class MESH_PT_exporter_panel(Panel):
         layout.prop(settings, "mesh_export_path")
         layout.prop(settings, "mesh_export_format")
 
+        # Format-specific settings
+        if settings.mesh_export_format == "GLTF":
+            # GLTF-specific settings
+            col = layout.column(heading="GLTF Type", align=True)
+            row = col.row(align=True)
+            row.prop(settings, "mesh_export_gltf_type", expand=True)
+
+            col = layout.column(heading="Materials", align=True)
+            row = col.row(align=True)
+            row.prop(settings, "mesh_export_gltf_materials")
+
         # Coordinate system settings
         if self.format_has_coordinates(settings.mesh_export_format):
             col = layout.column(heading="Coordinate system", align=True)

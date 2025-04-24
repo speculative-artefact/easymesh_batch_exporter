@@ -698,6 +698,12 @@ def export_object(obj, file_path, scene_props):
     base_file_path = file_path
     export_filepath = f"{base_file_path}.{fmt.lower()}"
 
+    # GLTF material export type
+    if scene_props.mesh_export_gltf_materials:
+        gltf_exp_mat = "EXPORT"
+    else:
+        gltf_exp_mat = "PLACEHOLDER"
+
     temp_lod_lvl = obj.name.split("_")[-1]
 
     if temp_lod_lvl == "LOD01":
@@ -761,22 +767,24 @@ def export_object(obj, file_path, scene_props):
                 bpy.ops.export_scene.gltf(
                     filepath=export_filepath,
                     use_selection=True,
-                    export_format="GLTF_SEPARATE", # or 'GLB'
+                    export_format=scene_props.mesh_export_gltf_type,
                     export_apply=False, # Transforms/Mods applied manually
                     export_texcoords=True, # Explicitly export UVs
                     export_normals=True,
-                    export_tangents=False, # Usually calculated on import
-                    export_materials='EXPORT', # Export materials
-                    export_vertex_color='MATERIAL', # Export if material
+                    export_tangents=False, 
+                    export_materials=gltf_exp_mat, 
+                    export_vertex_color="MATERIAL", 
                     export_cameras=False,
                     export_lights=False,
-                    export_skins=True, # Export skinning data if present
-                    export_animations=True, # Export animations if present
+                    export_skins=True,
+                    export_animations=True,
                     export_extras=True,
                     export_yup=True, # Use Y-Up coordinate system
                     export_jpeg_quality=export_quality,
                     export_image_quality=export_quality,
+                    export_def_bones=True, # Export bones even if not animated
                     # Considering adding other options like Draco compression
+                    # needs testing
                     # export_draco_mesh_compression_enable=True,
                     # export_draco_compression_level=6,
                 )
