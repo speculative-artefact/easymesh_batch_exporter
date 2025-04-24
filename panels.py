@@ -1,4 +1,4 @@
-#panels.py
+# panels.py
 """ 
 EasyMesh Batch Exporter UI Panels
 This module contains the UI panels for the EasyMesh Batch Exporter add-on. 
@@ -273,8 +273,14 @@ class MESH_EXPORT_PT_recent_exports(Panel):
             icon = "HIDE_OFF" # Default icon
 
             # Button to select object
-            op = row.operator("object.select_by_name", text="", icon=icon)
-            op.object_name = obj.name # Custom operator needed here
+            # Get the operator instance
+            op = row.operator(
+                "object.select_by_name", 
+                text="", 
+                icon=icon
+            )
+            # Set the property on the returned operator instance
+            op.object_name = obj.name 
 
             row.label(text=obj.name)
 

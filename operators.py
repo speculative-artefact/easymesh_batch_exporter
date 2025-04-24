@@ -1099,10 +1099,12 @@ class OBJECT_OT_select_by_name(Operator):
     bl_description = "Selects and focuses on the specified object"
     bl_options = {"REGISTER", "INTERNAL"}
 
+    # Correct the property definition using annotation
     object_name: StringProperty()
 
     def execute(self, context):
         """Executes the selection using direct API."""
+        # Access the property using self.object_name
         target_obj = bpy.data.objects.get(self.object_name)
         if not target_obj:
             logger.warning(f"Object '{self.object_name}' "
@@ -1117,8 +1119,6 @@ class OBJECT_OT_select_by_name(Operator):
         # Select target and make it active
         target_obj.select_set(True)
         context.view_layer.objects.active = target_obj
-
-        # No need to change modes just for selection
         
         return {"FINISHED"}
 
