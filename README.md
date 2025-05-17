@@ -5,6 +5,8 @@
 
 A Blender add-on for batch exporting multiple selected mesh objects with customisable settings, including LOD generation and viewport indicators for recent exports.
 
+[![EasyMesh demo - Watch Video](https://cdn.loom.com/sessions/thumbnails/567dea7f7cf84f91939d159807d6659d-e7c0d4f2068a7d8d-full-play.gif)](https://www.loom.com/share/567dea7f7cf84f91939d159807d6659d?sid=dd68ecd1-58dc-43c4-b74b-cfeaa82f4553)
+
 ## Features
 
 * **Batch Export:** Export multiple selected mesh objects at once.
