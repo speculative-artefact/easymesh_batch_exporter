@@ -115,6 +115,10 @@ class MESH_PT_exporter_panel(Panel):
         col = layout.column(heading="Transform", align=True)
         col.prop(settings, "mesh_export_zero_location")
 
+        # Modifier application settings
+        col = layout.column(heading="Apply Modifiers", align=True)
+        row = col.row(align=True)
+        row.prop(settings, "mesh_export_apply_modifiers", expand=True)
 
         # Triangulate settings
         col = layout.column(heading="Triangulate", align=True)

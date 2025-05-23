@@ -148,6 +148,18 @@ class MeshExporterSettings(PropertyGroup):
         default=True
     )
 
+    # Modifier application property
+    mesh_export_apply_modifiers: EnumProperty(
+        name="Apply Modifiers",
+        description="Which modifiers to apply during export",
+        items=[
+            ("NONE", "None", "Don't apply any modifiers to the exported copy"),
+            ("VISIBLE", "Visible", "Apply only modifiers visible in viewport"),
+            ("RENDER", "Render", "Apply only modifiers enabled for rendering"),
+        ],
+        default="VISIBLE"
+    )
+
     # Prefix and suffix properties
     mesh_export_prefix: StringProperty(
         name="Prefix",

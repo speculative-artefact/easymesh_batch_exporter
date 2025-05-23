@@ -29,6 +29,65 @@ if not logger.handlers:
 EXPORT_TIME_PROP = "mesh_export_timestamp"
 EXPORT_STATUS_PROP = "mesh_export_status"
 
+# Large mesh thresholds
+LARGE_MESH_THRESHOLD = 500000  # 500K polygons
+VERY_LARGE_MESH_THRESHOLD = 1000000  # 1M polygons
+
+
+# --- Memory Optimisation Functions ---
+
+def optimize_for_large_mesh(obj):
+    """
+    Memory optimisation for large meshes.
+    
+    Args:
+        obj (bpy.types.Object): The mesh object to optimize.
+        
+    Returns:
+        bool: True if optimisation was applied, False otherwise.
+    """
+    if not obj or obj.type != "MESH" or not obj.data:
+        return False
+        
+    poly_count = len(obj.data.polygons)
+    if poly_count > LARGE_MESH_THRESHOLD:
+        logger.info(f"Applying memory optimisation for large mesh: {poly_count} polygons")
+        obj.data.update()
+        import gc
+        gc.collect()
+        return True
+    return False
+
+
+@contextlib.contextmanager
+def safe_large_mesh_operation(obj, operation_name):
+    """
+    Context manager for operations on large meshes with memory management.
+    
+    Args:
+        obj (bpy.types.Object): The mesh object.
+        operation_name (str): Name of the operation for logging.
+    """
+    poly_count = len(obj.data.polygons) if obj and obj.data else 0
+    is_large = poly_count > LARGE_MESH_THRESHOLD
+    
+    if is_large:
+        logger.info(f"Starting large mesh operation: {operation_name} on {poly_count:,} polygons")
+        # Pre-operation cleanup
+        obj.data.update()
+        import gc
+        gc.collect()
+        
+    try:
+        yield
+    finally:
+        if is_large:
+            # Post-operation cleanup
+            obj.data.update()
+            import gc
+            gc.collect()
+            logger.info(f"Completed large mesh operation: {operation_name}")
+
 
 # --- Core Functions ---
 
@@ -142,6 +201,9 @@ def create_export_copy(original_obj, context):
                 logger.info(f"Making mesh data single user for "
                             f"'{copy_obj.name}'")
                 copy_obj.data = copy_obj.data.copy()
+                
+                # Optimize memory for large meshes after making single user
+                optimize_for_large_mesh(copy_obj)
 
             return copy_obj
             
@@ -306,19 +368,26 @@ def apply_transforms(obj, apply_location=False,
         raise
 
 
-def apply_mesh_modifiers(obj):
+def apply_mesh_modifiers(obj, modifier_mode="VISIBLE"):
     """
-    Apply all VISIBLE modifiers on a mesh object.
+    Apply modifiers on a mesh object based on the specified mode.
     
     Args:
         obj (bpy.types.Object): The object whose modifiers to apply.
+        modifier_mode (str): Which modifiers to apply ("NONE", "VISIBLE", "RENDER").
         
     Returns:
         None
     """
     if not obj or obj.type != "MESH":
         return
-    logger.info(f"Applying base modifiers for {obj.name}...")
+    
+    # Skip all modifier application if mode is NONE
+    if modifier_mode == "NONE":
+        logger.info(f"Skipping modifier application for {obj.name} (mode: NONE)")
+        return
+        
+    logger.info(f"Applying {modifier_mode.lower()} modifiers for {obj.name}...")
     current_mode = obj.mode
     if current_mode != "OBJECT":
         bpy.ops.object.mode_set(mode="OBJECT")
@@ -329,23 +398,42 @@ def apply_mesh_modifiers(obj):
     override["selected_objects"] = [obj]
     override["selected_editable_objects"] = [obj]
     applied_modifiers = []
+    poly_count = len(obj.data.polygons)
+    is_large_mesh = poly_count > LARGE_MESH_THRESHOLD
 
     try:
         for modifier in obj.modifiers[:]:  # Iterate over a copy
-            if modifier.show_viewport:
+            should_apply = False
+            
+            # Determine if we should apply this modifier based on mode
+            if modifier_mode == "VISIBLE":
+                should_apply = modifier.show_viewport
+            elif modifier_mode == "RENDER":
+                should_apply = modifier.show_render
+                
+            if should_apply:
                 mod_name = modifier.name
-                logger.info(f"Applying modifier: {mod_name}")
+                logger.info(f"Applying modifier: {mod_name} ({modifier_mode.lower()})")
                 try:
                     with bpy.context.temp_override(**override):
                         bpy.ops.object.modifier_apply(modifier=mod_name)
                     applied_modifiers.append(mod_name)
+                    
+                    # Memory cleanup for large meshes after every 3 modifiers
+                    if is_large_mesh and len(applied_modifiers) % 3 == 0:
+                        obj.data.update()
+                        import gc
+                        gc.collect()
+                        logger.info(f"Memory cleanup after {len(applied_modifiers)} modifiers")
+                        
                 except (RuntimeError, ReferenceError) as e:
                     logger.warning(
                         f"Could not apply modifier '{mod_name}' "
                         f"on {obj.name}: {e}"
                     )
             else:
-                logger.info(f"Skipping disabled modifier: {modifier.name}")
+                status = "viewport disabled" if modifier_mode == "VISIBLE" else "render disabled"
+                logger.info(f"Skipping modifier '{modifier.name}': {status}")
     finally:
         if obj.mode != current_mode:
             bpy.ops.object.mode_set(mode=current_mode)
@@ -562,9 +650,16 @@ def apply_decimate_modifier(obj, ratio, decimate_type,
     # Get initial poly count for logging
     initial_poly_count = len(obj.data.polygons)
     logger.info(
-        f"Applying Decimate to mesh with {initial_poly_count} polygons "
+        f"Applying Decimate to mesh with {initial_poly_count:,} polygons "
         f"(Ratio: {ratio:.3f}, Type: {decimate_type})..."
     )
+    
+    # Memory optimisation for very large meshes before decimation
+    if initial_poly_count > VERY_LARGE_MESH_THRESHOLD:
+        logger.info("Very large mesh detected, enabling memory optimisation")
+        obj.data.update()
+        import gc
+        gc.collect()
 
     current_mode = obj.mode
     if current_mode != "OBJECT":
@@ -651,7 +746,16 @@ def triangulate_mesh(obj, method="BEAUTY", keep_normals=True):
     """
     if not obj or obj.type != "MESH":
         return
-    logger.info(f"Triangulating {obj.name}...")
+    
+    poly_count = len(obj.data.polygons)
+    logger.info(f"Triangulating {obj.name} with {poly_count:,} polygons...")
+    
+    # Memory optimisation for large meshes before triangulation
+    if poly_count > LARGE_MESH_THRESHOLD:
+        obj.data.update()
+        import gc
+        gc.collect()
+    
     current_mode = obj.mode
     if current_mode != "OBJECT":
         bpy.ops.object.mode_set(mode="OBJECT")
@@ -722,12 +826,17 @@ def export_object(obj, file_path, scene_props):
         export_quality = 100
         downscale_size = "KEEP"
 
-    # logger.info(f"[[quality: {export_quality}]]")
-    # logger.info(f"[[downscale: {downscale_size}]]")
+    # Check mesh size and optimize if needed
+    mesh_size = len(obj.data.polygons) if obj.data else 0
+    if mesh_size > LARGE_MESH_THRESHOLD:
+        logger.info(f"Large mesh export: {mesh_size:,} polygons")
+        obj.data.update()
+        bpy.context.view_layer.update()
+        import gc
+        gc.collect()
     
-    # logger.info(f"File path: {file_path}")
     logger.info(
-        f"Exporting {os.path.basename(export_filepath)} ({fmt})..."
+        f"Exporting {os.path.basename(export_filepath)} ({fmt}) - {mesh_size:,} polygons..."
     )
 
     with temp_selection_context(bpy.context, active_object=obj,
@@ -863,16 +972,29 @@ def cleanup_object(obj, obj_name_for_log):
     try:
         mesh_data = obj.data # Store reference before removing object
         num_users = mesh_data.users
+        poly_count = len(mesh_data.polygons) if mesh_data else 0
+        was_large_mesh = poly_count > LARGE_MESH_THRESHOLD
+        
         bpy.data.objects.remove(obj, do_unlink=True)
         logger.info(f"Cleaned up object: {log_name}")
+        
         # If the mesh data had only this object as a user, remove it too
         if num_users == 1 and mesh_data:
              try:
+                 # Clear geometry data for large meshes to free memory immediately
+                 if was_large_mesh and hasattr(mesh_data, 'clear_geometry'):
+                     mesh_data.clear_geometry()
                  bpy.data.meshes.remove(mesh_data)
                  logger.info(f"Cleaned up orphaned mesh data for: {log_name}")
              except (ReferenceError, Exception) as mesh_remove_e:
                  logger.warning(f"Issue removing mesh data for {log_name}: "
                                 f"{mesh_remove_e}")
+        
+        # Force garbage collection for large meshes
+        if was_large_mesh:
+            import gc
+            gc.collect()
+            logger.info(f"Memory cleanup completed for large mesh: {log_name}")
 
     except (ReferenceError, Exception) as remove_e:
         logger.warning(f"Issue during cleanup of {log_name}: {remove_e}")
@@ -977,7 +1099,7 @@ class MESH_OT_batch_export(Operator):
                                     lod_obj, original_obj.name,
                                     scene_props, lod_level
                                 )
-                                apply_mesh_modifiers(lod_obj) # Base modifiers
+                                apply_mesh_modifiers(lod_obj, scene_props.mesh_export_apply_modifiers)
                                 if lod_level > 0:
                                     apply_decimate_modifier(
                                         lod_obj, ratio,
@@ -1013,6 +1135,12 @@ class MESH_OT_batch_export(Operator):
                                 )
                             finally:
                                 cleanup_object(lod_obj, lod_obj_name)
+                                
+                        # Memory cleanup between LOD levels for large meshes
+                        if len(original_obj.data.polygons if original_obj.data else []) > LARGE_MESH_THRESHOLD:
+                            import gc
+                            gc.collect()
+                            logger.debug("Memory cleanup after LOD level processing")
                         # --- End LOD Level Loop ---
 
                     else:
@@ -1028,7 +1156,7 @@ class MESH_OT_batch_export(Operator):
                             (export_obj_name, base_name) = setup_export_object(
                                 export_obj, original_obj.name, scene_props
                             )
-                            apply_mesh_modifiers(export_obj)
+                            apply_mesh_modifiers(export_obj, scene_props.mesh_export_apply_modifiers)
                             if scene_props.mesh_export_tri:
                                 triangulate_mesh(
                                     export_obj,
