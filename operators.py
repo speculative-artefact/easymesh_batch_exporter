@@ -921,7 +921,6 @@ def export_object(obj, file_path, scene_props):
                 bpy.ops.wm.stl_export(
                     filepath=export_filepath,
                     export_selected_objects=True,
-                    use_selection=True,
                     global_scale=1.0, # Scale applied setup_export_object
                     forward_axis=scene_props.mesh_export_coord_forward,
                     up_axis=scene_props.mesh_export_coord_up,
