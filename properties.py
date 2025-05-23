@@ -150,7 +150,7 @@ class MeshExporterSettings(PropertyGroup):
 
     # Modifier application property
     mesh_export_apply_modifiers: EnumProperty(
-        name="Apply Modifiers",
+        name="Modifier Mode",
         description="Which modifiers to apply during export",
         items=[
             ("NONE", "None", "Don't apply any modifiers to the exported copy"),

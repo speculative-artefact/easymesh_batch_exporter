@@ -93,7 +93,7 @@ You can also find the add-on directly on [Blender Extensions](https://extensions
     
     ### Transform & Processing
     * **Zero Location:** Set object location to (0,0,0) before export
-    * **Apply Modifiers:** Choose which modifiers to apply:
+    * **Modifier Mode:** Choose which modifiers to apply:
       * **None:** Skip all modifiers (fastest, export base mesh only)
       * **Visible:** Apply viewport-visible modifiers (recommended)
       * **Render:** Apply render-enabled modifiers (most complete)

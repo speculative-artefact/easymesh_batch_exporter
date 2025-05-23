@@ -116,7 +116,7 @@ class MESH_PT_exporter_panel(Panel):
         col.prop(settings, "mesh_export_zero_location")
 
         # Modifier application settings
-        col = layout.column(heading="Apply Modifiers", align=True)
+        col = layout.column(heading="Modifier Mode", align=True)
         row = col.row(align=True)
         row.prop(settings, "mesh_export_apply_modifiers", expand=True)
 
