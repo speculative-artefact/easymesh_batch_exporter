@@ -36,12 +36,12 @@ VERY_LARGE_MESH_THRESHOLD = 1000000  # 1M polygons
 
 # --- Memory Optimisation Functions ---
 
-def optimize_for_large_mesh(obj):
+def optimise_for_large_mesh(obj):
     """
     Memory optimisation for large meshes.
     
     Args:
-        obj (bpy.types.Object): The mesh object to optimize.
+        obj (bpy.types.Object): The mesh object to optimise.
         
     Returns:
         bool: True if optimisation was applied, False otherwise.
@@ -202,8 +202,8 @@ def create_export_copy(original_obj, context):
                             f"'{copy_obj.name}'")
                 copy_obj.data = copy_obj.data.copy()
                 
-                # Optimize memory for large meshes after making single user
-                optimize_for_large_mesh(copy_obj)
+                # Optimise memory for large meshes after making single user
+                optimise_for_large_mesh(copy_obj)
 
             return copy_obj
             
@@ -826,7 +826,7 @@ def export_object(obj, file_path, scene_props):
         export_quality = 100
         downscale_size = "KEEP"
 
-    # Check mesh size and optimize if needed
+    # Check mesh size and optimise if needed
     mesh_size = len(obj.data.polygons) if obj.data else 0
     if mesh_size > LARGE_MESH_THRESHOLD:
         logger.info(f"Large mesh export: {mesh_size:,} polygons")

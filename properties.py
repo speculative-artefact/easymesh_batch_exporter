@@ -173,6 +173,13 @@ class MeshExporterSettings(PropertyGroup):
         default=""
     )
 
+    # Export indicators property
+    mesh_export_show_indicators: BoolProperty(
+        name="Show Export Indicators",
+        description="Display colour indicators in viewport for recently exported objects",
+        default=True
+    )
+
     # LOD properties
     mesh_export_lod: BoolProperty(
         name="Generate LODs",

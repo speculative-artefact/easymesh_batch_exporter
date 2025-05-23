@@ -73,7 +73,14 @@ def mark_object_as_exported(obj):
     """
     if obj is None or obj.type != "MESH":
         return
-        
+    
+    # Check if export indicators are enabled in scene properties
+    scene = bpy.context.scene
+    if hasattr(scene, "mesh_exporter") and scene.mesh_exporter:
+        if not scene.mesh_exporter.mesh_export_show_indicators:
+            logger.debug(f"Export indicators disabled, skipping marking for {obj.name}")
+            return
+    
     # Ensure timer is registered
     if not bpy.app.timers.is_registered(update_timer_callback):
         logger.warning("Export indicators timer not registered - "

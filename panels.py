@@ -135,6 +135,10 @@ class MESH_PT_exporter_panel(Panel):
         col = layout.column(heading="Rename file", align=True)
         col.prop(settings, "mesh_export_prefix")
         col.prop(settings, "mesh_export_suffix")
+        
+        # Export indicators settings
+        col = layout.column(heading="Visual Feedback", align=True)
+        col.prop(settings, "mesh_export_show_indicators")
 
         layout.separator()
 
@@ -251,7 +255,16 @@ class MESH_EXPORT_PT_recent_exports(Panel):
     @classmethod
     def poll(cls, context):
         # Check if the indicator system is running and has data
-        return hasattr(export_indicators, "get_recently_exported_objects")
+        # Also check if indicators are enabled
+        if not hasattr(export_indicators, "get_recently_exported_objects"):
+            return False
+        
+        # Check if export indicators are enabled
+        settings = context.scene.mesh_exporter
+        if settings and not settings.mesh_export_show_indicators:
+            return False
+            
+        return True
 
     def draw(self, context):
         layout = self.layout

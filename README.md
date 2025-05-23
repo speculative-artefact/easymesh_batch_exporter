@@ -1,30 +1,62 @@
 # EasyMesh Batch Exporter for Blender
 
 ![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)
+![Version: 1.1.0](https://img.shields.io/badge/Version-1.1.0-green.svg)
 ![Blender: 4.2+](https://img.shields.io/badge/Blender-4.2+-orange.svg)
+![Large Mesh Support](https://img.shields.io/badge/Large%20Mesh-2M%2B%20Polygons-red.svg)
 
-A Blender add-on for batch exporting multiple selected mesh objects with customisable settings, including LOD generation and viewport indicators for recent exports.
+A Blender add-on for batch exporting multiple selected mesh objects with advanced memory optimisation, modifier control, LOD generation, and viewport indicators for recent exports. Designed to handle large, complex meshes without crashes.
 
 [![EasyMesh demo - Watch Video](https://cdn.loom.com/sessions/thumbnails/567dea7f7cf84f91939d159807d6659d-e7c0d4f2068a7d8d-full-play.gif)](https://www.loom.com/share/567dea7f7cf84f91939d159807d6659d?sid=dd68ecd1-58dc-43c4-b74b-cfeaa82f4553)
 
 ## Features
 
-* **Batch Export:** Export multiple selected mesh objects at once.
-* **Multiple Formats:** Supports exporting to FBX, OBJ, glTF (gltf+bin+textures), USD, and STL.
-* **Custom Transforms:**
-    * Optionally zero the object's location before export.
-    * Apply custom export scale (behaviour dependent on exporter).
-    * Set custom Forward and Up axes.
-* **Units Handling:** Choose between metres and centimetres to match your target application.
-* **Naming Options:** Add custom prefixes and suffixes to exported filenames.
-* **Mesh Processing:**
-    * Apply all existing (visible) modifiers before export.
-    * Optionally triangulate meshes using different methods (Beauty, Fixed, Fixed Alternate, Shortest Diagonal).
-    * Choose specific smoothing methods for formats that support them (Face, Edge, or Off).
-    * Optionally generate Levels of Detail (LODs) using the Decimate modifier (creates `_LOD00`, `_LOD01`, etc. files).
-    * Apply symmetry during LOD generation to maintain model symmetry.
-* **Advanced Texture Handling:** Automatic downscaling of textures for different LOD levels to optimise file size.
-* **Export Indicators:** Provides visual feedback in the viewport for recently exported objects (Green = fresh, Yellow = stale) and lists them in the panel.
+### 🚀 **Performance & Memory Optimisation**
+* **Large Mesh Support:** Handles meshes with 2+ million polygons without crashes
+* **Smart Memory Management:** Automatic garbage collection and cleanup for large meshes (>500K polygons)
+* **Progressive Processing:** Memory cleanup every 3 modifiers during heavy modifier stacks
+* **Threshold-Based Optimisation:** Different strategies for large (500K+) and very large (1M+) meshes
+
+### 🎛️ **Advanced Modifier Control**
+* **Flexible Modifier Application:** Choose which modifiers to apply during export:
+  * **None:** Skip all modifiers for fastest performance
+  * **Visible:** Apply only viewport-visible modifiers (default)
+  * **Render:** Apply only render-enabled modifiers
+* **Smart Processing:** Respects Blender's modifier visibility states
+* **Memory Efficient:** Automatic cleanup between modifier applications
+
+### 📦 **Batch Export**
+* **Multi-Object Support:** Export multiple selected mesh objects simultaneously
+* **Progress Tracking:** Real-time progress bar and detailed console logging
+* **Error Handling:** Robust error recovery with detailed failure reporting
+* **Multiple Formats:** FBX, OBJ, glTF (binary/JSON), USD, and STL support
+
+### 🎯 **Precision Controls**
+* **Transform Options:**
+    * Zero object location before export
+    * Custom export scale with format-specific handling
+    * Configurable Forward and Up axes
+* **Units Handling:** Seamless conversion between metres and centimetres
+* **Naming System:** Custom prefixes and suffixes for organised file output
+
+### 🔧 **Mesh Processing**
+* **Triangulation:** Multiple methods (Beauty, Fixed, Alternate, Shortest Diagonal) with normal preservation
+* **Smoothing Control:** Format-specific smoothing options (Face, Edge, Off)
+* **Memory-Safe Operations:** All processing optimised for large mesh stability
+
+### 📊 **LOD Generation**
+* **Automatic LODs:** Generate up to 4 levels of detail using Decimate modifier
+* **Symmetry Preservation:** Maintain model symmetry during decimation
+* **Quality Control:** Individual ratio settings for each LOD level
+* **Texture Optimisation:** Automatic texture downscaling per LOD level
+
+### 👁️ **Visual Feedback**
+* **Export Indicators:** Optional viewport colour coding for recently exported objects
+  * Green: Recently exported (< 1 minute)
+  * Yellow: Previously exported (< 5 minutes)
+  * Toggle on/off via checkbox for cleaner viewport when needed
+* **Recent Exports Panel:** Interactive list of exported objects with selection
+* **Detailed Logging:** Comprehensive console output with polygon counts and timing
 
 ## Installation
 
@@ -50,19 +82,75 @@ You can also find the add-on directly on [Blender Extensions](https://extensions
 
 1.  **Find the Panel:** The add-on's panel appears in the 3D Viewport's Sidebar (Press `N` key if hidden) under the "Exporter" tab.
 2.  **Select Objects:** Select one or more mesh objects you want to export in the 3D Viewport.
-3.  **Configure Settings:** Adjust the settings in the "Batch Exporter" panel:
-    * **Export Path:** Choose the directory where files will be saved.
-    * **Format:** Select the desired output file format (FBX, OBJ, etc.).
-    * **Coordinate System:** Set the Forward and Up axes according to your target application's needs.
-    * **Scale:** Set the global export scale (if supported by the format).
-    * **Units:** Choose between metres (Blender default) and centimetres (common in game engines).
-    * **Smoothing:** For applicable formats, select the smoothing method (Face, Edge, or Off).
-    * **Zero Location:** If checked, object copies will have their location set to (0,0,0) before export.
-    * **Triangulate:** If checked, applies triangulation to the exported mesh copy. Choose the desired method and whether to preserve normals.
-    * **Rename File:** Add optional Prefix and/or Suffix to the exported filenames.
-    * **Quick LODs (Optional):** Check the box in the sub-panel header to enable LOD generation. Configure the number of LODs (1-4), symmetry options, and ratio for each level. Note that LOD0 is the base mesh (after base modifiers/triangulation), and subsequent LODs are generated with increasingly aggressive decimation.
-4.  **Export:** Click the "Export Selected Meshes" button.
-5.  **Progress:** Monitor the export progress in Blender's bottom status bar. Console output provides detailed logs.
+3.  **Configure Settings:** Adjust the settings in the "EasyMesh Batch Exporter" panel:
+    
+    ### Basic Settings
+    * **Export Path:** Choose the directory where files will be saved
+    * **Format:** Select output format (FBX, OBJ, glTF, USD, STL)
+    * **Coordinate System:** Set Forward and Up axes for your target application
+    * **Scale & Units:** Set global scale and choose between metres/centimetres
+    * **Smoothing:** Select smoothing method (Face, Edge, Off) for supported formats
+    
+    ### Transform & Processing
+    * **Zero Location:** Set object location to (0,0,0) before export
+    * **Apply Modifiers:** Choose which modifiers to apply:
+      * **None:** Skip all modifiers (fastest, export base mesh only)
+      * **Visible:** Apply viewport-visible modifiers (recommended)
+      * **Render:** Apply render-enabled modifiers (most complete)
+    * **Triangulate:** Optional mesh triangulation with method selection and normal preservation
+    
+    ### File Naming & Feedback
+    * **Prefix/Suffix:** Add custom text to exported filenames for organisation
+    * **Export Indicators:** Toggle viewport colour feedback on/off
+    
+    ### LOD Generation (Optional)
+    * **Quick LODs:** Enable in sub-panel header to generate up to 4 detail levels
+    * **Symmetry:** Maintain model symmetry during decimation
+    * **Ratios:** Individual quality settings for each LOD level
+    * Note: LOD0 = base mesh, LOD1-4 = progressively decimated versions
+
+4.  **Export:** Click the "Export Selected Meshes" button
+5.  **Monitor Progress:** 
+    * Real-time progress in Blender's status bar
+    * Detailed console logs with polygon counts and timing
+    * Memory optimisation messages for large meshes
+
+## Performance & Large Mesh Handling
+
+### 🔧 **Automatic Optimisations**
+The add-on automatically detects and optimises for large meshes:
+
+* **500K+ polygons:** Basic memory management with progressive cleanup
+* **1M+ polygons:** Aggressive memory optimisation and pre-processing cleanup
+* **Memory cleanup:** Automatic garbage collection every 3 modifiers during heavy operations
+* **Smart processing:** Different strategies based on mesh complexity
+
+### 💡 **Performance Tips**
+
+#### For Large Meshes (500K+ polygons):
+* **Use "None" modifiers:** Skip modifier application for fastest export
+* **Close other applications:** Maximise available system memory
+* **Export in batches:** Process fewer objects at once to reduce memory pressure
+* **Monitor console:** Watch for "Memory optimisation" messages
+
+#### For Very Large Meshes (1M+ polygons):
+* **Strongly recommend "None" modifiers:** Avoid modifier processing when possible
+* **Single object exports:** Export one object at a time for maximum stability
+* **LOD generation:** Use LODs to create multiple resolution versions efficiently
+
+#### Modifier Application Guidelines:
+* **"None":** Best performance, exports base mesh without any modifications
+* **"Visible":** Good balance of functionality and performance (default)
+* **"Render":** Most complete but may impact performance on large meshes
+
+### 📊 **Console Output**
+Monitor the console for detailed information:
+```
+INFO: Applying memory optimisation for large mesh: 1,250,000 polygons
+INFO: Large mesh export: 1,250,000 polygons
+INFO: Memory cleanup after 3 modifiers
+INFO: Decimation complete: 1,250,000 → 312,500 polys (target: 0.250, actual: 0.250)
+```
 
 ## Export Indicators
 
@@ -70,15 +158,48 @@ You can also find the add-on directly on [Blender Extensions](https://extensions
 * **Green:** Object exported within the last minute (`FRESH`).
 * **Yellow:** Object exported within the last 5 minutes (`STALE`).
 * **Normal Colour:** Object export indicator has expired, or indicators were cleared.
-* **Visibility:** To see these colours in the 3D Viewport, ensure you are in **Solid** display mode and that the **Shading -> Color** type is set to **Object**.
+* **Visibility:** To see these colours in the 3D Viewport, ensure you are in **Solid** display mode and that the **Shading -> Colour** type is set to **Object**.
     [[Viewport Shading Docs]](https://docs.blender.org/manual/en/latest/editors/3dview/display/shading.html#solid)
 * **Recent Exports Panel:** A list of recently exported objects (still FRESH or STALE) appears in a sub-panel. Clicking the icon selects the object.
 * **Clear Indicators:** The "Clear All Export Indicators" button at the bottom of the "Recent Exports" panel will immediately remove the status from all objects and restore their original viewport colours.
+
+## Version History
+
+### v1.1.0 - Memory Optimisation & Modifier Control Update
+**🚀 Major Performance Improvements**
+* **Large Mesh Support:** Handles 2M+ polygon meshes without crashes
+* **Smart Memory Management:** Automatic optimisation for meshes >500K polygons
+* **Progressive Cleanup:** Memory management every 3 modifiers during heavy operations
+* **Enhanced Logging:** Polygon counts formatted with commas, detailed operation tracking
+
+**🎛️ New Modifier Control System**
+* **Flexible Application:** Choose None/Visible/Render modifier application modes
+* **Performance Focused:** Skip modifiers entirely for maximum speed
+* **Smart Filtering:** Respects Blender's modifier visibility states
+* **Memory Efficient:** Cleanup between modifier applications
+
+**👁️ New Export Indicators Toggle**
+* **Optional Visual Feedback:** Enable/disable viewport colour indicators
+* **Cleaner Viewport:** Turn off indicators when colour accuracy matters
+* **Performance Option:** Disable timer overhead when not needed
+* **Smart Panel Hiding:** Recent Exports panel auto-hides when disabled
+
+**🔧 Technical Improvements**
+* **Enhanced Cleanup:** Immediate geometry clearing for large meshes
+* **Better Error Handling:** Comprehensive exception management throughout pipeline
+* **Optimised Export:** Pre-export memory cleanup for large mesh operations
+* **Improved UI:** New modifier control buttons and indicators toggle
+
+### v1.0.4 - Previous Release
+* GLTF-specific export properties (binary/JSON type, materials export/placeholder)
+* Scaling and unit settings exclusions for GLTF and USD formats
+* Recent Exports panel selection button fix
+* Interface improvements for transform options
 
 ## Support Development
 
 If you find EasyMesh Batch Exporter useful in your workflow, consider supporting continued development:
 
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Development-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/speculative_artefact)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Development-FF5E5B?style=for-the-badge&logo=ko-fi&logoColour=white)](https://ko-fi.com/speculative_artefact)
 
 Your support helps maintain and improve this add-on. Thank you!
