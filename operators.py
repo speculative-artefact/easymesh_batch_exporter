@@ -260,6 +260,11 @@ def setup_export_object(obj, original_obj_name, scene_props, lod_level=None):
     try:
         # Sanitise the original object name
         original_obj_name = sanitise_filename(original_obj_name)
+        
+        # Remove any existing LOD suffix if re-processing the same object
+        if "_LOD" in original_obj_name:
+            original_obj_name = original_obj_name.split("_LOD")[0]
+            
         base_name = (
             scene_props.mesh_export_prefix +
             original_obj_name +
@@ -944,6 +949,22 @@ def export_object(obj, file_path, scene_props):
     return success
 
 
+def calculate_progressive_ratio(target_ratio, previous_ratio):
+    """
+    Calculate the decimation ratio needed to go from previous LOD to target LOD.
+    
+    Args:
+        target_ratio (float): The target ratio from the original mesh (e.g., 0.5 for 50%)
+        previous_ratio (float): The ratio of the previous LOD from original (e.g., 0.75 for 75%)
+    
+    Returns:
+        float: The ratio to apply to get from previous LOD to target LOD
+    """
+    if previous_ratio <= 0:
+        return target_ratio
+    return target_ratio / previous_ratio
+
+
 def cleanup_object(obj, obj_name_for_log):
     """
     Removes the specified object, handling potential errors.
@@ -1086,40 +1107,78 @@ class MESH_OT_batch_export(Operator):
                             ]
                         )
 
-                        for lod_level, ratio in enumerate(ratios):
+                        # LOD Reuse Implementation
+                        base_lod_obj = None
+                        previous_ratio = 1.0
+                        
+                        for lod_level, target_ratio in enumerate(ratios):
                             lod_obj = None
                             lod_obj_name = None
                             try:
-                                logger.info(f"Preparing LOD{lod_level}...")
-                                lod_obj = create_export_copy(
-                                    original_obj, 
-                                    context
-                                )
-                                (lod_obj_name, _) = setup_export_object(
-                                    lod_obj, original_obj.name,
-                                    scene_props, lod_level
-                                )
-                                apply_mesh_modifiers(lod_obj, scene_props.mesh_export_apply_modifiers)
-                                if lod_level > 0:
+                                if lod_level == 0:
+                                    # LOD0: Create base copy with modifiers applied
+                                    logger.info(f"Creating base LOD0...")
+                                    lod_obj = create_export_copy(
+                                        original_obj, 
+                                        context
+                                    )
+                                    (lod_obj_name, _) = setup_export_object(
+                                        lod_obj, original_obj.name,
+                                        scene_props, lod_level
+                                    )
+                                    apply_mesh_modifiers(lod_obj, scene_props.mesh_export_apply_modifiers)
+                                    
+                                    # Keep reference for reuse
+                                    base_lod_obj = lod_obj
+                                else:
+                                    # LOD1+: Reuse previous LOD with progressive decimation
+                                    if base_lod_obj is None:
+                                        raise RuntimeError("Base LOD object lost, cannot continue")
+                                    
+                                    logger.info(f"Building LOD{lod_level} from previous LOD...")
+                                    
+                                    # Calculate progressive ratio
+                                    progressive_ratio = calculate_progressive_ratio(
+                                        target_ratio, previous_ratio
+                                    )
+                                    logger.info(f"Progressive decimation ratio: {progressive_ratio:.3f} "
+                                              f"(from {previous_ratio:.3f} to {target_ratio:.3f})")
+                                    
+                                    # Rename for current LOD
+                                    (lod_obj_name, _) = setup_export_object(
+                                        base_lod_obj, original_obj.name,
+                                        scene_props, lod_level
+                                    )
+                                    
+                                    # Apply progressive decimation
                                     apply_decimate_modifier(
-                                        lod_obj, ratio,
+                                        base_lod_obj, progressive_ratio,
                                         scene_props.mesh_export_lod_type,
                                         scene_props.mesh_export_lod_symmetry_axis,
                                         scene_props.mesh_export_lod_symmetry,
                                     )
-                                if scene_props.mesh_export_tri:
-                                    # Trying to avoid long line
-                                    method=scene_props.mesh_export_tri_method
-                                    k_nrms=scene_props.mesh_export_keep_normals
+                                    
+                                    # Use the same object for export
+                                    lod_obj = base_lod_obj
+                                
+                                # Triangulate if needed (applies to all LODs)
+                                if scene_props.mesh_export_tri and lod_level == 0:
+                                    # Only triangulate once on LOD0
+                                    method = scene_props.mesh_export_tri_method
+                                    k_nrms = scene_props.mesh_export_keep_normals
                                     triangulate_mesh(lod_obj, method, k_nrms)
 
+                                # Export current LOD
                                 lod_file_path = os.path.join(export_base_path,
-                                                             lod_obj_name)
+                                                           lod_obj_name)
                                 if export_object(lod_obj, lod_file_path,
-                                                 scene_props):
+                                               scene_props):
                                     successful_exports += 1
                                 else:
                                     raise RuntimeError("Export func failed")
+                                
+                                # Update previous ratio for next iteration
+                                previous_ratio = target_ratio
 
                             except Exception as lod_e:
                                 object_processed_successfully = False
@@ -1133,8 +1192,13 @@ class MESH_OT_batch_export(Operator):
                                 failed_exports.append(
                                     f"{original_obj.name} (LOD{lod_level:02d})"
                                 )
+                                # Break the loop on error since subsequent LODs depend on previous
+                                break
                             finally:
-                                cleanup_object(lod_obj, lod_obj_name)
+                                # Only cleanup at the very end
+                                if lod_level == len(ratios) - 1 or not object_processed_successfully:
+                                    cleanup_object(base_lod_obj, "base_lod_object")
+                                    base_lod_obj = None
                                 
                         # Memory cleanup between LOD levels for large meshes
                         if len(original_obj.data.polygons if original_obj.data else []) > LARGE_MESH_THRESHOLD:
