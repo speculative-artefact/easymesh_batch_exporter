@@ -174,3 +174,9 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# personal notes
+NOTE.md
+
+# extension build
+*.zip
