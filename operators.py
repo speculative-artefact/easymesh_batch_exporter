@@ -807,12 +807,6 @@ def export_object(obj, file_path, scene_props):
     base_file_path = file_path
     export_filepath = f"{base_file_path}.{fmt.lower()}"
 
-    # GLTF material export type
-    if scene_props.mesh_export_gltf_materials:
-        gltf_exp_mat = "EXPORT"
-    else:
-        gltf_exp_mat = "PLACEHOLDER"
-
     temp_lod_lvl = obj.name.split("_")[-1]
 
     if temp_lod_lvl == "LOD01":
@@ -886,7 +880,7 @@ def export_object(obj, file_path, scene_props):
                     export_texcoords=True, # Explicitly export UVs
                     export_normals=True,
                     export_tangents=False, 
-                    export_materials=gltf_exp_mat, 
+                    export_materials=scene_props.mesh_export_gltf_materials, 
                     export_vertex_color="MATERIAL", 
                     export_cameras=False,
                     export_lights=False,

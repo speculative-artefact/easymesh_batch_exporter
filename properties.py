@@ -49,10 +49,15 @@ class MeshExporterSettings(PropertyGroup):
     )
 
     #GLTF export materials property
-    mesh_export_gltf_materials: BoolProperty(
+    mesh_export_gltf_materials: EnumProperty(
         name="Export Materials",
         description="Export materials with glTF",
-        default=True
+        items=[
+            ("EXPORT", "Export", "Export all materials used by included objects"),
+            ("PLACEHOLDER", "Placeholder", "Do not export materials, but write multiple primitive groups per mesh, keeping material slot information"),
+            ("NONE", "No export", "Do not export materials, and combine mesh primitive groups, losing material slot information"),
+        ],
+        default="EXPORT"
     )
 
     # Scale property
