@@ -1,11 +1,11 @@
 # EasyMesh Batch Exporter for Blender
 
 ![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)
-![Version: 1.1.0](https://img.shields.io/badge/Version-1.1.0-green.svg)
+![Version: 1.2.0](https://img.shields.io/badge/Version-1.2.0-green.svg)
 ![Blender: 4.2+](https://img.shields.io/badge/Blender-4.2+-orange.svg)
 ![Large Mesh Support](https://img.shields.io/badge/Large%20Mesh-2M%2B%20Polygons-red.svg)
 
-A Blender add-on for batch exporting multiple selected mesh objects with advanced memory optimisation, modifier control, LOD generation, and viewport indicators for recent exports. Designed to handle large, complex meshes without crashes.
+A Blender add-on for batch exporting multiple selected mesh objects with advanced memory optimisation, modifier control, LOD generation, texture optimisation, and viewport indicators for recent exports. Designed to handle large, complex meshes without crashes.
 
 [![EasyMesh demo - Watch Video](https://cdn.loom.com/sessions/thumbnails/567dea7f7cf84f91939d159807d6659d-e7c0d4f2068a7d8d-full-play.gif)](https://www.loom.com/share/567dea7f7cf84f91939d159807d6659d?sid=dd68ecd1-58dc-43c4-b74b-cfeaa82f4553)
 
