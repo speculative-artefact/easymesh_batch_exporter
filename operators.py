@@ -597,7 +597,7 @@ def compress_textures(obj, ratio, export_path=None, save_compressed=True):
                         if temp_file and os.path.exists(temp_file.name):
                             try:
                                 os.unlink(temp_file.name)
-                            except:
+                            except OSError:
                                 pass
                         
                         # Copy other relevant properties
@@ -1361,7 +1361,7 @@ def export_object(obj, file_path, scene_props):
                     tex_path = os.path.join(export_dir, tex_filename)
                     try:
                         total_texture_size += os.path.getsize(tex_path)
-                    except:
+                    except OSError:
                         pass
                 
                 if total_texture_size > 0:
@@ -1385,7 +1385,7 @@ def export_object(obj, file_path, scene_props):
                     for tex_file in texture_files:
                         try:
                             total_texture_size += os.path.getsize(tex_file)
-                        except:
+                        except OSError:
                             pass
                     
                     texture_size_mb = total_texture_size / (1024 * 1024)
@@ -1581,7 +1581,7 @@ class MESH_OT_batch_export(Operator):
                             try:
                                 if lod_level == 0:
                                     # LOD0: Create base copy with modifiers applied
-                                    logger.info(f"Creating base LOD0...")
+                                    logger.info("Creating base LOD0...")
                                     lod_obj = create_export_copy(
                                         original_obj, 
                                         context
