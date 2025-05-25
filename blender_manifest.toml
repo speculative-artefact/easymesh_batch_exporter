@@ -30,8 +30,20 @@ copyright = [
 [permissions]
 files = "Export mesh files to the specified directory"
 
-# [build]
-# paths_exclude_pattern = []
+[build]
+paths_exclude_pattern = [
+    "releases/",
+    ".git/",
+    ".github/",
+    ".gitignore",
+    "__pycache__/",
+    ".claude/",
+    "*.pyc",
+    ".DS_Store",
+    "NOTE.md",
+    ".vscode/",
+    "*.log"
+]
 
 [features]
 workspace = true
