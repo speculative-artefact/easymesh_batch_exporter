@@ -49,7 +49,13 @@ A Blender add-on for batch exporting multiple selected mesh objects with advance
 * **Progressive Building:** Each LOD built from previous (60% faster, 50% less memory)
 * **Symmetry Preservation:** Maintain model symmetry during decimation
 * **Quality Control:** Individual ratio settings for each LOD level
-* **Texture Optimisation:** Automatic texture downscaling per LOD level
+* **Advanced Texture Optimisation:**
+  * Automatic texture downscaling with customisable sizes per LOD
+  * Aspect ratio preservation to prevent distortion
+  * Format preservation (PNG for alpha, HDR for high dynamic range)
+  * Normal map quality preservation (keeps higher resolution)
+  * Compression quality control for lossy formats (0-100)
+  * Smart resizing (no upscaling of small textures)
 
 ### 👁️ **Visual Feedback**
 * **Export Indicators:** Optional viewport colour coding for recently exported objects
@@ -100,15 +106,19 @@ You can also find the add-on directly on [Blender Extensions](https://extensions
       * **Render:** Apply render-enabled modifiers (most complete)
     * **Triangulate:** Optional mesh triangulation with method selection and normal preservation
     
-    ### File Naming & Feedback
+    ### File Naming
     * **Prefix/Suffix:** Add custom text to exported filenames for organisation
-    * **Export Indicators:** Toggle viewport colour feedback on/off
     
     ### LOD Generation (Optional)
     * **Quick LODs:** Enable in sub-panel header to generate up to 4 detail levels
     * **Symmetry:** Maintain model symmetry during decimation
-    * **Ratios:** Individual quality settings for each LOD level
-    * Note: LOD0 = base mesh, LOD1-4 = progressively decimated versions
+    * **Resize Textures:** Enable automatic texture optimisation for LODs
+    * **Texture Settings** (when resizing enabled):
+      * **Compression:** Quality setting for lossy formats like JPEG (0-100)
+      * **Preserve Normal Maps:** Keep normal maps at higher resolution
+      * **LOD Texture Sizes:** Customisable max size for each LOD (8K to 128px)
+    * **Ratios:** Individual mesh decimation settings for each LOD level
+    * Note: LOD0 = base mesh, LOD1-4 = progressively optimised versions
 
 4.  **Export:** Click the "Export Selected Meshes" button
 5.  **Monitor Progress:** 
@@ -160,10 +170,12 @@ INFO: Decimation complete: 1,250,000 → 312,500 polys (target: 0.250, actual: 0
 * **Green:** Object exported within the last minute (`FRESH`).
 * **Yellow:** Object exported within the last 5 minutes (`STALE`).
 * **Normal Colour:** Object export indicator has expired, or indicators were cleared.
+* **Toggle Location:** The export indicators checkbox is now conveniently located in the header of the "Recent Exports" panel.
 * **Visibility:** To see these colours in the 3D Viewport, ensure you are in **Solid** display mode and that the **Shading -> Colour** type is set to **Object**.
     [[Viewport Shading Docs]](https://docs.blender.org/manual/en/latest/editors/3dview/display/shading.html#solid)
-* **Recent Exports Panel:** A list of recently exported objects (still FRESH or STALE) appears in a sub-panel. Clicking the icon selects the object.
+* **Recent Exports Panel:** When indicators are enabled, shows a list of recently exported objects (still FRESH or STALE). Clicking the icon selects the object.
 * **Clear Indicators:** The "Clear All Export Indicators" button at the bottom of the "Recent Exports" panel will immediately remove the status from all objects and restore their original viewport colours.
+* **Auto-Clear:** Unchecking the indicators checkbox immediately clears all existing indicators from the viewport.
 
 ## Version History
 

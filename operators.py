@@ -287,7 +287,10 @@ def setup_export_object(obj, original_obj_name, scene_props, lod_level=None):
         logger.info(f"Renamed to: {obj.name}")
 
         # Check if object's scale is already 1.0
-        if obj.scale != (1.0, 1.0, 1.0):
+        scale_epsilon = 1e-6
+        if (abs(obj.scale[0] - 1.0) > scale_epsilon or 
+            abs(obj.scale[1] - 1.0) > scale_epsilon or 
+            abs(obj.scale[2] - 1.0) > scale_epsilon):
             # Apply scale transform if not 1.0
             logger.info(f"Object scale is not 1.0: {obj.scale}, applying...")
             apply_transforms(obj, apply_scale=True)
@@ -447,7 +450,7 @@ def apply_mesh_modifiers(obj, modifier_mode="VISIBLE"):
     )
 
 
-def compress_textures(obj, ratio):
+def compress_textures(obj, ratio, export_path=None, save_compressed=True):
     """
     Compresses textures based on decimation ratio with no user input required.
     
@@ -455,6 +458,8 @@ def compress_textures(obj, ratio):
         obj:    The mesh object whose textures should be compressed
         ratio:  The decimation ratio 
                 1.0 = full quality, 0.01 = heavy decimation
+        export_path: Directory to save compressed textures to
+        save_compressed: Whether to save compressed textures to disk
         
     Returns:
         List of modified image names for reporting
@@ -471,6 +476,8 @@ def compress_textures(obj, ratio):
         logger.info(f"No materials found on {obj.name}, "
                     f"skipping texture compression")
         return []
+    
+    logger.info(f"Found {len(materials)} materials on {obj.name}")
     
     modified_images = []
     
@@ -491,6 +498,8 @@ def compress_textures(obj, ratio):
     if not image_nodes:
         logger.info(f"No texture images found on {obj.name}")
         return []
+    
+    logger.info(f"Found {len(image_nodes)} unique texture images to compress")
         
     # Calculate compression amount based on decimation ratio
     compression_factor = max(ratio**0.9, 0.05)  # Limit max compression to 1/20
@@ -498,87 +507,158 @@ def compress_textures(obj, ratio):
     
     # Process each image
     for orig_img, nodes_using_img in image_nodes.items():
-        # Skip already compressed or size-zero images
-        if (not orig_img.has_data 
-            or orig_img.size[0] == 0 
-            or orig_img.size[1] == 0):
+        try:
+            # Skip packed, or invalid images
+            if (not orig_img.has_data 
+                or orig_img.size[0] == 0 
+                or orig_img.size[1] == 0):
+                logger.debug(f"Skipping {orig_img.name}: invalid or no data")
+                continue
+                
+            # Skip already compressed images (but allow recompression if different ratio)
+            if orig_img.name.endswith("_LOD"):
+                logger.debug(f"Skipping {orig_img.name}: already compressed")
+                continue
+                
+            # Calculate new resolution
+            orig_width, orig_height = orig_img.size
+            is_power_of_2 = ((orig_width & (orig_width - 1) == 0) 
+                             and (orig_height & (orig_height - 1) == 0))
+            
+            new_width = max(int(orig_width * compression_factor), min_dimension)
+            new_height = max(int(orig_height * compression_factor), min_dimension)
+            
+            # Round to power of 2 if original was power of 2
+            if is_power_of_2:
+                new_width = 2 ** max(0, (new_width - 1).bit_length())
+                new_height = 2 ** max(0, (new_height - 1).bit_length())
+                
+            # Skip if size hasn't changed
+            if (new_width, new_height) == (orig_width, orig_height):
+                continue
+            
+            # Create a copy of the original image with unique name based on ratio
+            ratio_suffix = f"{int(ratio * 100):02d}"  # Convert 0.75 to "75"
+            copy_name = f"{orig_img.name}_LOD{ratio_suffix}"
+            
+            # Check if copy already exists, reuse if it does
+            copied_img = bpy.data.images.get(copy_name)
+            if copied_img:
+                # If dimensions don't match our target, recreate it
+                if (copied_img.size[0] != new_width 
+                    or copied_img.size[1] != new_height):
+                    bpy.data.images.remove(copied_img)
+                    copied_img = None
+            
+            if not copied_img:
+                # Create new image with proper dimensions
+                copied_img = bpy.data.images.new(
+                    name=copy_name,
+                    width=new_width,
+                    height=new_height,
+                    alpha=True if hasattr(orig_img, 'alpha') and orig_img.alpha else False,
+                    float_buffer=orig_img.is_float if hasattr(orig_img, 'is_float') else False
+                )
+                
+                # Copy pixel data from original and resize using a more reliable method
+                if orig_img.has_data and len(orig_img.pixels) > 0:
+                    try:
+                        # Ensure original image is loaded and packed
+                        if not orig_img.packed_file and orig_img.filepath:
+                            orig_img.reload()
+                        
+                        # Use a different approach: create at target size and use GPU for scaling
+                        # First, save original to a temporary location if it has a filepath
+                        import tempfile
+                        temp_file = None
+                        
+                        if orig_img.filepath and os.path.exists(bpy.path.abspath(orig_img.filepath)):
+                            # Use the existing file
+                            source_path = bpy.path.abspath(orig_img.filepath)
+                        else:
+                            # Image is procedural or packed, save it temporarily
+                            temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+                            temp_file.close()
+                            
+                            # Save the original image to temp file
+                            orig_img.filepath_raw = temp_file.name
+                            orig_img.file_format = 'PNG'
+                            orig_img.save()
+                            source_path = temp_file.name
+                        
+                        # Load the image into the new image and scale it
+                        copied_img.filepath_raw = source_path
+                        copied_img.reload()
+                        
+                        # Now scale to target size
+                        copied_img.scale(new_width, new_height)
+                        
+                        # Clean up temp file if created
+                        if temp_file and os.path.exists(temp_file.name):
+                            try:
+                                os.unlink(temp_file.name)
+                            except:
+                                pass
+                        
+                        # Copy other relevant properties
+                        copied_img.colorspace_settings.name = (
+                            orig_img.colorspace_settings.name
+                        )
+                        
+                    except Exception as e:
+                        logger.warning(f"Error copying pixels for "
+                                       f"{orig_img.name}: {e}")
+                        # Clean up failed copy
+                        if copied_img:
+                            bpy.data.images.remove(copied_img)
+                        continue
+                        
+                logger.info(f"Created compressed copy of '{orig_img.name}' "
+                            f"at {new_width}x{new_height} "
+                            f"(compression factor: {compression_factor:.2f})")
+                
+                # Save compressed texture to disk if requested
+                if save_compressed and export_path:
+                    try:
+                        # Determine file extension from original
+                        orig_ext = ".jpg"  # Default
+                        if orig_img.filepath:
+                            orig_ext = os.path.splitext(orig_img.filepath)[1] or ".jpg"
+                        elif "." in orig_img.name:
+                            orig_ext = "." + orig_img.name.split(".")[-1]
+                        
+                        # Create compressed texture filename
+                        base_name = os.path.splitext(orig_img.name)[0]
+                        compressed_filename = f"{base_name}_LOD{ratio_suffix}{orig_ext}"
+                        compressed_filepath = os.path.join(export_path, compressed_filename)
+                        
+                        # Save the compressed texture
+                        copied_img.filepath_raw = compressed_filepath
+                        copied_img.file_format = 'JPEG' if orig_ext.lower() in ['.jpg', '.jpeg'] else 'PNG'
+                        copied_img.save()
+                        
+                        logger.info(f"Saved compressed texture: {compressed_filename}")
+                        
+                    except Exception as save_e:
+                        logger.warning(f"Failed to save compressed texture {copy_name}: {save_e}")
+            
+            # Update material nodes to use the copied image
+            for mat, node in nodes_using_img:
+                node.image = copied_img
+                logger.debug(f"Updated node '{node.name}' in material '{mat.name}' to use compressed image")
+            
+            modified_images.append(f"{orig_img.name} ({orig_width}x{orig_height} "
+                                   f"→ {new_width}x{new_height})")
+            
+            # Store original image reference on the object for restoration
+            if "original_textures" not in obj:
+                obj["original_textures"] = {}
+            
+            obj["original_textures"][copy_name] = orig_img.name
+            
+        except Exception as e:
+            logger.error(f"Error processing texture {orig_img.name}: {e}", exc_info=True)
             continue
-            
-        # Calculate new resolution
-        orig_width, orig_height = orig_img.size
-        is_power_of_2 = ((orig_width & (orig_width - 1) == 0) 
-                         and (orig_height & (orig_height - 1) == 0))
-        
-        new_width = max(int(orig_width * compression_factor), min_dimension)
-        new_height = max(int(orig_height * compression_factor), min_dimension)
-        
-        # Round to power of 2 if original was power of 2
-        if is_power_of_2:
-            new_width = 2 ** (new_width - 1).bit_length()
-            new_height = 2 ** (new_height - 1).bit_length()
-            
-        # Skip if size hasn't changed
-        if (new_width, new_height) == (orig_width, orig_height):
-            continue
-        
-        # Create a copy of the original image
-        copy_name = f"{orig_img.name}_LOD"
-        
-        # Check if copy already exists, reuse if it does
-        copied_img = bpy.data.images.get(copy_name)
-        if copied_img:
-            # If dimensions don't match our target, recreate it
-            if (copied_img.size[0] != new_width 
-                or copied_img.size[1] != new_height):
-                bpy.data.images.remove(copied_img)
-                copied_img = None
-        
-        if not copied_img:
-            # Create new image with proper dimensions
-            copied_img = bpy.data.images.new(
-                name=copy_name,
-                width=new_width,
-                height=new_height
-            )
-            
-            # Copy pixel data from original and resize
-            if orig_img.has_data and orig_img.pixels:
-                try:
-                    # Make a copy of the original at the lower resolution
-                    # First match original size
-                    copied_img.scale(orig_width, orig_height)  
-                    # Copy pixels
-                    copied_img.pixels = orig_img.pixels[:]     
-                    # Then resize to target
-                    copied_img.scale(new_width, new_height)    
-                    
-                    # Copy other relevant properties
-                    copied_img.colourspace_settings.name = (
-                        orig_img.colourspace_settings.name
-                    )
-                    if orig_img.filepath:
-                        # For export reference
-                        copied_img.filepath = orig_img.filepath  
-                    
-                except Exception as e:
-                    logger.warning(f"Error copying pixels for "
-                                   f"{orig_img.name}: {e}")
-                    
-            logger.info(f"Created compressed copy of '{orig_img.name}' "
-                        f"at {new_width}x{new_height}")
-        
-        # Update material nodes to use the copied image
-        for mat, node in nodes_using_img:
-            node.image = copied_img
-        
-        modified_images.append(f"{orig_img.name} ({orig_width}x{orig_height} "
-                               f"→ {new_width}x{new_height})")
-        
-        # Store original image reference on the object for restoration
-        if "original_textures" not in obj:
-            obj["original_textures"] = {}
-        
-        obj["original_textures"][copy_name] = orig_img.name
     
     return modified_images
 
@@ -629,9 +709,13 @@ def restore_original_textures(obj):
     del obj["original_textures"]
     
     # Delete any unused LOD textures
-    for img in bpy.data.images:
-        if img.name.endswith("_LOD") and not img.users:
-            bpy.data.images.remove(img)
+    try:
+        for img in list(bpy.data.images):  # Use list to avoid iteration issues
+            if "_LOD" in img.name and img.users == 0:
+                logger.debug(f"Removing unused LOD texture: {img.name}")
+                bpy.data.images.remove(img)
+    except Exception as e:
+        logger.warning(f"Error cleaning up LOD textures: {e}")
 
 
 def apply_decimate_modifier(obj, ratio, decimate_type, 
@@ -670,10 +754,10 @@ def apply_decimate_modifier(obj, ratio, decimate_type,
     if current_mode != "OBJECT":
         bpy.ops.object.mode_set(mode="OBJECT")
 
-    # Compress textures based on ratio - no UI elements needed
-    # compressed_textures = compress_textures(obj, ratio)
-    # if compressed_textures:
-    #     logger.info(f"Compressed {len(compressed_textures)} textures")
+    # Skip the old texture compression system - we now use simple external texture saving
+    compressed_texture_list = []
+    # Texture compression disabled - using simple external texture saving instead
+    logger.debug("Skipping texture compression - using external texture saving")
 
     # Create and apply decimate modifier
     mod_name = "TempDecimate"
@@ -720,9 +804,8 @@ def apply_decimate_modifier(obj, ratio, decimate_type,
             f"(target: {ratio:.3f}, actual: {actual_ratio:.3f})"
         )
         
-        # if compressed_textures:
-        #     logger.info(f"Texture compression details: "
-        #                 f"{', '.join(compressed_textures)}")
+        # No texture compression details to log
+        pass
             
     except Exception as e:
         logger.error(f"Failed to apply Decimate modifier: {e}")
@@ -789,6 +872,310 @@ def triangulate_mesh(obj, method="BEAUTY", keep_normals=True):
             bpy.ops.object.mode_set(mode=current_mode)
 
 
+def is_normal_map(node, img):
+    """
+    Detect if a texture is likely a normal map based on various indicators.
+    
+    Args:
+        node: The image texture node
+        img: The image data
+    
+    Returns:
+        bool: True if likely a normal map
+    """
+    # Check node name
+    node_name_lower = node.name.lower()
+    if any(term in node_name_lower for term in ['normal', 'norm', 'nrm', 'bump']):
+        return True
+    
+    # Check image name
+    img_name_lower = img.name.lower()
+    if any(term in img_name_lower for term in ['normal', 'norm', 'nrm', 'bump', '_n.', '_n_']):
+        return True
+    
+    # Check if connected to Normal input
+    for output in node.outputs:
+        for link in output.links:
+            if link.to_socket.name.lower() in ['normal', 'normal map']:
+                return True
+    
+    # Check colorspace - normal maps are usually Non-Color
+    if hasattr(img.colorspace_settings, 'name'):
+        if img.colorspace_settings.name in ['Non-Color', 'Linear', 'Raw']:
+            # Additional check - if it's connected to Base Color, it's not a normal map
+            for output in node.outputs:
+                for link in output.links:
+                    if link.to_socket.name in ['Base Color', 'Color']:
+                        return False
+            return True
+    
+    return False
+
+
+def get_texture_format_info(img):
+    """
+    Determine the best format to save a texture based on its properties.
+    
+    Args:
+        img: The image data
+    
+    Returns:
+        tuple: (format_string, has_alpha, is_hdr)
+    """
+    has_alpha = False
+    is_hdr = False
+    format_string = 'JPEG'
+    
+    # Check if image has alpha
+    if hasattr(img, 'depth'):
+        has_alpha = img.depth == 32  # RGBA
+    elif hasattr(img, 'channels'):
+        has_alpha = img.channels == 4
+    
+    # Check if HDR
+    if hasattr(img, 'is_float'):
+        is_hdr = img.is_float
+    
+    # Determine format based on properties
+    if is_hdr:
+        format_string = 'HDR'
+    elif has_alpha:
+        format_string = 'PNG'
+    else:
+        # Check original format
+        if img.filepath:
+            ext = os.path.splitext(img.filepath)[1].lower()
+            if ext in ['.png']:
+                format_string = 'PNG'
+            elif ext in ['.tga', '.targa']:
+                format_string = 'TARGA'
+            elif ext in ['.exr']:
+                format_string = 'OPEN_EXR'
+    
+    return format_string, has_alpha, is_hdr
+
+
+def save_external_textures(obj, export_dir, lod_suffix="", resize_textures=True, scene_props=None):
+    """
+    Save textures used by the object to external files with LOD-appropriate sizes.
+    Also updates material nodes to reference the external files for proper FBX export.
+    
+    Args:
+        obj: The mesh object
+        export_dir: Directory to save textures to
+        lod_suffix: Suffix to add to texture names (e.g., "_LOD01")
+        resize_textures: Whether to resize textures for LODs
+        scene_props: Scene properties for texture settings
+    
+    Returns:
+        Tuple: (List of saved texture filenames, Dict of original node references for restoration)
+    """
+    if not obj or obj.type != "MESH":
+        return [], {}
+    
+    saved_textures = []
+    original_references = {}  # Store original image references for restoration
+    materials = obj.data.materials
+    
+    if not materials:
+        return saved_textures, original_references
+    
+    # Determine target texture size based on LOD level (only if resizing is enabled)
+    target_size = None
+    if resize_textures and scene_props:
+        if "LOD00" in lod_suffix:
+            target_size = None  # Original size
+        elif "LOD01" in lod_suffix:
+            target_size = int(scene_props.mesh_export_lod1_texture_size)
+        elif "LOD02" in lod_suffix:
+            target_size = int(scene_props.mesh_export_lod2_texture_size)
+        elif "LOD03" in lod_suffix:
+            target_size = int(scene_props.mesh_export_lod3_texture_size)
+        elif "LOD04" in lod_suffix:
+            target_size = int(scene_props.mesh_export_lod4_texture_size)
+        else:
+            target_size = None  # Default to original
+    
+    logger.info(f"Target texture size for {lod_suffix}: {target_size or 'original'}")
+    
+    for mat in materials:
+        if not mat or not mat.node_tree:
+            continue
+            
+        for node in mat.node_tree.nodes:
+            if node.type == 'TEX_IMAGE' and node.image:
+                img = node.image
+                
+                # Skip if no data
+                if not img.has_data:
+                    continue
+                
+                # Detect texture type
+                is_normal = is_normal_map(node, img)
+                
+                # Get format info
+                format_string, has_alpha, is_hdr = get_texture_format_info(img)
+                
+                # Determine file extension based on format
+                ext_map = {
+                    'JPEG': '.jpg',
+                    'PNG': '.png',
+                    'TARGA': '.tga',
+                    'HDR': '.hdr',
+                    'OPEN_EXR': '.exr'
+                }
+                ext = ext_map.get(format_string, '.jpg')
+                
+                # Create external filename
+                base_name = os.path.splitext(img.name)[0]
+                external_filename = f"{base_name}{lod_suffix}{ext}"
+                external_path = os.path.join(export_dir, external_filename)
+                
+                try:
+                    # Ensure the image has data loaded
+                    if not img.has_data and img.filepath:
+                        img.reload()
+                    
+                    # Save a copy of the image (with resizing if needed)
+                    if img.has_data:
+                        img_to_save = img
+                        temp_img = None
+                        
+                        # Check if we need to resize
+                        orig_width, orig_height = img.size
+                        
+                        # Adjust target size for normal maps if preservation is enabled
+                        adjusted_target_size = target_size
+                        if is_normal and scene_props and scene_props.mesh_export_preserve_normal_maps and target_size:
+                            # Keep normal maps at one LOD level higher
+                            if "LOD02" in lod_suffix:
+                                adjusted_target_size = int(scene_props.mesh_export_lod1_texture_size)
+                            elif "LOD03" in lod_suffix:
+                                adjusted_target_size = int(scene_props.mesh_export_lod2_texture_size)
+                            elif "LOD04" in lod_suffix:
+                                adjusted_target_size = int(scene_props.mesh_export_lod3_texture_size)
+                            logger.info(f"Preserving normal map quality: {target_size} → {adjusted_target_size}")
+                        
+                        # Only resize if image is larger than target (no upscaling)
+                        needs_resize = (adjusted_target_size is not None and 
+                                      (orig_width > adjusted_target_size or orig_height > adjusted_target_size))
+                        
+                        if needs_resize:
+                            # Calculate new dimensions preserving aspect ratio
+                            aspect_ratio = orig_width / orig_height
+                            
+                            if orig_width > orig_height:
+                                new_width = adjusted_target_size
+                                new_height = int(adjusted_target_size / aspect_ratio)
+                            else:
+                                new_height = adjusted_target_size
+                                new_width = int(adjusted_target_size * aspect_ratio)
+                            
+                            # Ensure dimensions are at least 1
+                            new_width = max(1, new_width)
+                            new_height = max(1, new_height)
+                            
+                            logger.info(f"Resizing {img.name} from {orig_width}x{orig_height} to {new_width}x{new_height}")
+                            
+                            # Create a temporary resized copy
+                            temp_img = img.copy()
+                            temp_img.name = f"{img.name}_temp_resize"
+                            
+                            # Scale the temporary image
+                            temp_img.scale(new_width, new_height)
+                            img_to_save = temp_img
+                        else:
+                            if adjusted_target_size is not None:
+                                logger.info(f"Skipping resize for {img.name} ({orig_width}x{orig_height}) - already smaller than target")
+                        
+                        # Set the save path and format
+                        original_filepath = img_to_save.filepath_raw
+                        img_to_save.filepath_raw = external_path
+                        img_to_save.file_format = format_string
+                        
+                        # Set JPEG quality if applicable
+                        if format_string == 'JPEG' and scene_props:
+                            # Note: Blender's save_render settings affect image saving
+                            scene = bpy.context.scene
+                            original_quality = scene.render.image_settings.quality
+                            scene.render.image_settings.quality = scene_props.mesh_export_texture_quality
+                        
+                        # Save the image
+                        img_to_save.save()
+                        
+                        # Restore JPEG quality
+                        if format_string == 'JPEG' and scene_props:
+                            scene.render.image_settings.quality = original_quality
+                        
+                        # Restore original filepath to avoid affecting the scene
+                        img_to_save.filepath_raw = original_filepath
+                        
+                        # Clean up temporary image
+                        if temp_img:
+                            bpy.data.images.remove(temp_img)
+                        
+                        # Create a new image that references the external file
+                        external_img = bpy.data.images.load(external_path)
+                        external_img.name = f"{img.name}_external"
+                        
+                        # Preserve colorspace settings
+                        if hasattr(img, 'colorspace_settings'):
+                            external_img.colorspace_settings.name = img.colorspace_settings.name
+                        
+                        # Store original reference for restoration
+                        original_references[node] = img
+                        
+                        # Update the material node to use the external image
+                        node.image = external_img
+                        
+                        saved_textures.append(external_filename)
+                        size_info = f"{orig_width}x{orig_height}"
+                        if needs_resize:
+                            size_info += f" → {new_width}x{new_height}"
+                        texture_type = "normal map" if is_normal else "texture"
+                        logger.info(f"Saved external {texture_type}: {external_filename} ({size_info}, {format_string})")
+                    else:
+                        logger.warning(f"Image {img.name} has no data to save")
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to save texture {img.name}: {e}")
+                    import traceback
+                    logger.debug(traceback.format_exc())
+    
+    return saved_textures, original_references
+
+
+def restore_material_references(original_references):
+    """
+    Restore original material node references and clean up external image references.
+    
+    Args:
+        original_references: Dict mapping nodes to their original images
+    """
+    for node, original_img in original_references.items():
+        try:
+            # Get the external image we created
+            external_img = node.image
+            
+            # Restore original image reference
+            node.image = original_img
+            
+            # Remove the external image from Blender data
+            if external_img and external_img.name.endswith("_external"):
+                try:
+                    bpy.data.images.remove(external_img)
+                    logger.debug(f"Cleaned up external image reference: {external_img.name}")
+                except ReferenceError:
+                    # Image was already removed, which is fine
+                    logger.debug(f"External image already cleaned up: {external_img.name}")
+                
+        except (ReferenceError, AttributeError):
+            # Node or image was already removed, which can happen during cleanup
+            logger.debug("Material reference already cleaned up")
+        except Exception as e:
+            logger.warning(f"Error restoring material reference: {e}")
+
+
 def export_object(obj, file_path, scene_props):
     """
     Exports a single object using scene properties.
@@ -805,7 +1192,15 @@ def export_object(obj, file_path, scene_props):
     success = False
     # base_file_path = os.path.splitext(file_path)[0] # Ensure no extension yet
     base_file_path = file_path
-    export_filepath = f"{base_file_path}.{fmt.lower()}"
+    
+    # Handle GLTF format extensions
+    if fmt == "GLTF":
+        if scene_props.mesh_export_gltf_type == "GLB":
+            export_filepath = f"{base_file_path}.glb"
+        else:
+            export_filepath = f"{base_file_path}.gltf"
+    else:
+        export_filepath = f"{base_file_path}.{fmt.lower()}"
 
     temp_lod_lvl = obj.name.split("_")[-1]
 
@@ -834,6 +1229,21 @@ def export_object(obj, file_path, scene_props):
         import gc
         gc.collect()
     
+    # Save external textures if not embedding
+    external_textures = []
+    original_references = {}
+    if not scene_props.mesh_export_embed_textures:
+        export_dir = os.path.dirname(export_filepath)
+        lod_suffix = ""
+        
+        # Extract LOD suffix from object name if present
+        if "_LOD" in obj.name:
+            lod_part = obj.name.split("_LOD")[-1]
+            if len(lod_part) == 2 and lod_part.isdigit():
+                lod_suffix = f"_LOD{lod_part}"
+        
+        external_textures, original_references = save_external_textures(obj, export_dir, lod_suffix, scene_props.mesh_export_resize_textures, scene_props)
+    
     logger.info(
         f"Exporting {os.path.basename(export_filepath)} ({fmt}) - {mesh_size:,} polygons..."
     )
@@ -851,8 +1261,8 @@ def export_object(obj, file_path, scene_props):
                     apply_unit_scale=False,
                     apply_scale_options="FBX_SCALE_ALL",
                     object_types={"MESH"},
-                    path_mode="COPY",
-                    embed_textures=True,
+                    path_mode="STRIP" if not scene_props.mesh_export_embed_textures else "COPY",
+                    embed_textures=scene_props.mesh_export_embed_textures,
                     mesh_smooth_type=scene_props.mesh_export_smoothing,
                     use_mesh_modifiers=False, # Handled by apply_mesh_modifiers
                     use_triangles=False,      # Handled by triangulate_mesh
@@ -865,13 +1275,14 @@ def export_object(obj, file_path, scene_props):
                     forward_axis=scene_props.mesh_export_coord_forward,
                     up_axis=scene_props.mesh_export_coord_up,
                     export_materials=True,
-                    path_mode="COPY",
+                    path_mode="STRIP",  # OBJ doesn't embed textures
                     export_normals=True,
                     export_smooth_groups=True,
                     apply_modifiers=False, # Handled by apply_mesh_modifiers
                     export_triangulated_mesh=False, # Handled triangulate_mesh
                 )
             elif fmt == "GLTF":
+                # For GLTF, textures are always embedded in GLB or copied with GLTF
                 bpy.ops.export_scene.gltf(
                     filepath=export_filepath,
                     use_selection=True,
@@ -884,17 +1295,21 @@ def export_object(obj, file_path, scene_props):
                     export_vertex_color="MATERIAL", 
                     export_cameras=False,
                     export_lights=False,
-                    export_skins=True,
-                    export_animations=True,
-                    export_extras=True,
+                    export_skins=False,  # Disable skin export to reduce size
+                    export_animations=False,  # Disable animation export to reduce size
+                    export_extras=False,  # Disable extras to reduce size
                     export_yup=True, # Use Y-Up coordinate system
+                    # Texture settings
+                    export_texture_dir="",  # Export textures to same directory as GLTF
                     export_jpeg_quality=export_quality,
                     export_image_quality=export_quality,
-                    export_def_bones=True, # Export bones even if not animated
-                    # Considering adding other options like Draco compression
-                    # needs testing
-                    # export_draco_mesh_compression_enable=True,
-                    # export_draco_compression_level=6,
+                    export_def_bones=False, # Don't export bones
+                    # Enable Draco compression for geometry
+                    export_draco_mesh_compression_enable=True,
+                    export_draco_mesh_compression_level=6,
+                    export_draco_position_quantization=14,
+                    export_draco_normal_quantization=10,
+                    export_draco_texcoord_quantization=12,
                 )
             elif fmt == "USD":
                 bpy.ops.wm.usd_export(
@@ -930,8 +1345,63 @@ def export_object(obj, file_path, scene_props):
                 logger.error(f"Unsupported export format '{fmt}'")
                 return False
 
+            # Get file size
+            file_size = os.path.getsize(export_filepath)
+            file_size_mb = file_size / (1024 * 1024)
+            
+            # Calculate approximate size breakdown for GLTF/GLB
+            size_info = f"Size: {file_size_mb:.2f} MB"
+            
+            # Add external texture info if any were saved
+            if external_textures:
+                export_dir = os.path.dirname(export_filepath)
+                total_texture_size = 0
+                
+                for tex_filename in external_textures:
+                    tex_path = os.path.join(export_dir, tex_filename)
+                    try:
+                        total_texture_size += os.path.getsize(tex_path)
+                    except:
+                        pass
+                
+                if total_texture_size > 0:
+                    texture_size_mb = total_texture_size / (1024 * 1024)
+                    size_info += f" + {len(external_textures)} texture(s): {texture_size_mb:.2f} MB"
+                    size_info += f" (Total: {file_size_mb + texture_size_mb:.2f} MB)"
+            
+            # For GLTF JSON format, also check for other texture files
+            elif fmt == "GLTF" and scene_props.mesh_export_gltf_type == "GLTF_SEPARATE":
+                export_dir = os.path.dirname(export_filepath)
+                texture_files = []
+                total_texture_size = 0
+                
+                # Look for common image formats in the same directory
+                for ext in ['.jpg', '.jpeg', '.png', '.webp']:
+                    pattern = os.path.join(export_dir, f"*{ext}")
+                    import glob
+                    texture_files.extend(glob.glob(pattern))
+                
+                if texture_files:
+                    for tex_file in texture_files:
+                        try:
+                            total_texture_size += os.path.getsize(tex_file)
+                        except:
+                            pass
+                    
+                    texture_size_mb = total_texture_size / (1024 * 1024)
+                    size_info += f" + {len(texture_files)} texture(s): {texture_size_mb:.2f} MB"
+                    size_info += f" (Total: {file_size_mb + texture_size_mb:.2f} MB)"
+            
+            elif fmt == "GLTF" and scene_props.mesh_export_gltf_type == "GLB":
+                # Rough estimate: with compression, ~100 bytes per triangle
+                estimated_mesh_size_mb = (mesh_size * 100) / (1024 * 1024)
+                estimated_texture_size_mb = file_size_mb - estimated_mesh_size_mb
+                if estimated_texture_size_mb > 0:
+                    size_info += f" (est. mesh: {estimated_mesh_size_mb:.1f} MB, textures: {estimated_texture_size_mb:.1f} MB)"
+            
             logger.info(
-                f"Successfully exported {os.path.basename(export_filepath)}"
+                f"Successfully exported {os.path.basename(export_filepath)} "
+                f"({size_info})"
             )
             success = True
         except Exception as e:
@@ -939,6 +1409,12 @@ def export_object(obj, file_path, scene_props):
                 f"Failed exporting {obj.name} as {fmt}: {e}", exc_info=True
             )
             success = False
+        finally:
+            # Restore original material references if we modified them
+            if original_references:
+                restore_material_references(original_references)
+                logger.debug("Restored original material references")
+    
     return success
 
 
@@ -974,13 +1450,8 @@ def cleanup_object(obj, obj_name_for_log):
     log_name = obj_name_for_log if obj_name_for_log else "unnamed object"
     logger.info(f"Attempting cleanup for: {log_name}")
     
-    # First restore original textures if they were compressed
-    # try:
-    #     restore_original_textures(obj)
-    # except Exception as tex_e:
-    #     logger.warning(
-    #       f"Error restoring original textures for {log_name}: {tex_e}"
-    #     )
+    # No texture restoration needed with the new simple system
+    pass
     
     # Then remove the object
     try:
@@ -1120,6 +1591,9 @@ class MESH_OT_batch_export(Operator):
                                         scene_props, lod_level
                                     )
                                     apply_mesh_modifiers(lod_obj, scene_props.mesh_export_apply_modifiers)
+                                    
+                                    # LOD0 texture resizing is handled during export via save_external_textures
+                                    # No need for special processing here
                                     
                                     # Keep reference for reuse
                                     base_lod_obj = lod_obj

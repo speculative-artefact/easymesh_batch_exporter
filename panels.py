@@ -135,10 +135,18 @@ class MESH_PT_exporter_panel(Panel):
         col = layout.column(heading="Rename file", align=True)
         col.prop(settings, "mesh_export_prefix")
         col.prop(settings, "mesh_export_suffix")
-        
-        # Export indicators settings
-        col = layout.column(heading="Visual Feedback", align=True)
-        col.prop(settings, "mesh_export_show_indicators")
+
+        # Texture embedding option (for formats that support it)
+        if settings.mesh_export_format in {"FBX", "USD"}:
+            col = layout.column(heading="Textures", align=True)
+            col.prop(settings, "mesh_export_embed_textures")
+        # Show format-specific texture info for GLTF
+        elif settings.mesh_export_format == "GLTF":
+            col = layout.column(heading="Textures", align=True)
+            if settings.mesh_export_gltf_type == "GLTF_SEPARATE":
+                col.label(text="JSON format exports textures separately", icon='INFO')
+            elif settings.mesh_export_gltf_type == "GLB":
+                col.label(text="GLB format always embeds textures", icon='INFO')
 
         layout.separator()
 
@@ -146,11 +154,8 @@ class MESH_PT_exporter_panel(Panel):
         mesh_count = sum(
             1 for obj in context.selected_objects if obj.type == "MESH"
         )
-        # col = layout.column(heading="Export Control", align=True)
-        # box = col.box()
-        # row = box.row()
-        # row.label(text=f"Selected Meshes: {mesh_count}", icon="MESH_DATA")
-        # Export button (always enabled unless poll() fails)
+        
+        # Export button
         row = layout.row()
         # Generate the button text first
         button_text = (
@@ -210,37 +215,64 @@ class MESH_PT_exporter_panel_lod(Panel):
         col.prop(settings, "mesh_export_lod_count")
         # Hide the decimate type bc I'm not sure if it's needed yet
         # col.prop(settings, "mesh_export_lod_type")
+        
+        col = layout.column(heading="Textures", align=True)
+        
+        # Texture resizing option
+        row = col.row(align=True)
+        row.prop(settings, "mesh_export_resize_textures", text="Resize for LODs")
+        
+        # Texture compression quality
+        row = col.row(align=True)
+        row.prop(settings, "mesh_export_texture_quality", text="Compression")
+        row.enabled = settings.mesh_export_resize_textures # Enable/disable sub-option
 
+        # Normal map preservation
+        row = col.row(align=True)
+        row.prop(settings, "mesh_export_preserve_normal_maps")
+        row.enabled = settings.mesh_export_resize_textures # Enable/disable sub-option
+
+        # LOD decimation ratios
         box = layout.box()
         col = box.column(align=True)
-        # col.label(text="Ratios:")
-        # Display relevant properties based on type
-        if settings.mesh_export_lod_type == "COLLAPSE":
-            row = col.row(align=True)
-            row.prop(settings, "mesh_export_lod_ratio_01", text="LOD1")
-            row = col.row(align=True)
-            row.prop(settings, "mesh_export_lod_ratio_02", text="LOD2")
-            if settings.mesh_export_lod_count < 2:
-                # Visual indicator for which LODs are disabled
-                row.enabled = False
-            row = col.row(align=True)
-            row.prop(settings, "mesh_export_lod_ratio_03", text="LOD3")
-            if settings.mesh_export_lod_count < 3:
-                # Visual indicator for which LODs are disabled
-                row.enabled = False
-            row = col.row(align=True)
-            row.prop(settings, "mesh_export_lod_ratio_04", text="LOD4")
-            if settings.mesh_export_lod_count < 4:
-                # Visual indicator for which LODs are disabled
-                row.enabled = False
-        elif settings.mesh_export_lod_type == "UNSUBDIVIDE":
-            # Unsudivide should use Int for iterations
-            # Can fix this later if needed
-            col.prop(settings, "mesh_export_lod_ratio_01", text="LOD1 Iter.")
-            col.prop(settings, "mesh_export_lod_ratio_02", text="LOD2 Iter.")
-            col.prop(settings, "mesh_export_lod_ratio_03", text="LOD3 Iter.")
-            col.prop(settings, "mesh_export_lod_ratio_04", text="LOD4 Iter.")
 
+        col.label(text="LOD Decimation Ratios:")
+        row = col.row(align=True)
+        row.prop(settings, "mesh_export_lod_ratio_01", text="LOD1")
+        row = col.row(align=True)
+        row.prop(settings, "mesh_export_lod_ratio_02", text="LOD2")
+        if settings.mesh_export_lod_count < 2:
+            row.enabled = False # Disable if LOD2 not used
+        row = col.row(align=True)
+        row.prop(settings, "mesh_export_lod_ratio_03", text="LOD3")
+        if settings.mesh_export_lod_count < 3:
+            row.enabled = False # Disable if LOD3 not used
+        row = col.row(align=True)
+        row.prop(settings, "mesh_export_lod_ratio_04", text="LOD4")
+        if settings.mesh_export_lod_count < 4:
+            row.enabled = False # Disable if LOD4 not used
+        
+        # Show texture quality and LOD size settings if resizing is enabled
+        if settings.mesh_export_resize_textures:
+            box = layout.box()
+            col = box.column(align=True)
+            
+            # LOD texture sizes
+            col.label(text="LOD Texture Sizes:")
+            row = col.row(align=True)
+            row.prop(settings, "mesh_export_lod1_texture_size", text="LOD1")
+            row = col.row(align=True)
+            row.prop(settings, "mesh_export_lod2_texture_size", text="LOD2")
+            if settings.mesh_export_lod_count < 2:
+                row.enabled = False # Disable if LOD2 not used
+            row = col.row(align=True)
+            row.prop(settings, "mesh_export_lod3_texture_size", text="LOD3")
+            if settings.mesh_export_lod_count < 3:
+                row.enabled = False # Disable if LOD3 not used
+            row = col.row(align=True)
+            row.prop(settings, "mesh_export_lod4_texture_size", text="LOD4")
+            if settings.mesh_export_lod_count < 4:
+                row.enabled = False # Disable if LOD4 not used
 
 # Recent Exports Panel
 class MESH_EXPORT_PT_recent_exports(Panel):
@@ -258,16 +290,22 @@ class MESH_EXPORT_PT_recent_exports(Panel):
         # Also check if indicators are enabled
         if not hasattr(export_indicators, "get_recently_exported_objects"):
             return False
-        
-        # Check if export indicators are enabled
-        settings = context.scene.mesh_exporter
-        if settings and not settings.mesh_export_show_indicators:
-            return False
             
         return True
+    
+    def draw_header(self, context):
+        layout = self.layout
+        settings = context.scene.mesh_exporter
+        layout.prop(settings, "mesh_export_show_indicators", text="") # Checkbox in header
 
     def draw(self, context):
         layout = self.layout
+        settings = context.scene.mesh_exporter
+        
+        # Only show content if indicators are enabled
+        if not settings.mesh_export_show_indicators:
+            layout.label(text="Export indicators disabled.")
+            return
 
         try:
             # Use the function from the export_indicators module
@@ -332,10 +370,92 @@ class MESH_EXPORT_PT_recent_exports(Panel):
 
 
 
+# Texture Info Panel
+class MESH_EXPORT_PT_texture_info(Panel):
+    bl_label = "Texture Export Preview"
+    bl_idname = "MESH_EXPORT_PT_texture_info"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Exporter"
+    bl_parent_id = "MESH_PT_exporter_panel"
+    bl_options = {"DEFAULT_CLOSED"} # Start closed
+    
+    @classmethod
+    def poll(cls, context):
+        # Only show if texture resizing and LODs are enabled
+        settings = context.scene.mesh_exporter
+        return (settings and 
+                settings.mesh_export_resize_textures and 
+                settings.mesh_export_lod and
+                any(obj.type == "MESH" for obj in context.selected_objects))
+    
+    def draw(self, context):
+        layout = self.layout
+        settings = context.scene.mesh_exporter
+        
+        # Count unique textures in selected meshes
+        unique_textures = set()
+        total_texture_size = 0
+        
+        for obj in context.selected_objects:
+            if obj.type == "MESH" and obj.data.materials:
+                for mat in obj.data.materials:
+                    if mat and mat.node_tree:
+                        for node in mat.node_tree.nodes:
+                            if node.type == 'TEX_IMAGE' and node.image:
+                                img = node.image
+                                if img not in unique_textures:
+                                    unique_textures.add(img)
+                                    # Estimate texture size (4 bytes per pixel for RGBA)
+                                    if hasattr(img, 'size'):
+                                        pixel_count = img.size[0] * img.size[1]
+                                        total_texture_size += pixel_count * 4
+        
+        if not unique_textures:
+            layout.label(text="No textures found in selection.")
+            return
+        
+        col = layout.column(align=True)
+        col.label(text=f"Unique textures: {len(unique_textures)}", icon='TEXTURE')
+        
+        # Show original size
+        size_mb = total_texture_size / (1024 * 1024)
+        col.label(text=f"Original size: ~{size_mb:.1f} MB")
+        
+        # Estimate compressed sizes for each LOD
+        if settings.mesh_export_lod_count >= 1:
+            col.separator()
+            col.label(text="Estimated sizes after resize:")
+            
+            # Calculate reduction factors
+            lod_sizes = [
+                int(settings.mesh_export_lod1_texture_size),
+                int(settings.mesh_export_lod2_texture_size),
+                int(settings.mesh_export_lod3_texture_size),
+                int(settings.mesh_export_lod4_texture_size)
+            ]
+            
+            box = layout.box()
+            col = box.column(align=True)
+            
+            for i in range(settings.mesh_export_lod_count):
+                # Rough estimation based on max dimension
+                avg_original_size = 2048  # Assume average texture is 2K
+                reduction_factor = (lod_sizes[i] / avg_original_size) ** 2
+                estimated_size = size_mb * reduction_factor
+                col.label(text=f"LOD{i+1}: ~{estimated_size:.1f} MB")
+                
+            # Add note about estimates
+            col.separator()
+            col.label(text="Note: Sizes are estimates", icon='INFO')
+            col.label(text="Actual sizes depend on compression")
+
+
 # Registration
 classes = (
     MESH_PT_exporter_panel,
     MESH_PT_exporter_panel_lod,
+    MESH_EXPORT_PT_texture_info,
     MESH_EXPORT_PT_recent_exports,
 )
 

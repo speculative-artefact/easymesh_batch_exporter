@@ -401,6 +401,14 @@ def update_timer_callback():
         current_time = time.time()
         logger.debug(f"[MESH_EXPORTER] Timer tick at {current_time}")
         
+        # Check if indicators are enabled
+        scene = bpy.context.scene
+        if hasattr(scene, "mesh_exporter") and scene.mesh_exporter:
+            if not scene.mesh_exporter.mesh_export_show_indicators:
+                logger.debug("Export indicators disabled, skipping timer update")
+                # Still return interval to keep timer registered
+                return _TIMER_INTERVAL_SECONDS
+        
         status_updated = update_all_export_statuses()
         
         if status_updated:

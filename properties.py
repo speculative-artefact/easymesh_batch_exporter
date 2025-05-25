@@ -12,6 +12,17 @@ from bpy.props import (StringProperty, EnumProperty,
 from bpy.types import PropertyGroup
 
 
+def clear_indicators_if_disabled(self, context):
+    """Callback to clear all indicators when the checkbox is unchecked."""
+    if not self.mesh_export_show_indicators:
+        # Clear all export indicators
+        try:
+            bpy.ops.mesh.clear_export_indicators()
+        except:
+            # Operator might not be registered yet during addon startup
+            pass
+
+
 class MeshExporterSettings(PropertyGroup):
     # Export path property
     # Default to the current blend file directory 
@@ -182,7 +193,8 @@ class MeshExporterSettings(PropertyGroup):
     mesh_export_show_indicators: BoolProperty(
         name="Show Export Indicators",
         description="Display colour indicators in viewport for recently exported objects",
-        default=True
+        default=True,
+        update=lambda self, context: clear_indicators_if_disabled(self, context)
     )
 
     # LOD properties
@@ -230,6 +242,87 @@ class MeshExporterSettings(PropertyGroup):
         ],
         default="COLLAPSE",
     )
+
+    # Texture resizing property
+    mesh_export_resize_textures: BoolProperty(
+        name="Resize Textures for LODs",
+        description="Automatically resize textures for LODs",
+        default=True
+    )
+    
+    # Texture quality property
+    mesh_export_texture_quality: IntProperty(
+        name="Texture Compression",
+        description="Quality for lossy formats like JPEG (0-100). Does not affect PNG or other lossless formats",
+        default=85,
+        min=0,
+        max=100,
+        subtype='PERCENTAGE'
+    )
+    
+    # LOD texture size properties
+    mesh_export_lod1_texture_size: EnumProperty(
+        name="LOD1 Texture Size",
+        description="Maximum texture size for LOD1",
+        items=[
+            ("8192", "8K", "8192x8192"),
+            ("4096", "4K", "4096x4096"),
+            ("2048", "2K", "2048x2048"),
+            ("1024", "1K", "1024x1024"),
+        ],
+        default="2048"
+    )
+    
+    mesh_export_lod2_texture_size: EnumProperty(
+        name="LOD2 Texture Size",
+        description="Maximum texture size for LOD2",
+        items=[
+            ("4096", "4K", "4096x4096"),
+            ("2048", "2K", "2048x2048"),
+            ("1024", "1K", "1024x1024"),
+            ("512", "512", "512x512"),
+        ],
+        default="1024"
+    )
+    
+    mesh_export_lod3_texture_size: EnumProperty(
+        name="LOD3 Texture Size",
+        description="Maximum texture size for LOD3",
+        items=[
+            ("2048", "2K", "2048x2048"),
+            ("1024", "1K", "1024x1024"),
+            ("512", "512", "512x512"),
+            ("256", "256", "256x256"),
+        ],
+        default="512"
+    )
+    
+    mesh_export_lod4_texture_size: EnumProperty(
+        name="LOD4 Texture Size",
+        description="Maximum texture size for LOD4",
+        items=[
+            ("1024", "1K", "1024x1024"),
+            ("512", "512", "512x512"),
+            ("256", "256", "256x256"),
+            ("128", "128", "128x128"),
+        ],
+        default="256"
+    )
+    
+    # Normal map handling
+    mesh_export_preserve_normal_maps: BoolProperty(
+        name="Preserve Normal Map Quality",
+        description="Keep normal maps at one LOD level higher resolution",
+        default=True
+    )
+    
+    # Texture embedding property
+    mesh_export_embed_textures: BoolProperty(
+        name="Embed Textures",
+        description="Embed textures in the exported file (increases file size)",
+        default=False
+    )
+    
 
     # LOD ratio properties
     mesh_export_lod_ratio_01: FloatProperty(
