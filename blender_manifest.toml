@@ -1,9 +1,9 @@
 schema_version = "1.0.0"
 
 id = "easymesh_batch_exporter"
-version = "1.2.0"
+version = "1.2.1"
 name = "EasyMesh Batch Exporter"
-tagline = "Batch export meshes with LODs, triangulation, and naming"
+tagline = "Batch export with LODs, textures, and memory optimisation"
 maintainer = "Bradley Walker"
 type = "add-on"
 

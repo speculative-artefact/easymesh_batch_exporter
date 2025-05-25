@@ -163,6 +163,7 @@ cython_debug/
 # VS Code
 .vscode/
 *.code-workspace
+.claude/
 
 # Mac OS
 .DS_Store
