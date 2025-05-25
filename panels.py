@@ -394,8 +394,7 @@ class MESH_EXPORT_PT_texture_info(Panel):
         settings = context.scene.mesh_exporter
         
         # Count unique textures in selected meshes
-        unique_textures = set()
-        total_texture_size = 0
+        texture_info = []  # List of (image, has_alpha) tuples
         
         for obj in context.selected_objects:
             if obj.type == "MESH" and obj.data.materials:
@@ -404,30 +403,46 @@ class MESH_EXPORT_PT_texture_info(Panel):
                         for node in mat.node_tree.nodes:
                             if node.type == 'TEX_IMAGE' and node.image:
                                 img = node.image
-                                if img not in unique_textures:
-                                    unique_textures.add(img)
-                                    # Estimate texture size (4 bytes per pixel for RGBA)
-                                    if hasattr(img, 'size'):
-                                        pixel_count = img.size[0] * img.size[1]
-                                        total_texture_size += pixel_count * 4
+                                if not any(info[0] == img for info in texture_info):
+                                    # Check if image has alpha
+                                    has_alpha = False
+                                    if hasattr(img, 'depth'):
+                                        has_alpha = img.depth == 32  # RGBA
+                                    elif hasattr(img, 'channels'):
+                                        has_alpha = img.channels == 4
+                                    texture_info.append((img, has_alpha))
         
-        if not unique_textures:
+        if not texture_info:
             layout.label(text="No textures found in selection.")
             return
         
         col = layout.column(align=True)
-        col.label(text=f"Unique textures: {len(unique_textures)}", icon='TEXTURE')
+        col.label(text=f"Unique textures: {len(texture_info)}", icon='TEXTURE')
         
-        # Show original size
-        size_mb = total_texture_size / (1024 * 1024)
-        col.label(text=f"Original size: ~{size_mb:.1f} MB")
+        # Calculate original size (uncompressed in memory)
+        total_uncompressed = 0
+        for img, has_alpha in texture_info:
+            if hasattr(img, 'size'):
+                pixel_count = img.size[0] * img.size[1]
+                total_uncompressed += pixel_count * 4
+        
+        size_mb_uncompressed = total_uncompressed / (1024 * 1024)
+        col.label(text=f"Uncompressed: ~{size_mb_uncompressed:.1f} MB")
         
         # Estimate compressed sizes for each LOD
         if settings.mesh_export_lod_count >= 1:
             col.separator()
-            col.label(text="Estimated sizes after resize:")
+            col.label(text="Estimated compressed sizes:")
             
-            # Calculate reduction factors
+            # Get compression quality
+            jpeg_quality = settings.mesh_export_texture_quality / 100.0
+            
+            # JPEG compression ratios based on quality (empirical approximations)
+            # At 85% quality, JPEG typically achieves 10:1 to 20:1 compression
+            # Lower quality = higher compression
+            jpeg_compression_ratio = 0.05 + (0.15 * (jpeg_quality ** 2))  # 5-20% of original
+            
+            # Calculate LOD sizes
             lod_sizes = [
                 int(settings.mesh_export_lod1_texture_size),
                 int(settings.mesh_export_lod2_texture_size),
@@ -439,16 +454,44 @@ class MESH_EXPORT_PT_texture_info(Panel):
             col = box.column(align=True)
             
             for i in range(settings.mesh_export_lod_count):
-                # Rough estimation based on max dimension
-                avg_original_size = 2048  # Assume average texture is 2K
-                reduction_factor = (lod_sizes[i] / avg_original_size) ** 2
-                estimated_size = size_mb * reduction_factor
-                col.label(text=f"LOD{i+1}: ~{estimated_size:.1f} MB")
+                total_size_kb = 0
+                
+                for img, has_alpha in texture_info:
+                    if hasattr(img, 'size'):
+                        # Calculate resized dimensions
+                        orig_w, orig_h = img.size
+                        target_size = lod_sizes[i]
+                        
+                        # Calculate actual dimensions after resize (preserving aspect ratio)
+                        if orig_w > orig_h:
+                            new_w = min(orig_w, target_size)
+                            new_h = int(new_w * (orig_h / orig_w))
+                        else:
+                            new_h = min(orig_h, target_size)
+                            new_w = int(new_h * (orig_w / orig_h))
+                        
+                        # Calculate pixel count
+                        pixel_count = new_w * new_h
+                        
+                        # Estimate compressed size
+                        if has_alpha:
+                            # PNG compression (typically 50-70% of uncompressed)
+                            compressed_bytes = pixel_count * 4 * 0.6
+                        else:
+                            # JPEG compression
+                            compressed_bytes = pixel_count * 3 * jpeg_compression_ratio
+                        
+                        total_size_kb += compressed_bytes / 1024
+                
+                # Display in KB or MB depending on size
+                if total_size_kb < 1024:
+                    col.label(text=f"LOD{i+1}: ~{total_size_kb:.0f} KB")
+                else:
+                    col.label(text=f"LOD{i+1}: ~{total_size_kb/1024:.1f} MB")
                 
             # Add note about estimates
             col.separator()
-            col.label(text="Note: Sizes are estimates", icon='INFO')
-            col.label(text="Actual sizes depend on compression")
+            col.label(text=f"Based on {int(jpeg_quality * 100)}% compression", icon='INFO')
 
 
 # Registration
