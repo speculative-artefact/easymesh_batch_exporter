@@ -180,3 +180,6 @@ NOTE.md
 
 # extension build
 *.zip
+
+# release notes
+releases/*
