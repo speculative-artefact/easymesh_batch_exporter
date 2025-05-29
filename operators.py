@@ -1245,6 +1245,13 @@ def export_object(obj, file_path, scene_props, export_scale=1.0):
         f"Exporting {os.path.basename(export_filepath)} ({fmt}) - {mesh_size:,} polygons..."
     )
 
+    # Convert axis values for OBJ and STL export
+    def convert_axis_for_export(axis_value):
+        """Convert axis values like '-Z' to 'NEGATIVE_Z' for OBJ/STL export."""
+        if axis_value.startswith('-'):
+            return f"NEGATIVE_{axis_value[1]}"
+        return axis_value
+
     with temp_selection_context(bpy.context, active_object=obj,
                                 selected_objects=[obj]):
         try:
@@ -1269,8 +1276,8 @@ def export_object(obj, file_path, scene_props, export_scale=1.0):
                     filepath=export_filepath,
                     export_selected_objects=True,
                     global_scale=export_scale, # Pass scale to exporter instead of applying to mesh
-                    forward_axis=scene_props.mesh_export_coord_forward,
-                    up_axis=scene_props.mesh_export_coord_up,
+                    forward_axis=convert_axis_for_export(scene_props.mesh_export_coord_forward),
+                    up_axis=convert_axis_for_export(scene_props.mesh_export_coord_up),
                     export_materials=True,
                     path_mode="STRIP",  # OBJ doesn't embed textures
                     export_normals=True,
@@ -1323,9 +1330,9 @@ def export_object(obj, file_path, scene_props, export_scale=1.0):
                     filepath=export_filepath,
                     selected_objects_only=True,
                     export_global_forward_selection=(
-                        scene_props.mesh_export_coord_forward),
+                        convert_axis_for_export(scene_props.mesh_export_coord_forward)),
                     export_global_up_selection=(
-                        scene_props.mesh_export_coord_up),
+                        convert_axis_for_export(scene_props.mesh_export_coord_up)),
                     export_meshes=True,
                     export_materials=True,
                     export_normals=True,
@@ -1344,8 +1351,8 @@ def export_object(obj, file_path, scene_props, export_scale=1.0):
                     filepath=export_filepath,
                     export_selected_objects=True,
                     global_scale=export_scale, # Pass scale to exporter instead of applying to mesh
-                    forward_axis=scene_props.mesh_export_coord_forward,
-                    up_axis=scene_props.mesh_export_coord_up,
+                    forward_axis=convert_axis_for_export(scene_props.mesh_export_coord_forward),
+                    up_axis=convert_axis_for_export(scene_props.mesh_export_coord_up),
                     apply_modifiers=False, # Handled by apply_mesh_modifiers
                 )
             else:
