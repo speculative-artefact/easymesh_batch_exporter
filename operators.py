@@ -253,7 +253,7 @@ def setup_export_object(obj, original_obj_name, scene_props, lod_level=None):
         lod_level (int, optional): LOD level for naming. Defaults to None.
     
     Returns:
-        tuple: The final name and base name of the object.
+        tuple: The final name, base name, and export scale of the object.
     """
     if not obj:
         return None, None
@@ -300,31 +300,27 @@ def setup_export_object(obj, original_obj_name, scene_props, lod_level=None):
             obj.location = (0.0, 0.0, 0.0)
             logger.info(f"Zeroed location for {obj.name}")
 
-        # Calculate final scale factor
-        if (scene_props.mesh_export_format != "GLTF" 
-            or scene_props.mesh_export_format != "USD"):
-            # For GLTF, we don't want to apply scale here
-            final_scale_factor = scene_props.mesh_export_scale
-            if scene_props.mesh_export_units == "CENTIMETERS":
-                # Apply 100x scale for Meters (Blender default) 
-                # to Centimeters (UE default)
-                final_scale_factor *= 100.0 
-                logger.info("Applying M to CM scale factor (x100)")
+        # Calculate final scale factor but DON'T apply it to mesh data
+        # This avoids memory-intensive vertex transformations
+        final_scale_factor = scene_props.mesh_export_scale
+        if scene_props.mesh_export_units == "CENTIMETERS":
+            # Apply 100x scale for Meters (Blender default) 
+            # to Centimeters (UE default)
+            final_scale_factor *= 100.0 
+            logger.info(f"Export scale factor: {final_scale_factor:.2f} (includes M to CM conversion)")
+        else:
+            logger.info(f"Export scale factor: {final_scale_factor:.2f}")
 
-            # Set the object's scale
-            if abs(final_scale_factor - 1.0) > 1e-6: # Check if scaling is need
-                obj.scale = (final_scale_factor, 
-                            final_scale_factor, 
-                            final_scale_factor)
-                logger.info(f"Set object scale to {final_scale_factor:.2f}")
-            else:
-                logger.info("Final scale factor is 1.0. No scaling needed.")
+        # For GLTF and USD, we don't support scaling to avoid crashes
+        if scene_props.mesh_export_format in ["GLTF", "USD"]:
+            if abs(final_scale_factor - 1.0) > 1e-6:
+                logger.info(f"Scale will be ignored for {scene_props.mesh_export_format} format")
+            final_scale_factor = 1.0
 
-            # Apply the calculated scale and rotation transforms using the help
-            # We always want to apply rotation and scale at the end here.
-            apply_transforms(obj, apply_rotation=True, apply_scale=True)
+        # Only apply rotation transform - scale will be passed to exporters
+        apply_transforms(obj, apply_rotation=True, apply_scale=False)
 
-        return obj.name, base_name
+        return obj.name, base_name, final_scale_factor
     except Exception as e:
         raise RuntimeError(
             f"Failed to setup (rename/zero) {obj.name}: {e}"
@@ -1176,7 +1172,7 @@ def restore_material_references(original_references):
             logger.warning(f"Error restoring material reference: {e}")
 
 
-def export_object(obj, file_path, scene_props):
+def export_object(obj, file_path, scene_props, export_scale=1.0):
     """
     Exports a single object using scene properties.
     
@@ -1184,6 +1180,7 @@ def export_object(obj, file_path, scene_props):
         obj (bpy.types.Object): The object to export.
         file_path (str): The file path for the export.
         scene_props (bpy.types.PropertyGroup): Scene properties for export.
+        export_scale (float): Scale factor to apply during export.
     
     Returns:
         bool: True if export was successful, False otherwise.
@@ -1255,7 +1252,7 @@ def export_object(obj, file_path, scene_props):
                 bpy.ops.export_scene.fbx(
                     filepath=export_filepath,
                     use_selection=True,
-                    global_scale=1.0, # Scale applied setup_export_object
+                    global_scale=export_scale, # Pass scale to exporter instead of applying to mesh
                     axis_forward=scene_props.mesh_export_coord_forward,
                     axis_up=scene_props.mesh_export_coord_up,
                     apply_unit_scale=False,
@@ -1271,7 +1268,7 @@ def export_object(obj, file_path, scene_props):
                 bpy.ops.wm.obj_export(
                     filepath=export_filepath,
                     export_selected_objects=True,
-                    global_scale=1.0, # Scale applied setup_export_object
+                    global_scale=export_scale, # Pass scale to exporter instead of applying to mesh
                     forward_axis=scene_props.mesh_export_coord_forward,
                     up_axis=scene_props.mesh_export_coord_up,
                     export_materials=True,
@@ -1282,6 +1279,11 @@ def export_object(obj, file_path, scene_props):
                     export_triangulated_mesh=False, # Handled triangulate_mesh
                 )
             elif fmt == "GLTF":
+                # GLTF doesn't support global scale - warn if scale is not 1.0
+                if abs(export_scale - 1.0) > 1e-6:
+                    logger.warning(f"Scale {export_scale} will NOT be applied for GLTF export (format limitation). "
+                                 f"Export at original size or apply scale manually before export.")
+                
                 # For GLTF, textures are always embedded in GLB or copied with GLTF
                 bpy.ops.export_scene.gltf(
                     filepath=export_filepath,
@@ -1312,6 +1314,11 @@ def export_object(obj, file_path, scene_props):
                     export_draco_texcoord_quantization=12,
                 )
             elif fmt == "USD":
+                # USD doesn't support global scale - warn if scale is not 1.0
+                if abs(export_scale - 1.0) > 1e-6:
+                    logger.warning(f"Scale {export_scale} will NOT be applied for USD export (format limitation). "
+                                 f"Export at original size or apply scale manually before export.")
+                
                 bpy.ops.wm.usd_export(
                     filepath=export_filepath,
                     selected_objects_only=True,
@@ -1336,7 +1343,7 @@ def export_object(obj, file_path, scene_props):
                 bpy.ops.wm.stl_export(
                     filepath=export_filepath,
                     export_selected_objects=True,
-                    global_scale=1.0, # Scale applied setup_export_object
+                    global_scale=export_scale, # Pass scale to exporter instead of applying to mesh
                     forward_axis=scene_props.mesh_export_coord_forward,
                     up_axis=scene_props.mesh_export_coord_up,
                     apply_modifiers=False, # Handled by apply_mesh_modifiers
@@ -1586,7 +1593,7 @@ class MESH_OT_batch_export(Operator):
                                         original_obj, 
                                         context
                                     )
-                                    (lod_obj_name, _) = setup_export_object(
+                                    (lod_obj_name, _, export_scale) = setup_export_object(
                                         lod_obj, original_obj.name,
                                         scene_props, lod_level
                                     )
@@ -1612,7 +1619,7 @@ class MESH_OT_batch_export(Operator):
                                               f"(from {previous_ratio:.3f} to {target_ratio:.3f})")
                                     
                                     # Rename for current LOD
-                                    (lod_obj_name, _) = setup_export_object(
+                                    (lod_obj_name, _, export_scale) = setup_export_object(
                                         base_lod_obj, original_obj.name,
                                         scene_props, lod_level
                                     )
@@ -1639,7 +1646,7 @@ class MESH_OT_batch_export(Operator):
                                 lod_file_path = os.path.join(export_base_path,
                                                            lod_obj_name)
                                 if export_object(lod_obj, lod_file_path,
-                                               scene_props):
+                                               scene_props, export_scale):
                                     successful_exports += 1
                                 else:
                                     raise RuntimeError("Export func failed")
@@ -1684,7 +1691,7 @@ class MESH_OT_batch_export(Operator):
                                 original_obj, 
                                 context
                             )
-                            (export_obj_name, base_name) = setup_export_object(
+                            (export_obj_name, base_name, export_scale) = setup_export_object(
                                 export_obj, original_obj.name, scene_props
                             )
                             apply_mesh_modifiers(export_obj, scene_props.mesh_export_apply_modifiers)
@@ -1698,7 +1705,7 @@ class MESH_OT_batch_export(Operator):
                             file_path = os.path.join(
                                 export_base_path, base_name)
                             if export_object(
-                                export_obj, file_path, scene_props):
+                                export_obj, file_path, scene_props, export_scale):
                                 successful_exports += 1
                             else:
                                 object_processed_successfully = False
