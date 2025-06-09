@@ -160,6 +160,119 @@ def temp_selection_context(context, active_object=None, selected_objects=None):
                 pass
 
 
+def convert_curve_to_mesh_object(curve_obj, context):
+    """
+    Creates a new mesh object from a curve/metaball object and returns it.
+    The original curve/metaball object is deleted.
+    
+    Args:
+        curve_obj (bpy.types.Object): The curve/metaball object to convert.
+        context (bpy.context): The current Blender context.
+        
+    Returns:
+        bpy.types.Object: The new mesh object.
+    """
+    if not curve_obj or curve_obj.type not in ["CURVE", "META"]:
+        return curve_obj
+        
+    logger.info(f"Converting {curve_obj.type} object '{curve_obj.name}' to mesh...")
+    
+    try:
+        # Store the original name and properties
+        original_name = curve_obj.name
+        original_location = curve_obj.location.copy()
+        original_rotation = curve_obj.rotation_euler.copy()
+        original_scale = curve_obj.scale.copy()
+        
+        # Get the dependency graph
+        depsgraph = context.evaluated_depsgraph_get()
+        
+        # For metaballs, we need to ensure the view layer is updated
+        if curve_obj.type == "META":
+            # Debug metaball properties
+            metaball = curve_obj.data
+            logger.info(f"Metaball threshold: {metaball.threshold}")
+            logger.info(f"Metaball elements count: {len(metaball.elements)}")
+            if len(metaball.elements) > 0:
+                for i, element in enumerate(metaball.elements):
+                    logger.info(f"Element {i}: type={element.type}, size_x={element.size_x}, co={element.co}")
+            
+            # Force view layer update to ensure metaball is evaluated
+            context.view_layer.update()
+            # Update depsgraph
+            depsgraph.update()
+        
+        # Get the evaluated object
+        obj_eval = curve_obj.evaluated_get(depsgraph)
+        
+        # Create mesh from the evaluated object
+        # For metaballs, we must use to_mesh() method
+        if curve_obj.type == "META":
+            # For metaballs, try getting mesh from the original object first
+            # as duplicated metaballs might not evaluate properly
+            original_eval = curve_obj.evaluated_get(depsgraph)
+            mesh = original_eval.to_mesh()
+            logger.info(f"Metaball mesh vertices from original: {len(mesh.vertices) if mesh else 0}")
+            
+            # If still empty, the metaball might have evaluation issues
+            if mesh and len(mesh.vertices) == 0:
+                # Try forcing a scene update and re-evaluation
+                bpy.context.view_layer.update()
+                depsgraph = context.evaluated_depsgraph_get()
+                original_eval = curve_obj.evaluated_get(depsgraph)
+                original_eval.to_mesh_clear()  # Clear previous attempt
+                mesh = original_eval.to_mesh()
+                logger.info(f"Metaball mesh vertices after scene update: {len(mesh.vertices) if mesh else 0}")
+        else:
+            mesh = bpy.data.meshes.new_from_object(obj_eval)
+        
+        # Verify mesh has geometry
+        if mesh and len(mesh.vertices) == 0:
+            logger.warning(f"Mesh created from {curve_obj.type} is empty!")
+            # For metaballs, this might mean no elements or too high threshold
+            if curve_obj.type == "META":
+                logger.warning("Check metaball threshold and element positions")
+        
+        if mesh:
+            # For metaballs, we need to copy the evaluated mesh to main database
+            if curve_obj.type == "META":
+                # Create a new mesh in main database and copy data
+                main_mesh = bpy.data.meshes.new(name=original_name)
+                main_mesh.from_pydata([v.co for v in mesh.vertices], mesh.edges, [p.vertices for p in mesh.polygons])
+                main_mesh.update()
+                # Clean up the evaluated mesh
+                obj_eval.to_mesh_clear()
+                mesh = main_mesh
+            
+            # Create a new mesh object
+            mesh_obj = bpy.data.objects.new(name=original_name, object_data=mesh)
+            
+            # Copy transforms
+            mesh_obj.location = original_location
+            mesh_obj.rotation_euler = original_rotation
+            mesh_obj.scale = original_scale
+            
+            # Copy other important properties
+            mesh_obj.parent = curve_obj.parent
+            mesh_obj.matrix_world = curve_obj.matrix_world.copy()
+            
+            # Link to the same collections
+            for collection in curve_obj.users_collection:
+                collection.objects.link(mesh_obj)
+            
+            # Remove the curve object
+            bpy.data.objects.remove(curve_obj, do_unlink=True)
+            
+            logger.info(f"Successfully converted to mesh object '{mesh_obj.name}'")
+            return mesh_obj
+        else:
+            raise RuntimeError(f"Failed to create mesh from {curve_obj.type}")
+            
+    except Exception as e:
+        logger.error(f"Failed to convert '{curve_obj.name}' to mesh: {e}")
+        raise RuntimeError(f"Failed to convert {curve_obj.type} to mesh: {e}") from e
+
+
 def create_export_copy(original_obj, context):
     """
     Creates a linked copy of the object and its data without mode switching.
@@ -169,10 +282,59 @@ def create_export_copy(original_obj, context):
         context (bpy.context): The current Blender context.
         
     Returns:
-        bpy.types.Object: The copied object.
+        tuple: (copied_object, temp_metaball_mesh_to_cleanup or None)
     """
-    if not original_obj or original_obj.type != "MESH":
-        raise ValueError("Invalid object provided for copying.")
+    if not original_obj or original_obj.type not in ["MESH", "CURVE", "META"]:
+        raise ValueError(f"Invalid object type '{original_obj.type}' provided for copying.")
+    
+    temp_metaball_mesh = None
+    
+    # For metaballs, convert to mesh first, then duplicate the mesh
+    if original_obj.type == "META":
+        logger.info(f"Converting metaball '{original_obj.name}' to mesh before duplication...")
+        try:
+            # Convert the original metaball to mesh in-place
+            depsgraph = context.evaluated_depsgraph_get()
+            obj_eval = original_obj.evaluated_get(depsgraph)
+            mesh = obj_eval.to_mesh()
+            
+            if mesh and len(mesh.vertices) > 0:
+                # Create a new mesh object with the converted mesh
+                new_mesh = bpy.data.meshes.new(name=f"{original_obj.name}_mesh")
+                new_mesh.from_pydata([v.co for v in mesh.vertices], [e.vertices for e in mesh.edges], [p.vertices for p in mesh.polygons])
+                new_mesh.update()
+                
+                mesh_obj = bpy.data.objects.new(name=f"{original_obj.name}_converted", object_data=new_mesh)
+                mesh_obj.location = original_obj.location
+                mesh_obj.rotation_euler = original_obj.rotation_euler  
+                mesh_obj.scale = original_obj.scale
+                mesh_obj.matrix_world = original_obj.matrix_world.copy()
+                
+                # Transfer materials from original metaball to mesh
+                if original_obj.data.materials:
+                    for mat in original_obj.data.materials:
+                        if mat:
+                            mesh_obj.data.materials.append(mat)
+                    logger.info(f"Transferred {len(original_obj.data.materials)} materials to converted mesh")
+                
+                # Link to scene temporarily for duplication
+                context.collection.objects.link(mesh_obj)
+                
+                # Clean up the evaluated mesh
+                obj_eval.to_mesh_clear()
+                
+                logger.info(f"Successfully converted metaball to mesh: {mesh_obj.name}")
+                # Store the temporary mesh object for cleanup later
+                temp_metaball_mesh = mesh_obj
+                # Now continue with normal duplication of the mesh object
+                original_obj = mesh_obj
+            else:
+                logger.error("Metaball produced empty mesh")
+                raise RuntimeError("Metaball conversion resulted in empty mesh")
+                
+        except Exception as e:
+            logger.error(f"Failed to convert metaball to mesh: {e}")
+            raise
         
     logger.info(f"Attempting to duplicate '{original_obj.name}' "
                 f"using operator...")
@@ -196,7 +358,15 @@ def create_export_copy(original_obj, context):
             logger.info(f"Successfully created duplicate "
                         f"'{copy_obj.name}' via operator.")
             
-            # Make Mesh Data Single User
+            # Make data single user FIRST for curves/metaballs to ensure we don't affect the original
+            if copy_obj and copy_obj.type in ["CURVE", "META"]:
+                if copy_obj.data and copy_obj.data.users > 1:
+                    logger.info(f"Making {copy_obj.type.lower()} data single user for '{copy_obj.name}'")
+                    copy_obj.data = copy_obj.data.copy()
+                # Now convert to mesh - this returns a new object
+                copy_obj = convert_curve_to_mesh_object(copy_obj, context)
+            
+            # Make Mesh Data Single User (for regular meshes or after conversion)
             if copy_obj and copy_obj.data and copy_obj.data.users > 1:
                 logger.info(f"Making mesh data single user for "
                             f"'{copy_obj.name}'")
@@ -205,7 +375,7 @@ def create_export_copy(original_obj, context):
                 # Optimise memory for large meshes after making single user
                 optimise_for_large_mesh(copy_obj)
 
-            return copy_obj
+            return copy_obj, temp_metaball_mesh
             
         except Exception as e:
             logger.error(f"Error using duplicate_move_linked operator for "
@@ -1509,8 +1679,8 @@ class MESH_OT_batch_export(Operator):
 
     @classmethod
     def poll(cls, context):
-        """Enable only if mesh objects are selected."""
-        return any(obj.type == "MESH" for obj in context.selected_objects)
+        """Enable only if mesh, curve, or metaball objects are selected."""
+        return any(obj.type in ["MESH", "CURVE", "META"] for obj in context.selected_objects)
 
     def execute(self, context):
         """Runs the batch export process."""
@@ -1520,13 +1690,13 @@ class MESH_OT_batch_export(Operator):
         start_time = time.time()
 
         objects_to_export = [
-            obj for obj in context.selected_objects if obj.type == "MESH"
+            obj for obj in context.selected_objects if obj.type in ["MESH", "CURVE", "META"]
         ]
         total_objects = len(objects_to_export)
 
         if not objects_to_export:
-            self.report({"WARNING"}, "No mesh objects selected.")
-            logger.warning("Export cancelled: No mesh objects selected.")
+            self.report({"WARNING"}, "No mesh, curve, or metaball objects selected.")
+            logger.warning("Export cancelled: No mesh, curve, or metaball objects selected.")
             return {"CANCELLED"}
 
         # Validate export path
@@ -1588,6 +1758,7 @@ class MESH_OT_batch_export(Operator):
                         # LOD Reuse Implementation
                         base_lod_obj = None
                         previous_ratio = 1.0
+                        temp_metaball_mesh = None
                         
                         for lod_level, target_ratio in enumerate(ratios):
                             lod_obj = None
@@ -1596,7 +1767,7 @@ class MESH_OT_batch_export(Operator):
                                 if lod_level == 0:
                                     # LOD0: Create base copy with modifiers applied
                                     logger.info("Creating base LOD0...")
-                                    lod_obj = create_export_copy(
+                                    lod_obj, temp_metaball_mesh = create_export_copy(
                                         original_obj, 
                                         context
                                     )
@@ -1680,9 +1851,14 @@ class MESH_OT_batch_export(Operator):
                                 if lod_level == len(ratios) - 1 or not object_processed_successfully:
                                     cleanup_object(base_lod_obj, "base_lod_object")
                                     base_lod_obj = None
+                                    # Clean up temporary metaball mesh if it exists
+                                    if temp_metaball_mesh:
+                                        cleanup_object(temp_metaball_mesh, "temp_metaball_mesh")
+                                        temp_metaball_mesh = None
                                 
                         # Memory cleanup between LOD levels for large meshes
-                        if len(original_obj.data.polygons if original_obj.data else []) > LARGE_MESH_THRESHOLD:
+                        if (original_obj.type == "MESH" and 
+                            len(original_obj.data.polygons if original_obj.data else []) > LARGE_MESH_THRESHOLD):
                             import gc
                             gc.collect()
                             logger.debug("Memory cleanup after LOD level processing")
@@ -1692,9 +1868,10 @@ class MESH_OT_batch_export(Operator):
                         # --- Non-LOD Branch ---
                         export_obj = None
                         export_obj_name = None
+                        temp_metaball_mesh = None
                         try:
                             logger.info("Processing single export (no LODs)..")
-                            export_obj = create_export_copy(
+                            export_obj, temp_metaball_mesh = create_export_copy(
                                 original_obj, 
                                 context
                             )
@@ -1728,6 +1905,9 @@ class MESH_OT_batch_export(Operator):
                             )
                         finally:
                             cleanup_object(export_obj, export_obj_name)
+                            # Clean up temporary metaball mesh if it exists
+                            if temp_metaball_mesh:
+                                cleanup_object(temp_metaball_mesh, "temp_metaball_mesh")
                     # --- End Non-LOD Branch ---
 
                 except Exception as outer_e:

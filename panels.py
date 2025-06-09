@@ -151,16 +151,30 @@ class MESH_PT_exporter_panel(Panel):
         layout.separator()
 
         # Export Button 
-        mesh_count = sum(
-            1 for obj in context.selected_objects if obj.type == "MESH"
-        )
+        exportable_objects = [obj for obj in context.selected_objects if obj.type in ["MESH", "CURVE", "META"]]
+        exportable_count = len(exportable_objects)
+        
+        # Check if all selected objects are the same type
+        unique_types = set(obj.type for obj in exportable_objects)
         
         # Export button
         row = layout.row()
-        # Generate the button text first
-        button_text = (
-            f"Export Meshes ({mesh_count})" if mesh_count > 0 
-            else "Export Meshes")
+        # Generate the button text based on object types
+        if exportable_count == 0:
+            button_text = "Export Objects"
+        elif len(unique_types) == 1:
+            # All objects are the same type
+            obj_type = list(unique_types)[0]
+            if obj_type == "MESH":
+                button_text = f"Export Meshes ({exportable_count})"
+            elif obj_type == "CURVE":
+                button_text = f"Export Curves ({exportable_count})"
+            elif obj_type == "META":
+                button_text = f"Export Metaballs ({exportable_count})"
+        else:
+            # Mixed types
+            button_text = f"Export Objects ({exportable_count})"
+        
         # Pass the generated text to the "text" parameter
         row.operator("mesh.batch_export", text=button_text, icon="EXPORT")
 
