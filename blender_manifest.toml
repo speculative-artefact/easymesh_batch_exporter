@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "easymesh_batch_exporter"
-version = "1.2.2"
+version = "1.3.0"
 name = "EasyMesh Batch Exporter"
 tagline = "Batch export with LODs, textures, and memory optimisation"
 maintainer = "Bradley Walker"
