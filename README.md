@@ -1,11 +1,11 @@
 # EasyMesh Batch Exporter for Blender
 
 ![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)
-![Version: 1.2.0](https://img.shields.io/badge/Version-1.2.0-green.svg)
+![Version: 1.3.0](https://img.shields.io/badge/Version-1.3.0-green.svg)
 ![Blender: 4.2+](https://img.shields.io/badge/Blender-4.2+-orange.svg)
 ![Large Mesh Support](https://img.shields.io/badge/Large%20Mesh-2M%2B%20Polygons-red.svg)
 
-A Blender add-on for batch exporting multiple selected mesh objects with advanced memory optimisation, modifier control, LOD generation, texture optimisation, and viewport indicators for recent exports. Designed to handle large, complex meshes without crashes.
+A Blender add-on for batch exporting meshes, curves, and metaballs with advanced memory optimisation, modifier control, LOD generation, texture optimisation, and viewport indicators for recent exports. Curves and metaballs are automatically converted to meshes during export. Designed to handle large, complex meshes without crashes.
 
 [![EasyMesh demo - Watch Video](https://cdn.loom.com/sessions/thumbnails/567dea7f7cf84f91939d159807d6659d-e7c0d4f2068a7d8d-full-play.gif)](https://www.loom.com/share/567dea7f7cf84f91939d159807d6659d?sid=dd68ecd1-58dc-43c4-b74b-cfeaa82f4553)
 
@@ -26,7 +26,8 @@ A Blender add-on for batch exporting multiple selected mesh objects with advance
 * **Memory Efficient:** Automatic cleanup between modifier applications
 
 ### 📦 **Batch Export**
-* **Multi-Object Support:** Export multiple selected mesh objects simultaneously
+* **Multi-Object Support:** Export meshes, curves, and metaballs simultaneously
+* **Automatic Conversion:** Curves and metaballs are converted to meshes during export
 * **Progress Tracking:** Real-time progress bar and detailed console logging
 * **Error Handling:** Robust error recovery with detailed failure reporting
 * **Multiple Formats:** FBX, OBJ, glTF (binary/JSON), USD, and STL support
@@ -88,7 +89,7 @@ You can also find the add-on directly on [Blender Extensions](https://extensions
 ## Usage
 
 1.  **Find the Panel:** The add-on's panel appears in the 3D Viewport's Sidebar (Press `N` key if hidden) under the "Exporter" tab.
-2.  **Select Objects:** Select one or more mesh objects you want to export in the 3D Viewport.
+2.  **Select Objects:** Select one or more mesh, curve, or metaball objects you want to export in the 3D Viewport.
 3.  **Configure Settings:** Adjust the settings in the "EasyMesh Batch Exporter" panel:
     
     ### Basic Settings
@@ -120,7 +121,7 @@ You can also find the add-on directly on [Blender Extensions](https://extensions
     * **Ratios:** Individual mesh decimation settings for each LOD level
     * Note: LOD0 = base mesh, LOD1-4 = progressively optimised versions
 
-4.  **Export:** Click the "Export Selected Meshes" button
+4.  **Export:** Click the "Export Objects" button (text changes based on selection type)
 5.  **Monitor Progress:** 
     * Real-time progress in Blender's status bar
     * Detailed console logs with polygon counts and timing
@@ -176,40 +177,6 @@ INFO: Decimation complete: 1,250,000 → 312,500 polys (target: 0.250, actual: 0
 * **Recent Exports Panel:** When indicators are enabled, shows a list of recently exported objects (still FRESH or STALE). Clicking the icon selects the object.
 * **Clear Indicators:** The "Clear All Export Indicators" button at the bottom of the "Recent Exports" panel will immediately remove the status from all objects and restore their original viewport colours.
 * **Auto-Clear:** Unchecking the indicators checkbox immediately clears all existing indicators from the viewport.
-
-## Version History
-
-### v1.1.0 - Memory Optimisation & Modifier Control Update
-**🚀 Major Performance Improvements**
-* **Large Mesh Support:** Handles 2M+ polygon meshes without crashes
-* **Smart Memory Management:** Automatic optimisation for meshes >500K polygons
-* **Progressive Cleanup:** Memory management every 3 modifiers during heavy operations
-* **Enhanced Logging:** Polygon counts formatted with commas, detailed operation tracking
-
-**🎛️ New Modifier Control System**
-* **Flexible Application:** Choose None/Visible/Render modifier application modes
-* **Performance Focused:** Skip modifiers entirely for maximum speed
-* **Smart Filtering:** Respects Blender's modifier visibility states
-* **Memory Efficient:** Cleanup between modifier applications
-
-**👁️ New Export Indicators Toggle**
-* **Optional Visual Feedback:** Enable/disable viewport colour indicators
-* **Cleaner Viewport:** Turn off indicators when colour accuracy matters
-* **Performance Option:** Disable timer overhead when not needed
-* **Smart Panel Hiding:** Recent Exports panel auto-hides when disabled
-
-**🔧 Technical Improvements**
-* **LOD Reuse System:** Progressive LOD building saves 60% memory and 40-50% time
-* **Enhanced Cleanup:** Immediate geometry clearing for large meshes
-* **Better Error Handling:** Comprehensive exception management throughout pipeline
-* **Optimised Export:** Pre-export memory cleanup for large mesh operations
-* **Improved UI:** New modifier control buttons and indicators toggle
-
-### v1.0.4 - Previous Release
-* GLTF-specific export properties (binary/JSON type, materials export/placeholder)
-* Scaling and unit settings exclusions for GLTF and USD formats
-* Recent Exports panel selection button fix
-* Interface improvements for transform options
 
 ## Support Development
 
