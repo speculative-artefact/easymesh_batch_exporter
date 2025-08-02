@@ -1634,8 +1634,8 @@ def export_object(obj, file_path, scene_props, export_scale=1.0):
                     export_jpeg_quality=export_quality,
                     export_image_quality=export_quality,
                     export_def_bones=False, # Don't export bones
-                    # Enable Draco compression for geometry
-                    export_draco_mesh_compression_enable=True,
+                    # Enable Draco compression for geometry based on user setting
+                    export_draco_mesh_compression_enable=scene_props.mesh_export_use_draco_compression,
                     export_draco_mesh_compression_level=6,
                     export_draco_position_quantization=14,
                     export_draco_normal_quantization=10,

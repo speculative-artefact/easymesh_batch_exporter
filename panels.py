@@ -84,6 +84,9 @@ class MESH_PT_exporter_panel(Panel):
             col = layout.column(heading="Materials", align=True)
             row = col.row(align=True)
             row.prop(settings, "mesh_export_gltf_materials")
+            
+            col = layout.column(heading="Compression", align=True)
+            col.prop(settings, "mesh_export_use_draco_compression")
 
         # Coordinate system settings
         if self.format_has_coordinates(settings.mesh_export_format):

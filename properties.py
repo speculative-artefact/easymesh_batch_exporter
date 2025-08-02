@@ -70,6 +70,13 @@ class MeshExporterSettings(PropertyGroup):
         ],
         default="EXPORT"
     )
+    
+    # GLTF Draco compression property
+    mesh_export_use_draco_compression: BoolProperty(
+        name="Draco Compression",
+        description="Enable Draco mesh compression for smaller file sizes. Note: Godot has its own runtime compression, so this is typically not needed for Godot imports",
+        default=False
+    )
 
     # Scale property
     mesh_export_scale: FloatProperty(
