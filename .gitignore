@@ -164,6 +164,7 @@ cython_debug/
 .vscode/
 *.code-workspace
 .claude/
+CLAUDE.md
 
 # Mac OS
 .DS_Store
