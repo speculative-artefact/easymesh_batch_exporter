@@ -34,6 +34,169 @@ LARGE_MESH_THRESHOLD = 500000  # 500K polygons
 VERY_LARGE_MESH_THRESHOLD = 1000000  # 1M polygons
 
 
+# --- Custom Exceptions ---
+
+class MeshExportError(Exception):
+    """Base exception for mesh export operations."""
+    pass
+
+
+class ValidationError(MeshExportError):
+    """Raised when input validation fails."""
+    pass
+
+
+class ResourceError(MeshExportError):
+    """Raised when resource operations fail (files, memory, etc.)."""
+    pass
+
+
+class ProcessingError(MeshExportError):
+    """Raised when mesh processing operations fail."""
+    pass
+
+
+class ExportFormatError(MeshExportError):
+    """Raised when export format operations fail."""
+    pass
+
+
+# --- Context Managers for Safe Resource Management ---
+
+@contextlib.contextmanager
+def temporary_mesh(mesh_data, name="temp_mesh"):
+    """Context manager for temporary mesh data that ensures cleanup.
+    
+    Args:
+        mesh_data: The mesh data to manage
+        name: Name identifier for logging
+        
+    Yields:
+        The mesh data object
+    """
+    try:
+        yield mesh_data
+    finally:
+        if mesh_data:
+            try:
+                bpy.data.meshes.remove(mesh_data)
+                logger.debug(f"Cleaned up temporary mesh: {name}")
+            except (ReferenceError, Exception) as e:
+                logger.warning(f"Failed to cleanup temporary mesh {name}: {e}")
+
+
+@contextlib.contextmanager
+def temporary_object(obj, name=None):
+    """Context manager for temporary objects that ensures cleanup.
+    
+    Args:
+        obj: The Blender object to manage
+        name: Name identifier for logging (uses obj.name if not provided)
+        
+    Yields:
+        The object
+    """
+    obj_name = name or (obj.name if obj else "unknown")
+    try:
+        yield obj
+    finally:
+        cleanup_object(obj, obj_name)
+
+
+@contextlib.contextmanager
+def temporary_image_file(filepath):
+    """Context manager for temporary image files that ensures cleanup.
+    
+    Args:
+        filepath: Path to the temporary file
+        
+    Yields:
+        The filepath
+    """
+    try:
+        yield filepath
+    finally:
+        if filepath and os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+                logger.debug(f"Cleaned up temporary file: {filepath}")
+            except Exception as e:
+                logger.warning(f"Failed to cleanup temporary file {filepath}: {e}")
+
+
+# --- Memory Management Utilities ---
+
+class MemoryManager:
+    """Centralized memory management to avoid excessive gc.collect() calls."""
+    
+    _last_gc_time = 0
+    _gc_interval = 5.0  # Minimum seconds between gc.collect() calls
+    _pending_cleanup = False
+    
+    @classmethod
+    def request_cleanup(cls, force=False):
+        """Request garbage collection, but throttle to avoid performance issues."""
+        current_time = time.time()
+        
+        if force or (current_time - cls._last_gc_time) >= cls._gc_interval:
+            import gc
+            gc.collect()
+            cls._last_gc_time = current_time
+            cls._pending_cleanup = False
+            logger.debug(f"Garbage collection performed (forced={force})")
+        else:
+            cls._pending_cleanup = True
+            logger.debug("Garbage collection deferred (too frequent)")
+    
+    @classmethod
+    def cleanup_if_pending(cls):
+        """Perform cleanup if it was previously deferred."""
+        if cls._pending_cleanup:
+            cls.request_cleanup(force=True)
+
+
+class MeshOperations:
+    """Common mesh operations to reduce code duplication."""
+    
+    @staticmethod
+    def update_mesh_data(obj, with_memory_cleanup=False):
+        """Update mesh data and optionally trigger memory cleanup for large meshes."""
+        if not obj or not obj.data:
+            return
+            
+        obj.data.update()
+        
+        if with_memory_cleanup:
+            poly_count = len(obj.data.polygons) if hasattr(obj.data, 'polygons') else 0
+            if poly_count > LARGE_MESH_THRESHOLD:
+                MemoryManager.request_cleanup()
+                logger.debug(f"Memory cleanup after mesh update for {obj.name} ({poly_count:,} polygons)")
+    
+    @staticmethod
+    def update_view_layer():
+        """Update view layer with error handling."""
+        try:
+            bpy.context.view_layer.update()
+        except Exception as e:
+            logger.warning(f"Failed to update view layer: {e}")
+    
+    @staticmethod
+    def safe_mode_set(obj, mode):
+        """Safely set object mode with error handling."""
+        if not obj:
+            return False
+            
+        try:
+            current_mode = obj.mode
+            if current_mode != mode:
+                bpy.ops.object.mode_set(mode=mode)
+                return True
+        except Exception as e:
+            logger.warning(f"Failed to set mode {mode} on {obj.name}: {e}")
+            return False
+        return False
+
+
 # --- Memory Optimisation Functions ---
 
 def optimise_for_large_mesh(obj):
@@ -52,9 +215,7 @@ def optimise_for_large_mesh(obj):
     poly_count = len(obj.data.polygons)
     if poly_count > LARGE_MESH_THRESHOLD:
         logger.info(f"Applying memory optimisation for large mesh: {poly_count} polygons")
-        obj.data.update()
-        import gc
-        gc.collect()
+        MeshOperations.update_mesh_data(obj, with_memory_cleanup=True)
         return True
     return False
 
@@ -74,18 +235,14 @@ def safe_large_mesh_operation(obj, operation_name):
     if is_large:
         logger.info(f"Starting large mesh operation: {operation_name} on {poly_count:,} polygons")
         # Pre-operation cleanup
-        obj.data.update()
-        import gc
-        gc.collect()
+        MeshOperations.update_mesh_data(obj, with_memory_cleanup=True)
         
     try:
         yield
     finally:
         if is_large:
             # Post-operation cleanup
-            obj.data.update()
-            import gc
-            gc.collect()
+            MeshOperations.update_mesh_data(obj, with_memory_cleanup=True)
             logger.info(f"Completed large mesh operation: {operation_name}")
 
 
@@ -283,9 +440,16 @@ def create_export_copy(original_obj, context):
         
     Returns:
         tuple: (copied_object, temp_metaball_mesh_to_cleanup or None)
+        
+    Raises:
+        ValidationError: If object type is invalid
+        ProcessingError: If copying fails
     """
-    if not original_obj or original_obj.type not in ["MESH", "CURVE", "META"]:
-        raise ValueError(f"Invalid object type '{original_obj.type}' provided for copying.")
+    if not original_obj:
+        raise ValidationError("Cannot copy None object")
+    
+    if original_obj.type not in ["MESH", "CURVE", "META"]:
+        raise ValidationError(f"Invalid object type '{original_obj.type}' for copying")
     
     temp_metaball_mesh = None
     
@@ -334,7 +498,7 @@ def create_export_copy(original_obj, context):
                 
         except Exception as e:
             logger.error(f"Failed to convert metaball to mesh: {e}")
-            raise
+            raise ProcessingError(f"Metaball to mesh conversion failed: {e}") from e
         
     logger.info(f"Attempting to duplicate '{original_obj.name}' "
                 f"using operator...")
@@ -563,8 +727,7 @@ def apply_mesh_modifiers(obj, modifier_mode="VISIBLE"):
         
     logger.info(f"Applying {modifier_mode.lower()} modifiers for {obj.name}...")
     current_mode = obj.mode
-    if current_mode != "OBJECT":
-        bpy.ops.object.mode_set(mode="OBJECT")
+    MeshOperations.safe_mode_set(obj, "OBJECT")
 
     override = bpy.context.copy()
     override["object"] = obj
@@ -595,9 +758,7 @@ def apply_mesh_modifiers(obj, modifier_mode="VISIBLE"):
                     
                     # Memory cleanup for large meshes after every 3 modifiers
                     if is_large_mesh and len(applied_modifiers) % 3 == 0:
-                        obj.data.update()
-                        import gc
-                        gc.collect()
+                        MeshOperations.update_mesh_data(obj, with_memory_cleanup=True)
                         logger.info(f"Memory cleanup after {len(applied_modifiers)} modifiers")
                         
                 except (RuntimeError, ReferenceError) as e:
@@ -736,35 +897,33 @@ def compress_textures(obj, ratio, export_path=None, save_compressed=True):
                         # Use a different approach: create at target size and use GPU for scaling
                         # First, save original to a temporary location if it has a filepath
                         import tempfile
-                        temp_file = None
                         
                         if orig_img.filepath and os.path.exists(bpy.path.abspath(orig_img.filepath)):
                             # Use the existing file
                             source_path = bpy.path.abspath(orig_img.filepath)
+                            # Load the image into the new image and scale it
+                            copied_img.filepath_raw = source_path
+                            copied_img.reload()
+                            
+                            # Now scale to target size
+                            copied_img.scale(new_width, new_height)
                         else:
                             # Image is procedural or packed, save it temporarily
                             temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
                             temp_file.close()
                             
-                            # Save the original image to temp file
-                            orig_img.filepath_raw = temp_file.name
-                            orig_img.file_format = 'PNG'
-                            orig_img.save()
-                            source_path = temp_file.name
-                        
-                        # Load the image into the new image and scale it
-                        copied_img.filepath_raw = source_path
-                        copied_img.reload()
-                        
-                        # Now scale to target size
-                        copied_img.scale(new_width, new_height)
-                        
-                        # Clean up temp file if created
-                        if temp_file and os.path.exists(temp_file.name):
-                            try:
-                                os.unlink(temp_file.name)
-                            except OSError:
-                                pass
+                            with temporary_image_file(temp_file.name) as temp_path:
+                                # Save the original image to temp file
+                                orig_img.filepath_raw = temp_path
+                                orig_img.file_format = 'PNG'
+                                orig_img.save()
+                                
+                                # Load the image into the new image and scale it
+                                copied_img.filepath_raw = temp_path
+                                copied_img.reload()
+                                
+                                # Now scale to target size
+                                copied_img.scale(new_width, new_height)
                         
                         # Copy other relevant properties
                         copied_img.colorspace_settings.name = (
@@ -912,13 +1071,10 @@ def apply_decimate_modifier(obj, ratio, decimate_type,
     # Memory optimisation for very large meshes before decimation
     if initial_poly_count > VERY_LARGE_MESH_THRESHOLD:
         logger.info("Very large mesh detected, enabling memory optimisation")
-        obj.data.update()
-        import gc
-        gc.collect()
+        MeshOperations.update_mesh_data(obj, with_memory_cleanup=True)
 
     current_mode = obj.mode
-    if current_mode != "OBJECT":
-        bpy.ops.object.mode_set(mode="OBJECT")
+    MeshOperations.safe_mode_set(obj, "OBJECT")
 
     # Skip the old texture compression system - we now use simple external texture saving
     compressed_texture_list = []
@@ -1006,13 +1162,10 @@ def triangulate_mesh(obj, method="BEAUTY", keep_normals=True):
     
     # Memory optimisation for large meshes before triangulation
     if poly_count > LARGE_MESH_THRESHOLD:
-        obj.data.update()
-        import gc
-        gc.collect()
+        MeshOperations.update_mesh_data(obj, with_memory_cleanup=True)
     
     current_mode = obj.mode
-    if current_mode != "OBJECT":
-        bpy.ops.object.mode_set(mode="OBJECT")
+    MeshOperations.safe_mode_set(obj, "OBJECT")
 
     mod_name = "TempTriangulate"
     tri_mod = obj.modifiers.new(name=mod_name, type="TRIANGULATE")
@@ -1391,10 +1544,8 @@ def export_object(obj, file_path, scene_props, export_scale=1.0):
     mesh_size = len(obj.data.polygons) if obj.data else 0
     if mesh_size > LARGE_MESH_THRESHOLD:
         logger.info(f"Large mesh export: {mesh_size:,} polygons")
-        obj.data.update()
-        bpy.context.view_layer.update()
-        import gc
-        gc.collect()
+        MeshOperations.update_mesh_data(obj, with_memory_cleanup=True)
+        MeshOperations.update_view_layer()
     
     # Save external textures if not embedding
     external_textures = []
@@ -1661,8 +1812,7 @@ def cleanup_object(obj, obj_name_for_log):
         
         # Force garbage collection for large meshes
         if was_large_mesh:
-            import gc
-            gc.collect()
+            MemoryManager.request_cleanup(force=True)
             logger.info(f"Memory cleanup completed for large mesh: {log_name}")
 
     except (ReferenceError, Exception) as remove_e:
@@ -1682,287 +1832,331 @@ class MESH_OT_batch_export(Operator):
         """Enable only if mesh, curve, or metaball objects are selected."""
         return any(obj.type in ["MESH", "CURVE", "META"] for obj in context.selected_objects)
 
-    def execute(self, context):
-        """Runs the batch export process."""
-        scene = context.scene
-        scene_props = scene.mesh_exporter
-        wm = context.window_manager
-        start_time = time.time()
-
+    def _validate_export_setup(self, context):
+        """Validate objects and export path before processing.
+        
+        Returns:
+            tuple: (objects_to_export, export_base_path)
+            
+        Raises:
+            ValidationError: If validation fails
+        """
+        # Validate selected objects
         objects_to_export = [
             obj for obj in context.selected_objects if obj.type in ["MESH", "CURVE", "META"]
         ]
-        total_objects = len(objects_to_export)
-
+        
         if not objects_to_export:
-            self.report({"WARNING"}, "No mesh, curve, or metaball objects selected.")
-            logger.warning("Export cancelled: No mesh, curve, or metaball objects selected.")
-            return {"CANCELLED"}
-
+            raise ValidationError("No mesh, curve, or metaball objects selected.")
+        
         # Validate export path
+        scene_props = context.scene.mesh_exporter
+        if not scene_props.mesh_export_path.strip():
+            raise ValidationError("Export path cannot be empty.")
+            
         export_base_path = bpy.path.abspath(scene_props.mesh_export_path)
+        
+        # Check if path exists or can be created
         if not os.path.isdir(export_base_path):
             try:
-                os.makedirs(export_base_path)
+                os.makedirs(export_base_path, exist_ok=True)
                 logger.info(f"Created export directory: {export_base_path}")
+            except OSError as e:
+                raise ResourceError(
+                    f"Cannot create export directory '{export_base_path}': {e}"
+                ) from e
             except Exception as e:
-                err_msg = (
-                    f"Export path invalid/couldn't be created: "
-                    f"{export_base_path}. Error: {e}"
-                )
-                self.report({"ERROR"}, err_msg)
-                logger.error(err_msg)
-                return {"CANCELLED"}
+                raise ResourceError(
+                    f"Unexpected error creating export directory: {e}"
+                ) from e
+        
+        # Check if directory is writable
+        if not os.access(export_base_path, os.W_OK):
+            raise ResourceError(f"Export directory is not writable: {export_base_path}")
+                
+        return objects_to_export, export_base_path
 
+    def _process_lod_export(self, original_obj, context, scene_props, export_base_path):
+        """Process LOD export for a single object.
+        
+        Returns:
+            tuple: (success_count, failed_list)
+        """
+        logger.info(
+            f"Generating {scene_props.mesh_export_lod_count + 1} LOD levels..."
+        )
+        
+        # Get LOD ratios
+        lod_ratios_prop = [
+            scene_props.mesh_export_lod_ratio_01,
+            scene_props.mesh_export_lod_ratio_02,
+            scene_props.mesh_export_lod_ratio_03,
+            scene_props.mesh_export_lod_ratio_04,
+        ]
+        ratios = [1.0] + lod_ratios_prop[:scene_props.mesh_export_lod_count]
+        
+        # Initialize tracking variables
         successful_exports = 0
         failed_exports = []
-        overall_success = True
-
-        logger.info(
-            f"Starting batch export for {total_objects} "
-            f"objects to {export_base_path}"
-        )
-        wm.progress_begin(0, total_objects)
+        base_lod_obj = None
+        previous_ratio = 1.0
+        temp_metaball_mesh = None
+        
         try:
-            # --- Main Export Loop ---
-            for index, original_obj in enumerate(objects_to_export):
-                wm.progress_update(index + 1)
-                logger.info(
-                    f"Processing ({index + 1}/{total_objects}): "
-                    f"{original_obj.name}"
-                )
-                object_processed_successfully = True
-
+            for lod_level, target_ratio in enumerate(ratios):
+                lod_obj = None
+                lod_obj_name = None
+                
                 try:
-                    # --- Process One Original Object ---
-                    if scene_props.mesh_export_lod:
-                        # --- LOD Branch ---
-                        logger.info(
-                            f"Generating "
-                            f"{scene_props.mesh_export_lod_count + 1} "
-                            f"LOD levels..."
+                    if lod_level == 0:
+                        # LOD0: Create base copy with modifiers applied
+                        logger.info("Creating base LOD0...")
+                        lod_obj, temp_metaball_mesh = create_export_copy(
+                            original_obj, context
                         )
-                        lod_ratios_prop = [
-                            scene_props.mesh_export_lod_ratio_01,
-                            scene_props.mesh_export_lod_ratio_02,
-                            scene_props.mesh_export_lod_ratio_03,
-                            scene_props.mesh_export_lod_ratio_04,
-                        ]
-                        ratios = (
-                            [1.0] 
-                            + lod_ratios_prop[
-                                :scene_props.mesh_export_lod_count
-                            ]
+                        (lod_obj_name, _, export_scale) = setup_export_object(
+                            lod_obj, original_obj.name, scene_props, lod_level
                         )
-
-                        # LOD Reuse Implementation
-                        base_lod_obj = None
-                        previous_ratio = 1.0
-                        temp_metaball_mesh = None
-                        
-                        for lod_level, target_ratio in enumerate(ratios):
-                            lod_obj = None
-                            lod_obj_name = None
-                            try:
-                                if lod_level == 0:
-                                    # LOD0: Create base copy with modifiers applied
-                                    logger.info("Creating base LOD0...")
-                                    lod_obj, temp_metaball_mesh = create_export_copy(
-                                        original_obj, 
-                                        context
-                                    )
-                                    (lod_obj_name, _, export_scale) = setup_export_object(
-                                        lod_obj, original_obj.name,
-                                        scene_props, lod_level
-                                    )
-                                    apply_mesh_modifiers(lod_obj, scene_props.mesh_export_apply_modifiers)
-                                    
-                                    # LOD0 texture resizing is handled during export via save_external_textures
-                                    # No need for special processing here
-                                    
-                                    # Keep reference for reuse
-                                    base_lod_obj = lod_obj
-                                else:
-                                    # LOD1+: Reuse previous LOD with progressive decimation
-                                    if base_lod_obj is None:
-                                        raise RuntimeError("Base LOD object lost, cannot continue")
-                                    
-                                    logger.info(f"Building LOD{lod_level} from previous LOD...")
-                                    
-                                    # Calculate progressive ratio
-                                    progressive_ratio = calculate_progressive_ratio(
-                                        target_ratio, previous_ratio
-                                    )
-                                    logger.info(f"Progressive decimation ratio: {progressive_ratio:.3f} "
-                                              f"(from {previous_ratio:.3f} to {target_ratio:.3f})")
-                                    
-                                    # Rename for current LOD
-                                    (lod_obj_name, _, export_scale) = setup_export_object(
-                                        base_lod_obj, original_obj.name,
-                                        scene_props, lod_level
-                                    )
-                                    
-                                    # Apply progressive decimation
-                                    apply_decimate_modifier(
-                                        base_lod_obj, progressive_ratio,
-                                        scene_props.mesh_export_lod_type,
-                                        scene_props.mesh_export_lod_symmetry_axis,
-                                        scene_props.mesh_export_lod_symmetry,
-                                    )
-                                    
-                                    # Use the same object for export
-                                    lod_obj = base_lod_obj
-                                
-                                # Triangulate if needed (applies to all LODs)
-                                if scene_props.mesh_export_tri and lod_level == 0:
-                                    # Only triangulate once on LOD0
-                                    method = scene_props.mesh_export_tri_method
-                                    k_nrms = scene_props.mesh_export_keep_normals
-                                    triangulate_mesh(lod_obj, method, k_nrms)
-
-                                # Export current LOD
-                                lod_file_path = os.path.join(export_base_path,
-                                                           lod_obj_name)
-                                if export_object(lod_obj, lod_file_path,
-                                               scene_props, export_scale):
-                                    successful_exports += 1
-                                else:
-                                    raise RuntimeError("Export func failed")
-                                
-                                # Update previous ratio for next iteration
-                                previous_ratio = target_ratio
-
-                            except Exception as lod_e:
-                                object_processed_successfully = False
-                                log_name = (
-                                    lod_obj_name if lod_obj_name else
-                                    f"{original_obj.name}_LOD{lod_level:02d}"
-                                    )
-                                logger.error(
-                                    f"Failed processing {log_name}: {lod_e}"
-                                )
-                                failed_exports.append(
-                                    f"{original_obj.name} (LOD{lod_level:02d})"
-                                )
-                                # Break the loop on error since subsequent LODs depend on previous
-                                break
-                            finally:
-                                # Only cleanup at the very end
-                                if lod_level == len(ratios) - 1 or not object_processed_successfully:
-                                    cleanup_object(base_lod_obj, "base_lod_object")
-                                    base_lod_obj = None
-                                    # Clean up temporary metaball mesh if it exists
-                                    if temp_metaball_mesh:
-                                        cleanup_object(temp_metaball_mesh, "temp_metaball_mesh")
-                                        temp_metaball_mesh = None
-                                
-                        # Memory cleanup between LOD levels for large meshes
-                        if (original_obj.type == "MESH" and 
-                            len(original_obj.data.polygons if original_obj.data else []) > LARGE_MESH_THRESHOLD):
-                            import gc
-                            gc.collect()
-                            logger.debug("Memory cleanup after LOD level processing")
-                        # --- End LOD Level Loop ---
-
+                        apply_mesh_modifiers(lod_obj, scene_props.mesh_export_apply_modifiers)
+                        base_lod_obj = lod_obj
                     else:
-                        # --- Non-LOD Branch ---
-                        export_obj = None
-                        export_obj_name = None
-                        temp_metaball_mesh = None
-                        try:
-                            logger.info("Processing single export (no LODs)..")
-                            export_obj, temp_metaball_mesh = create_export_copy(
-                                original_obj, 
-                                context
-                            )
-                            (export_obj_name, base_name, export_scale) = setup_export_object(
-                                export_obj, original_obj.name, scene_props
-                            )
-                            apply_mesh_modifiers(export_obj, scene_props.mesh_export_apply_modifiers)
-                            if scene_props.mesh_export_tri:
-                                triangulate_mesh(
-                                    export_obj,
-                                    scene_props.mesh_export_tri_method,
-                                    scene_props.mesh_export_keep_normals
-                                )
-
-                            file_path = os.path.join(
-                                export_base_path, base_name)
-                            if export_object(
-                                export_obj, file_path, scene_props, export_scale):
-                                successful_exports += 1
-                            else:
-                                object_processed_successfully = False
-                                failed_exports.append(original_obj.name)
-
-                        except Exception as e:
-                            object_processed_successfully = False
-                            log_name = (export_obj_name if export_obj_name else
-                                        original_obj.name)
-                            logger.error(f"Failed processing {log_name}: {e}")
-                            failed_exports.append(
-                                f"{original_obj.name} (Processing Error)"
-                            )
-                        finally:
-                            cleanup_object(export_obj, export_obj_name)
-                            # Clean up temporary metaball mesh if it exists
-                            if temp_metaball_mesh:
-                                cleanup_object(temp_metaball_mesh, "temp_metaball_mesh")
-                    # --- End Non-LOD Branch ---
-
-                except Exception as outer_e:
-                    logger.error(
-                        f"Unexpected outer error during processing of "
-                        f"{original_obj.name}: {outer_e}",
-                        exc_info=True
+                        # LOD1+: Reuse previous LOD with progressive decimation
+                        if base_lod_obj is None:
+                            raise RuntimeError("Base LOD object lost, cannot continue")
+                        
+                        logger.info(f"Building LOD{lod_level} from previous LOD...")
+                        
+                        # Calculate progressive ratio
+                        progressive_ratio = calculate_progressive_ratio(
+                            target_ratio, previous_ratio
+                        )
+                        logger.info(
+                            f"Progressive decimation ratio: {progressive_ratio:.3f} "
+                            f"(from {previous_ratio:.3f} to {target_ratio:.3f})"
+                        )
+                        
+                        # Rename for current LOD
+                        (lod_obj_name, _, export_scale) = setup_export_object(
+                            base_lod_obj, original_obj.name, scene_props, lod_level
+                        )
+                        
+                        # Apply progressive decimation
+                        apply_decimate_modifier(
+                            base_lod_obj, progressive_ratio,
+                            scene_props.mesh_export_lod_type,
+                            scene_props.mesh_export_lod_symmetry_axis,
+                            scene_props.mesh_export_lod_symmetry,
+                        )
+                        lod_obj = base_lod_obj
+                    
+                    # Triangulate if needed (applies to all LODs)
+                    if scene_props.mesh_export_tri and lod_level == 0:
+                        method = scene_props.mesh_export_tri_method
+                        k_nrms = scene_props.mesh_export_keep_normals
+                        triangulate_mesh(lod_obj, method, k_nrms)
+                    
+                    # Export current LOD
+                    lod_file_path = os.path.join(export_base_path, lod_obj_name)
+                    if export_object(lod_obj, lod_file_path, scene_props, export_scale):
+                        successful_exports += 1
+                    else:
+                        raise RuntimeError("Export func failed")
+                    
+                    # Update previous ratio for next iteration
+                    previous_ratio = target_ratio
+                    
+                except Exception as lod_e:
+                    log_name = (
+                        lod_obj_name if lod_obj_name else
+                        f"{original_obj.name}_LOD{lod_level:02d}"
                     )
-                    object_processed_successfully = False
-                    failed_exports.append(f"{original_obj.name} (Outer Error)")
-                finally:
-                    # Mark Original Object
-                    if original_obj and object_processed_successfully:
-                        export_indicators.mark_object_as_exported(original_obj)
-                        logger.info(
-                            f"Marked original {original_obj.name} as exported."
-                        )
-                    elif original_obj:
-                        logger.info(
-                            f"Skipped marking original {original_obj.name} "
-                            f"due to errors."
-                        )
-                        overall_success = False
-            # --- End Main Object Loop ---
+                    logger.error(f"Failed processing {log_name}: {lod_e}")
+                    failed_exports.append(f"{original_obj.name} (LOD{lod_level:02d})")
+                    # Break the loop on error since subsequent LODs depend on previous
+                    break
+                    
         finally:
-            wm.progress_end()
+            # Cleanup resources
+            if base_lod_obj:
+                cleanup_object(base_lod_obj, "base_lod_object")
+            if temp_metaball_mesh:
+                cleanup_object(temp_metaball_mesh, "temp_metaball_mesh")
+                
+            # Memory cleanup for large meshes
+            if (original_obj.type == "MESH" and 
+                len(original_obj.data.polygons if original_obj.data else []) > LARGE_MESH_THRESHOLD):
+                MemoryManager.request_cleanup()
+                logger.debug("Memory cleanup after LOD level processing")
+            
+        return successful_exports, failed_exports
 
-        # --- Final Report ---
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        log_level = logging.INFO if overall_success else logging.WARNING
+    def _process_single_export(self, original_obj, context, scene_props, export_base_path):
+        """Process non-LOD export for a single object.
+        
+        Returns:
+            tuple: (success_count, failed_list)
+        """
+        export_obj = None
+        export_obj_name = None
+        temp_metaball_mesh = None
+        
+        try:
+            logger.info("Processing single export (no LODs)..")
+            export_obj, temp_metaball_mesh = create_export_copy(
+                original_obj, context
+            )
+            
+            # Use context manager for the export object
+            with temporary_object(export_obj, export_obj_name) as obj:
+                (export_obj_name, base_name, export_scale) = setup_export_object(
+                    obj, original_obj.name, scene_props
+                )
+                apply_mesh_modifiers(obj, scene_props.mesh_export_apply_modifiers)
+                
+                if scene_props.mesh_export_tri:
+                    triangulate_mesh(
+                        obj,
+                        scene_props.mesh_export_tri_method,
+                        scene_props.mesh_export_keep_normals
+                    )
+                
+                file_path = os.path.join(export_base_path, base_name)
+                if export_object(obj, file_path, scene_props, export_scale):
+                    return 1, []
+                else:
+                    return 0, [original_obj.name]
+                
+        except Exception as e:
+            log_name = export_obj_name if export_obj_name else original_obj.name
+            logger.error(f"Failed processing {log_name}: {e}")
+            return 0, [f"{original_obj.name} (Processing Error)"]
+        finally:
+            # Cleanup temp metaball mesh if exists
+            if temp_metaball_mesh:
+                cleanup_object(temp_metaball_mesh, "temp_metaball_mesh")
+
+    def _generate_export_report(self, successful_exports, failed_exports, elapsed_time):
+        """Generate final export report message.
+        
+        Returns:
+            tuple: (message, report_type, overall_success)
+        """
+        overall_success = len(failed_exports) == 0
         message = (
             f"Export finished in {elapsed_time:.2f}s. "
             f"Exported {successful_exports} files."
         )
+        
         if failed_exports:
-            unique_fails = sorted(list(set(f.split(' (')[0]
-                                            for f in failed_exports)))
+            unique_fails = sorted(list(set(f.split(' (')[0] for f in failed_exports)))
             fail_summary = (
                 f"Failed exports logged for: {len(unique_fails)} original "
                 f"objects ({', '.join(unique_fails[:5])}"
-                f"{'...' if len(unique_fails)>5 else ''}). Check console/log."
+                f"{'...' if len(unique_fails) > 5 else ''}). Check console/log."
             )
             message += f" {fail_summary}"
             logger.warning(f"Failures occurred for: {', '.join(unique_fails)}")
-
-        logger.log(log_level, message)
+            
         report_type = {"INFO"} if overall_success else {"WARNING"}
-        self.report(report_type, message)
+        return message, report_type, overall_success
 
-        # --- Trigger redraw ---
+    def execute(self, context):
+        """Runs the batch export process."""
+        start_time = time.time()
+        
+        try:
+            # Validate setup
+            objects_to_export, export_base_path = self._validate_export_setup(context)
+        except ValidationError as e:
+            self.report({"WARNING"}, str(e))
+            logger.warning(f"Validation failed: {e}")
+            return {"CANCELLED"}
+        except ResourceError as e:
+            self.report({"ERROR"}, str(e))
+            logger.error(f"Resource error: {e}")
+            return {"CANCELLED"}
+        except Exception as e:
+            self.report({"ERROR"}, f"Unexpected validation error: {e}")
+            logger.error(f"Unexpected validation error: {e}", exc_info=True)
+            return {"CANCELLED"}
+        
+        # Initialize tracking
+        scene_props = context.scene.mesh_exporter
+        wm = context.window_manager
+        total_objects = len(objects_to_export)
+        successful_exports = 0
+        failed_exports = []
+        
+        logger.info(
+            f"Starting batch export for {total_objects} objects to {export_base_path}"
+        )
+        
+        wm.progress_begin(0, total_objects)
+        try:
+            # Process each object
+            for index, original_obj in enumerate(objects_to_export):
+                wm.progress_update(index + 1)
+                logger.info(f"Processing ({index + 1}/{total_objects}): {original_obj.name}")
+                
+                try:
+                    # Process with LOD or single export
+                    if scene_props.mesh_export_lod:
+                        success_count, failures = self._process_lod_export(
+                            original_obj, context, scene_props, export_base_path
+                        )
+                    else:
+                        success_count, failures = self._process_single_export(
+                            original_obj, context, scene_props, export_base_path
+                        )
+                    
+                    # Update tracking
+                    successful_exports += success_count
+                    failed_exports.extend(failures)
+                    
+                    # Mark object if successful
+                    if not failures:
+                        export_indicators.mark_object_as_exported(original_obj)
+                        logger.info(f"Marked original {original_obj.name} as exported.")
+                    else:
+                        logger.info(f"Skipped marking {original_obj.name} due to errors.")
+                        
+                except ProcessingError as e:
+                    logger.error(f"Processing error for {original_obj.name}: {e}")
+                    failed_exports.append(f"{original_obj.name} (Processing Error)")
+                except ResourceError as e:
+                    logger.error(f"Resource error for {original_obj.name}: {e}")
+                    failed_exports.append(f"{original_obj.name} (Resource Error)")
+                except Exception as e:
+                    logger.error(f"Unexpected error for {original_obj.name}: {e}", exc_info=True)
+                    failed_exports.append(f"{original_obj.name} (Unexpected Error)")
+                    
+        except KeyboardInterrupt:
+            logger.info("Export cancelled by user")
+            self.report({"INFO"}, "Export cancelled by user")
+            return {"CANCELLED"}
+        except Exception as e:
+            logger.error(f"Critical error during export: {e}", exc_info=True)
+            self.report({"ERROR"}, f"Critical export error: {e}")
+            return {"CANCELLED"}
+        finally:
+            wm.progress_end()
+            # Ensure any pending memory cleanup is performed
+            MemoryManager.cleanup_if_pending()
+        
+        # Generate and display report
+        elapsed_time = time.time() - start_time
+        message, report_type, overall_success = self._generate_export_report(
+            successful_exports, failed_exports, elapsed_time
+        )
+        
+        logger.log(logging.INFO if overall_success else logging.WARNING, message)
+        self.report(report_type, message)
+        
+        # Trigger viewport redraw
         for window in context.window_manager.windows:
             for area in window.screen.areas:
                 area.tag_redraw()
-
+        
         return {"FINISHED"}
 
 

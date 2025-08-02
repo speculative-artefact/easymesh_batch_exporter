@@ -47,6 +47,11 @@ EXPORT_TIME_PROP = "mesh_export_timestamp"
 EXPORT_STATUS_PROP = "mesh_export_status"
 ORIGINAL_COLOUR_PROP = "mesh_exporter_original_colour"
 
+# Caching for performance optimization
+_exported_objects_cache = []
+_cache_last_update = 0
+_cache_update_interval = 10.0  # Update cache every 10 seconds
+
 # Export status colours (RGBA tuple)
 STATUS_COLOURS = {
     ExportStatus.FRESH.value: (0.2, 0.8, 0.2, 1.0),  # Green
@@ -100,6 +105,10 @@ def mark_object_as_exported(obj):
     obj[EXPORT_STATUS_PROP] = ExportStatus.FRESH.value
     set_object_colour(obj)
     logger.info(f"Marked {obj.name} as freshly exported")
+    
+    # Invalidate cache since we added a new exported object
+    global _cache_last_update
+    _cache_last_update = 0
 
 def _delete_prop(obj, prop_name):
     """
@@ -298,6 +307,23 @@ def set_object_colour(obj):
                      f"for {obj.name}: {e}")
 
 
+def _get_cached_exported_objects():
+    """Get cached list of objects with export properties."""
+    global _exported_objects_cache, _cache_last_update
+    current_time = time.time()
+    
+    # Update cache if it's stale
+    if (current_time - _cache_last_update) >= _cache_update_interval:
+        _exported_objects_cache = [
+            obj for obj in bpy.data.objects 
+            if obj and obj.type == "MESH" and EXPORT_TIME_PROP in obj
+        ]
+        _cache_last_update = current_time
+        logger.debug(f"Updated exported objects cache: {len(_exported_objects_cache)} objects")
+    
+    return _exported_objects_cache
+
+
 def update_all_export_statuses():
     """
     Iterate through objects, update export status based on elapsed time.
@@ -311,8 +337,11 @@ def update_all_export_statuses():
         logger.debug("No objects found to update statuses")
         return False
 
-    # Iterate safely over object list copy
-    for obj in list(bpy.data.objects):
+    # Use cached list of exported objects for better performance
+    exported_objects = _get_cached_exported_objects()
+    
+    # Iterate over cached exported objects only
+    for obj in exported_objects:
         try:
             if not (obj and obj.type == "MESH" and EXPORT_TIME_PROP in obj):
                 continue
