@@ -331,6 +331,13 @@ class MeshExporterSettings(PropertyGroup):
     )
     
 
+    # LOD hierarchy export property (for game engines)
+    mesh_export_lod_hierarchy: BoolProperty(
+        name="Export as LOD Hierarchy",
+        description="Export collection as single mesh with LODs in parent/child structure (Unity/Unreal workflow)",
+        default=True
+    )
+    
     # LOD ratio properties
     mesh_export_lod_ratio_01: FloatProperty(
         name="LOD1 Ratio", 

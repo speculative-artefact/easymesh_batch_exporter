@@ -430,6 +430,158 @@ def convert_curve_to_mesh_object(curve_obj, context):
         raise RuntimeError(f"Failed to convert {curve_obj.type} to mesh: {e}") from e
 
 
+def create_lod_hierarchy(base_obj, lod_objects, collection_name, context):
+    """
+    Creates a parent/child hierarchy for LODs suitable for game engines.
+    
+    Args:
+        base_obj (bpy.types.Object): The base LOD0 object.
+        lod_objects (list): List of LOD objects (LOD1, LOD2, etc.).
+        collection_name (str): Name of the original collection.
+        context (bpy.context): The current Blender context.
+        
+    Returns:
+        bpy.types.Object: The parent empty object with LODs as children.
+    """
+    # Create an empty parent object
+    parent_empty = bpy.data.objects.new(name=f"{collection_name}_LODGroup", object_data=None)
+    parent_empty.empty_display_type = 'PLAIN_AXES'
+    parent_empty.empty_display_size = 1.0
+    
+    # Link to scene
+    context.collection.objects.link(parent_empty)
+    
+    # Set parent for base object and LODs
+    base_obj.parent = parent_empty
+    base_obj.name = f"{collection_name}_LOD0"
+    
+    for i, lod_obj in enumerate(lod_objects, start=1):
+        lod_obj.parent = parent_empty
+        lod_obj.name = f"{collection_name}_LOD{i}"
+    
+    logger.info(f"Created LOD hierarchy with {len(lod_objects) + 1} levels")
+    return parent_empty
+
+
+def merge_collection_objects(collection, context):
+    """
+    Merges all mesh objects in a collection into a single mesh.
+    
+    Args:
+        collection (bpy.types.Collection): The collection to merge.
+        context (bpy.context): The current Blender context.
+        
+    Returns:
+        bpy.types.Object: The merged mesh object.
+        
+    Raises:
+        ValidationError: If collection is empty or has no meshes
+        ProcessingError: If merging fails
+    """
+    import bmesh
+    
+    # Get all mesh objects in the collection (including converted curves/metaballs)
+    mesh_objects = []
+    temp_objects = []  # Track temporary objects for cleanup
+    
+    for obj in collection.objects:
+        if obj.type == 'MESH':
+            mesh_objects.append(obj)
+        elif obj.type in ['CURVE', 'META']:
+            # Convert to mesh first
+            try:
+                if obj.type == 'CURVE':
+                    converted = convert_curve_to_mesh(obj.copy(), context)
+                else:  # META
+                    copy_obj, temp_meta = create_export_copy(obj, context)
+                    converted = copy_obj
+                    if temp_meta:
+                        temp_objects.append(temp_meta)
+                mesh_objects.append(converted)
+                temp_objects.append(converted)
+            except Exception as e:
+                logger.warning(f"Failed to convert {obj.name} to mesh: {e}")
+                continue
+    
+    if not mesh_objects:
+        raise ValidationError(f"Collection '{collection.name}' contains no valid mesh objects")
+    
+    try:
+        # Create a new bmesh object
+        bm = bmesh.new()
+        
+        # Track material remapping
+        material_map = {}
+        merged_materials = []
+        
+        for obj in mesh_objects:
+            # Get the evaluated mesh with modifiers applied
+            depsgraph = context.evaluated_depsgraph_get()
+            obj_eval = obj.evaluated_get(depsgraph)
+            mesh = obj_eval.to_mesh()
+            
+            # Create a transformation matrix
+            transform_matrix = obj.matrix_world
+            
+            # Add materials and create mapping
+            material_offset = len(merged_materials)
+            for mat in obj.data.materials:
+                if mat:
+                    merged_materials.append(mat)
+            
+            # Create temporary bmesh for this object
+            temp_bm = bmesh.new()
+            temp_bm.from_mesh(mesh)
+            
+            # Apply transformation
+            temp_bm.transform(transform_matrix)
+            
+            # Remap material indices
+            for face in temp_bm.faces:
+                face.material_index += material_offset
+            
+            # Merge into main bmesh
+            bm.from_mesh(temp_bm.to_mesh())
+            temp_bm.free()
+            
+            # Clean up evaluated mesh
+            obj_eval.to_mesh_clear()
+        
+        # Remove duplicate vertices
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
+        
+        # Create the final mesh
+        merged_mesh = bpy.data.meshes.new(name=f"{collection.name}_merged")
+        bm.to_mesh(merged_mesh)
+        bm.free()
+        
+        # Create the merged object
+        merged_obj = bpy.data.objects.new(name=f"{collection.name}_LOD0", object_data=merged_mesh)
+        
+        # Assign materials
+        for mat in merged_materials:
+            merged_obj.data.materials.append(mat)
+        
+        # Link to scene
+        context.collection.objects.link(merged_obj)
+        
+        # Clean up temporary objects
+        for temp_obj in temp_objects:
+            bpy.data.objects.remove(temp_obj, do_unlink=True)
+        
+        logger.info(f"Successfully merged {len(mesh_objects)} objects from collection '{collection.name}'")
+        return merged_obj
+        
+    except Exception as e:
+        # Clean up on failure
+        for temp_obj in temp_objects:
+            try:
+                bpy.data.objects.remove(temp_obj, do_unlink=True)
+            except:
+                pass
+        raise ProcessingError(f"Failed to merge collection: {e}") from e
+
+
 def create_export_copy(original_obj, context):
     """
     Creates a linked copy of the object and its data without mode switching.
@@ -1836,21 +1988,43 @@ class MESH_OT_batch_export(Operator):
         """Validate objects and export path before processing.
         
         Returns:
-            tuple: (objects_to_export, export_base_path)
+            tuple: (objects_to_export, export_base_path, collections_to_export)
             
         Raises:
             ValidationError: If validation fails
         """
-        # Validate selected objects
-        objects_to_export = [
-            obj for obj in context.selected_objects if obj.type in ["MESH", "CURVE", "META"]
-        ]
+        scene_props = context.scene.mesh_exporter
+        collections_to_export = []
         
-        if not objects_to_export:
-            raise ValidationError("No mesh, curve, or metaball objects selected.")
+        # Check if we're in collection hierarchy mode
+        if (scene_props.mesh_export_lod and 
+            scene_props.mesh_export_lod_hierarchy and 
+            scene_props.mesh_export_format == "FBX"):
+            
+            # Get collections from selected objects
+            processed_collections = set()
+            for obj in context.selected_objects:
+                if obj.type in ["MESH", "CURVE", "META"]:
+                    # Get all collections this object belongs to
+                    for coll in obj.users_collection:
+                        if coll not in processed_collections and coll != context.scene.collection:
+                            collections_to_export.append(coll)
+                            processed_collections.add(coll)
+            
+            if not collections_to_export:
+                raise ValidationError("No collections found for selected objects in hierarchy mode.")
+            
+            objects_to_export = []  # We'll process collections instead
+        else:
+            # Standard object export
+            objects_to_export = [
+                obj for obj in context.selected_objects if obj.type in ["MESH", "CURVE", "META"]
+            ]
+            
+            if not objects_to_export:
+                raise ValidationError("No mesh, curve, or metaball objects selected.")
         
         # Validate export path
-        scene_props = context.scene.mesh_exporter
         if not scene_props.mesh_export_path.strip():
             raise ValidationError("Export path cannot be empty.")
             
@@ -1874,8 +2048,97 @@ class MESH_OT_batch_export(Operator):
         if not os.access(export_base_path, os.W_OK):
             raise ResourceError(f"Export directory is not writable: {export_base_path}")
                 
-        return objects_to_export, export_base_path
+        return objects_to_export, export_base_path, collections_to_export
 
+    def _process_collection_hierarchy_export(self, collection, context, scene_props, export_base_path):
+        """Process collection hierarchy export with LODs.
+        
+        Returns:
+            tuple: (success_count, failed_list)
+        """
+        logger.info(f"Processing collection '{collection.name}' for hierarchy export")
+        successful_exports = 0
+        failed_exports = []
+        
+        try:
+            # Merge collection objects into single mesh
+            merged_obj = merge_collection_objects(collection, context)
+            
+            # Generate LODs for the merged object
+            lod_objects = []
+            lod_count = scene_props.mesh_export_lod_count
+            
+            for lod_level in range(1, lod_count + 1):
+                # Create LOD copy
+                lod_obj = merged_obj.copy()
+                lod_obj.data = merged_obj.data.copy()
+                context.collection.objects.link(lod_obj)
+                
+                # Apply decimation
+                ratio_value = getattr(scene_props, f"mesh_export_lod_ratio_{lod_level:02d}")
+                decimate_modifier = lod_obj.modifiers.new(name=f"Decimate_LOD{lod_level}", type="DECIMATE")
+                decimate_modifier.decimate_type = scene_props.mesh_export_lod_type
+                decimate_modifier.ratio = ratio_value
+                
+                if scene_props.mesh_export_lod_symmetry:
+                    decimate_modifier.use_symmetry = True
+                    decimate_modifier.symmetry_axis = scene_props.mesh_export_lod_symmetry_axis
+                
+                # Apply modifier
+                with MeshOperations.safe_mode_set(context, "OBJECT"):
+                    context.view_layer.objects.active = lod_obj
+                    bpy.ops.object.modifier_apply(modifier=decimate_modifier.name)
+                
+                lod_objects.append(lod_obj)
+                logger.info(f"Created LOD{lod_level} with ratio {ratio_value}")
+            
+            # Create hierarchy structure
+            parent_empty = create_lod_hierarchy(merged_obj, lod_objects, collection.name, context)
+            
+            # Export the hierarchy as FBX
+            export_path = os.path.join(export_base_path, f"{collection.name}_LODGroup.fbx")
+            
+            # Select all LOD objects and parent for export
+            bpy.ops.object.select_all(action='DESELECT')
+            parent_empty.select_set(True)
+            merged_obj.select_set(True)
+            for lod_obj in lod_objects:
+                lod_obj.select_set(True)
+            context.view_layer.objects.active = parent_empty
+            
+            # Export FBX with hierarchy
+            try:
+                bpy.ops.export_scene.fbx(
+                    filepath=export_path,
+                    use_selection=True,
+                    global_scale=scene_props.mesh_export_scale,
+                    apply_scale_options='FBX_SCALE_ALL',
+                    axis_forward=scene_props.mesh_export_coord_forward,
+                    axis_up=scene_props.mesh_export_coord_up,
+                    use_mesh_modifiers=False,  # Already applied
+                    mesh_smooth_type=scene_props.mesh_export_smoothing,
+                    use_tspace=True,
+                    path_mode='COPY' if scene_props.mesh_export_embed_textures else 'AUTO',
+                    embed_textures=scene_props.mesh_export_embed_textures
+                )
+                successful_exports = len(lod_objects) + 1  # LODs + base
+                logger.info(f"Successfully exported hierarchy to {export_path}")
+            except Exception as e:
+                failed_exports.append(f"{collection.name} (Export failed: {e})")
+                logger.error(f"Failed to export hierarchy: {e}")
+            
+            # Clean up temporary objects
+            bpy.data.objects.remove(parent_empty, do_unlink=True)
+            bpy.data.objects.remove(merged_obj, do_unlink=True)
+            for lod_obj in lod_objects:
+                bpy.data.objects.remove(lod_obj, do_unlink=True)
+            
+        except Exception as e:
+            logger.error(f"Failed to process collection hierarchy: {e}")
+            failed_exports.append(f"{collection.name} (Processing failed: {e})")
+        
+        return successful_exports, failed_exports
+    
     def _process_lod_export(self, original_obj, context, scene_props, export_base_path):
         """Process LOD export for a single object.
         
@@ -2066,7 +2329,7 @@ class MESH_OT_batch_export(Operator):
         
         try:
             # Validate setup
-            objects_to_export, export_base_path = self._validate_export_setup(context)
+            objects_to_export, export_base_path, collections_to_export = self._validate_export_setup(context)
         except ValidationError as e:
             self.report({"WARNING"}, str(e))
             logger.warning(f"Validation failed: {e}")
@@ -2083,52 +2346,85 @@ class MESH_OT_batch_export(Operator):
         # Initialize tracking
         scene_props = context.scene.mesh_exporter
         wm = context.window_manager
-        total_objects = len(objects_to_export)
         successful_exports = 0
         failed_exports = []
         
-        logger.info(
-            f"Starting batch export for {total_objects} objects to {export_base_path}"
-        )
+        # Check if we're processing collections or individual objects
+        if collections_to_export:
+            total_items = len(collections_to_export)
+            logger.info(
+                f"Starting batch export for {total_items} collections to {export_base_path}"
+            )
+        else:
+            total_items = len(objects_to_export)
+            logger.info(
+                f"Starting batch export for {total_items} objects to {export_base_path}"
+            )
         
-        wm.progress_begin(0, total_objects)
+        wm.progress_begin(0, total_items)
         try:
-            # Process each object
-            for index, original_obj in enumerate(objects_to_export):
-                wm.progress_update(index + 1)
-                logger.info(f"Processing ({index + 1}/{total_objects}): {original_obj.name}")
-                
-                try:
-                    # Process with LOD or single export
-                    if scene_props.mesh_export_lod:
-                        success_count, failures = self._process_lod_export(
-                            original_obj, context, scene_props, export_base_path
-                        )
-                    else:
-                        success_count, failures = self._process_single_export(
-                            original_obj, context, scene_props, export_base_path
-                        )
+            # Process collections if in hierarchy mode
+            if collections_to_export:
+                for index, collection in enumerate(collections_to_export):
+                    wm.progress_update(index + 1)
+                    logger.info(f"Processing collection ({index + 1}/{total_items}): {collection.name}")
                     
-                    # Update tracking
-                    successful_exports += success_count
-                    failed_exports.extend(failures)
-                    
-                    # Mark object if successful
-                    if not failures:
-                        export_indicators.mark_object_as_exported(original_obj)
-                        logger.info(f"Marked original {original_obj.name} as exported.")
-                    else:
-                        logger.info(f"Skipped marking {original_obj.name} due to errors.")
+                    try:
+                        success_count, failures = self._process_collection_hierarchy_export(
+                            collection, context, scene_props, export_base_path
+                        )
                         
-                except ProcessingError as e:
-                    logger.error(f"Processing error for {original_obj.name}: {e}")
-                    failed_exports.append(f"{original_obj.name} (Processing Error)")
-                except ResourceError as e:
-                    logger.error(f"Resource error for {original_obj.name}: {e}")
-                    failed_exports.append(f"{original_obj.name} (Resource Error)")
-                except Exception as e:
-                    logger.error(f"Unexpected error for {original_obj.name}: {e}", exc_info=True)
-                    failed_exports.append(f"{original_obj.name} (Unexpected Error)")
+                        # Update tracking
+                        successful_exports += success_count
+                        failed_exports.extend(failures)
+                        
+                        # Mark all objects in collection if successful
+                        if not failures:
+                            for obj in collection.objects:
+                                if obj.type in ["MESH", "CURVE", "META"]:
+                                    export_indicators.mark_object_as_exported(obj)
+                            logger.info(f"Marked collection {collection.name} objects as exported.")
+                        
+                    except Exception as e:
+                        logger.error(f"Error processing collection {collection.name}: {e}")
+                        failed_exports.append(f"{collection.name} (Collection Error)")
+            else:
+                # Process each object normally
+                for index, original_obj in enumerate(objects_to_export):
+                    wm.progress_update(index + 1)
+                    logger.info(f"Processing ({index + 1}/{total_items}): {original_obj.name}")
+                    
+                    try:
+                        # Process with LOD or single export
+                        if scene_props.mesh_export_lod:
+                            success_count, failures = self._process_lod_export(
+                                original_obj, context, scene_props, export_base_path
+                            )
+                        else:
+                            success_count, failures = self._process_single_export(
+                                original_obj, context, scene_props, export_base_path
+                            )
+                        
+                        # Update tracking
+                        successful_exports += success_count
+                        failed_exports.extend(failures)
+                        
+                        # Mark object if successful
+                        if not failures:
+                            export_indicators.mark_object_as_exported(original_obj)
+                            logger.info(f"Marked original {original_obj.name} as exported.")
+                        else:
+                            logger.info(f"Skipped marking {original_obj.name} due to errors.")
+                            
+                    except ProcessingError as e:
+                        logger.error(f"Processing error for {original_obj.name}: {e}")
+                        failed_exports.append(f"{original_obj.name} (Processing Error)")
+                    except ResourceError as e:
+                        logger.error(f"Resource error for {original_obj.name}: {e}")
+                        failed_exports.append(f"{original_obj.name} (Resource Error)")
+                    except Exception as e:
+                        logger.error(f"Unexpected error for {original_obj.name}: {e}", exc_info=True)
+                        failed_exports.append(f"{original_obj.name} (Unexpected Error)")
                     
         except KeyboardInterrupt:
             logger.info("Export cancelled by user")

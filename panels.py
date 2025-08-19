@@ -233,6 +233,10 @@ class MESH_PT_exporter_panel_lod(Panel):
         # Hide the decimate type bc I'm not sure if it's needed yet
         # col.prop(settings, "mesh_export_lod_type")
         
+        # Show LOD hierarchy option only for FBX format
+        if settings.mesh_export_format == "FBX":
+            col.prop(settings, "mesh_export_lod_hierarchy")
+        
         col = layout.column(heading="Textures", align=True)
         
         # Texture resizing option
