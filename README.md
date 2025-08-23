@@ -1,11 +1,11 @@
 # EasyMesh Batch Exporter for Blender
 
 ![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)
-![Version: 1.3.0](https://img.shields.io/badge/Version-1.3.0-green.svg)
+![Version: 1.4.0](https://img.shields.io/badge/Version-1.4.0-green.svg)
 ![Blender: 4.2+](https://img.shields.io/badge/Blender-4.2+-orange.svg)
 ![Large Mesh Support](https://img.shields.io/badge/Large%20Mesh-2M%2B%20Polygons-red.svg)
 
-A Blender add-on for batch exporting meshes, curves, and metaballs with advanced memory optimisation, modifier control, LOD generation, texture optimisation, and viewport indicators for recent exports. Curves and metaballs are automatically converted to meshes during export. Designed to handle large, complex meshes without crashes.
+A streamlined Blender add-on designed for game development workflows. Batch export meshes, curves, and metaballs with advanced memory optimisation, game engine naming conventions, LOD hierarchy export, texture optimisation, and visual export indicators. Features robust modifier control and handles large, complex meshes (2M+ polygons) without crashes.
 
 [![EasyMesh demo - Watch Video](https://cdn.loom.com/sessions/thumbnails/567dea7f7cf84f91939d159807d6659d-e7c0d4f2068a7d8d-full-play.gif)](https://www.loom.com/share/567dea7f7cf84f91939d159807d6659d?sid=dd68ecd1-58dc-43c4-b74b-cfeaa82f4553)
 
@@ -28,9 +28,17 @@ A Blender add-on for batch exporting meshes, curves, and metaballs with advanced
 ### 📦 **Batch Export**
 * **Multi-Object Support:** Export meshes, curves, and metaballs simultaneously
 * **Automatic Conversion:** Curves and metaballs are converted to meshes during export
-* **Progress Tracking:** Real-time progress bar and detailed console logging
 * **Error Handling:** Robust error recovery with detailed failure reporting
 * **Multiple Formats:** FBX, OBJ, glTF (binary/JSON), USD, and STL support
+
+### 🎮 **Game Engine Integration**
+* **Naming Conventions:** Built-in support for game engine naming standards:
+  * **Godot:** snake_case naming (my_mesh_name)
+  * **Unity:** Capitalised_Words_With_Underscores 
+  * **Unreal Engine:** PascalCase naming (MyMeshName) with prefix preservation
+  * **Default:** Keep original naming with basic sanitisation
+* **LOD Hierarchy Export:** Export objects with LOD levels as structured hierarchies for Unity/Unreal workflows (FBX format only)
+* **Game-Ready Output:** Optimised for immediate use in game engines
 
 ### 🎯 **Precision Controls**
 * **Transform Options:**
@@ -45,11 +53,16 @@ A Blender add-on for batch exporting meshes, curves, and metaballs with advanced
 * **Smoothing Control:** Format-specific smoothing options (Face, Edge, Off)
 * **Memory-Safe Operations:** All processing optimised for large mesh stability
 
-### 📊 **LOD Generation**
+### 📊 **LOD Generation & Hierarchy Export**
 * **Automatic LODs:** Generate up to 4 levels of detail using Decimate modifier
-* **Progressive Building:** Each LOD built from previous (60% faster, 50% less memory)
+* **Progressive Building:** Each LOD built from previous (making processing faster and uses less memory)
 * **Symmetry Preservation:** Maintain model symmetry during decimation
 * **Quality Control:** Individual ratio settings for each LOD level
+* **Hierarchy Export Mode:** Export LODs as structured FBX hierarchies for game engines:
+  * Creates `{ObjectName}_LODGroup.fbx` with parent empty containing all LOD levels
+  * LOD objects named as `{basename}_LOD00`, `{basename}_LOD01`, etc.
+  * Each selected object processed individually (preserves separate LOD groups)
+  * Compatible with Unity and Unreal Engine LOD systems
 * **Advanced Texture Optimisation:**
   * Automatic texture downscaling with customisable sizes per LOD
   * Aspect ratio preservation to prevent distortion
@@ -107,11 +120,17 @@ You can also find the add-on directly on [Blender Extensions](https://extensions
       * **Render:** Apply render-enabled modifiers (most complete)
     * **Triangulate:** Optional mesh triangulation with method selection and normal preservation
     
-    ### File Naming
+    ### File Naming & Game Engine Support
     * **Prefix/Suffix:** Add custom text to exported filenames for organisation
+    * **Naming Conventions:** Choose game engine specific naming:
+      * **Godot:** snake_case (my_mesh_name)
+      * **Unity:** Capitalised_Words_With_Underscores
+      * **Unreal Engine:** PascalCase (MyMeshName) 
+      * **Default:** Basic sanitisation only
     
     ### LOD Generation (Optional)
     * **Quick LODs:** Enable in sub-panel header to generate up to 4 detail levels
+    * **Export as Hierarchy:** Create structured LOD groups for Unity/Unreal workflows
     * **Symmetry:** Maintain model symmetry during decimation
     * **Resize Textures:** Enable automatic texture optimisation for LODs
     * **Texture Settings** (when resizing enabled):
@@ -168,10 +187,10 @@ INFO: Decimation complete: 1,250,000 → 312,500 polys (target: 0.250, actual: 0
 ## Export Indicators
 
 * After an object is successfully exported (including all its LODs if enabled), it will be marked in the viewport.
-* **Green:** Object exported within the last minute (`FRESH`).
-* **Yellow:** Object exported within the last 5 minutes (`STALE`).
-* **Normal Colour:** Object export indicator has expired, or indicators were cleared.
-* **Toggle Location:** The export indicators checkbox is now conveniently located in the header of the "Recent Exports" panel.
+  * **Green:** Object exported within the last minute (`FRESH`).
+  * **Yellow:** Object exported within the last 5 minutes (`STALE`).
+  * **Normal Colour:** Object export indicator has expired, or indicators were cleared.
+* **Toggle Location:** The export indicators checkbox is conveniently located in the header of the "Recent Exports" panel.
 * **Visibility:** To see these colours in the 3D Viewport, ensure you are in **Solid** display mode and that the **Shading -> Colour** type is set to **Object**.
     [[Viewport Shading Docs]](https://docs.blender.org/manual/en/latest/editors/3dview/display/shading.html#solid)
 * **Recent Exports Panel:** When indicators are enabled, shows a list of recently exported objects (still FRESH or STALE). Clicking the icon selects the object.
@@ -184,4 +203,4 @@ If you find EasyMesh Batch Exporter useful in your workflow, consider supporting
 
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Development-FF5E5B?style=for-the-badge&logo=ko-fi&logoColour=white)](https://ko-fi.com/speculative_artefact)
 
-Your support helps maintain and improve this add-on. Thank you!
+Thank you!
