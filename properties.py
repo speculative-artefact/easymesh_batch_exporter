@@ -202,7 +202,8 @@ class MeshExporterSettings(PropertyGroup):
         items=[
             ("DEFAULT", "Default", "Keep original naming"),
             ("UNREAL", "Unreal Engine", "PascalCase naming (MyMeshName)"),
-            ("UNITY", "Unity", "Flexible naming with underscores"),
+            ("UNITY", "Unity", "Capitalised words with underscores (My_Mesh_Name)"),
+            ("GODOT", "Godot", "snake_case naming (my_mesh_name)"),
         ],
         default="DEFAULT"
     )

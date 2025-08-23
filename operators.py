@@ -815,11 +815,36 @@ def apply_naming_convention(name, convention):
             temp_name = temp_name.strip('_')
             # Split, capitalise, rejoin
             parts = temp_name.split('_')
-            parts = [p.capitalise() if p else '' for p in parts]
+            parts = [p.capitalize() if p else '' for p in parts]
             result = '_'.join(filter(None, parts))  # Filter out empty strings
             return result if result else sanitise_filename(name)
         except Exception:
             return sanitise_filename(name)
+    
+    elif convention == "GODOT":
+        # Godot: snake_case naming (all lowercase with underscores)
+        try:
+            # First sanitise illegal chars and replace with spaces for processing
+            temp_name = re.sub(r'[\\/:*?"<>|.\-]', ' ', name)
+            temp_name = temp_name.replace('_', ' ')  # Convert existing underscores to spaces
+            
+            # Split into words (handles both spaces and case changes)
+            # This regex splits on spaces, and also splits on case changes (camelCase -> camel Case)
+            words = re.findall(r'[A-Z]*[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)|[A-Z]|[0-9]+', temp_name)
+            
+            # Convert all words to lowercase and join with underscores
+            words = [word.lower() for word in words if word and word.strip()]
+            result = '_'.join(words)
+            
+            # Clean up multiple underscores and remove leading/trailing ones
+            result = re.sub(r'_+', '_', result).strip('_')
+            
+            return result if result else sanitise_filename(name).lower().replace(' ', '_')
+            
+        except Exception:
+            # Fallback: basic conversion to snake_case
+            temp_name = sanitise_filename(name).lower().replace(' ', '_')
+            return re.sub(r'_+', '_', temp_name).strip('_')
     
     return sanitise_filename(name)  # Fallback to standard sanitisation
 
