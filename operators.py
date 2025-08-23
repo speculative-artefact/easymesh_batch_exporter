@@ -2278,7 +2278,11 @@ class MESH_OT_batch_export(Operator):
             
             # Clean up temporary metaball mesh if it exists
             if temp_metaball_mesh:
-                bpy.data.meshes.remove(temp_metaball_mesh, do_unlink=True)
+                # temp_metaball_mesh is an Object, we need to remove both object and mesh data
+                mesh_data = temp_metaball_mesh.data
+                bpy.data.objects.remove(temp_metaball_mesh, do_unlink=True)
+                if mesh_data:
+                    bpy.data.meshes.remove(mesh_data, do_unlink=True)
             
         except Exception as e:
             logger.error(f"Failed to process object hierarchy: {e}")
