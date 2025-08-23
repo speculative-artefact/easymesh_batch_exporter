@@ -338,8 +338,8 @@ class MeshExporterSettings(PropertyGroup):
     # Texture embedding property
     mesh_export_embed_textures: BoolProperty(
         name="Embed Textures",
-        description="Embed textures in the exported file (increases file size)",
-        default=False
+        description="Embed textures in the exported file (recommended for game development)",
+        default=True
     )
     
 
