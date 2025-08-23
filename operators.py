@@ -486,22 +486,37 @@ def merge_collection_objects(collection, context):
     
     for obj in collection.objects:
         if obj.type == 'MESH':
+            # Check if object has geometry nodes with instances
+            has_instance_geo_nodes = False
+            for mod in obj.modifiers:
+                if mod.type == 'NODES' and mod.show_viewport:
+                    # This could potentially output instances
+                    has_instance_geo_nodes = True
+                    logger.info(f"Object '{obj.name}' has geometry nodes modifier")
             mesh_objects.append(obj)
-        elif obj.type in ['CURVE', 'META']:
-            # Convert to mesh first
+        elif obj.type == 'CURVE':
+            # Convert curve to mesh first
             try:
-                if obj.type == 'CURVE':
-                    converted = convert_curve_to_mesh(obj.copy(), context)
-                else:  # META
-                    copy_obj, temp_meta = create_export_copy(obj, context)
-                    converted = copy_obj
-                    if temp_meta:
-                        temp_objects.append(temp_meta)
+                converted = convert_curve_to_mesh(obj.copy(), context)
                 mesh_objects.append(converted)
                 temp_objects.append(converted)
             except Exception as e:
-                logger.warning(f"Failed to convert {obj.name} to mesh: {e}")
+                logger.warning(f"Failed to convert curve {obj.name} to mesh: {e}")
                 continue
+        elif obj.type == 'META':
+            # Convert metaball to mesh first
+            try:
+                copy_obj, temp_meta = create_export_copy(obj, context)
+                mesh_objects.append(copy_obj)
+                if temp_meta:
+                    temp_objects.append(temp_meta)
+                temp_objects.append(copy_obj)
+            except Exception as e:
+                logger.warning(f"Failed to convert metaball {obj.name} to mesh: {e}")
+                continue
+        elif obj.type == 'EMPTY' and obj.instance_type == 'COLLECTION':
+            # Handle collection instances (often from geometry nodes)
+            logger.info(f"Skipping collection instance '{obj.name}' - would need recursive processing")
     
     if not mesh_objects:
         raise ValidationError(f"Collection '{collection.name}' contains no valid mesh objects")
@@ -515,10 +530,17 @@ def merge_collection_objects(collection, context):
         merged_materials = []
         
         for obj in mesh_objects:
-            # Get the evaluated mesh with modifiers applied
+            # Get the evaluated mesh with modifiers applied (including geometry nodes)
             depsgraph = context.evaluated_depsgraph_get()
             obj_eval = obj.evaluated_get(depsgraph)
-            mesh = obj_eval.to_mesh()
+            
+            # Use preserve_all_data_layers to keep custom attributes from geo nodes
+            mesh = obj_eval.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
+            
+            # Check if this object has geometry nodes and log it
+            has_geo_nodes = any(m.type == 'NODES' for m in obj.modifiers if m.show_viewport)
+            if has_geo_nodes:
+                logger.info(f"Object '{obj.name}' has geometry nodes - applying to mesh")
             
             # Create a transformation matrix
             transform_matrix = obj.matrix_world
