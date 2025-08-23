@@ -661,6 +661,16 @@ def create_export_copy(original_obj, context):
                 # Link to scene temporarily for duplication
                 context.collection.objects.link(mesh_obj)
                 
+                # Apply smooth shading to metaball mesh (metaballs are inherently smooth)
+                # Select the mesh object and apply auto-smooth using modern Blender API
+                bpy.ops.object.select_all(action='DESELECT')
+                mesh_obj.select_set(True)
+                context.view_layer.objects.active = mesh_obj
+                
+                # Use the modern shade_auto_smooth operator with 30-degree threshold
+                bpy.ops.object.shade_auto_smooth(angle=0.523599)  # 30 degrees in radians
+                logger.info(f"Applied auto-smooth shading to metaball mesh with 30° threshold")
+                
                 # Clean up the evaluated mesh
                 obj_eval.to_mesh_clear()
                 
