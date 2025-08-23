@@ -127,7 +127,7 @@ def temporary_image_file(filepath):
 # --- Memory Management Utilities ---
 
 class MemoryManager:
-    """Centralized memory management to avoid excessive gc.collect() calls."""
+    """Centralised memory management to avoid excessive gc.collect() calls."""
     
     _last_gc_time = 0
     _gc_interval = 5.0  # Minimum seconds between gc.collect() calls
@@ -753,6 +753,77 @@ def sanitise_filename(name):
     return sanitised
 
 
+def apply_naming_convention(name, convention):
+    """
+    Apply specific naming convention to a filename.
+    
+    Args:
+        name (str): The name to convert
+        convention (str): The convention to apply ("DEFAULT", "UNREAL", "UNITY")
+    
+    Returns:
+        str: The converted name
+    """
+    if convention == "DEFAULT":
+        # For default, just sanitise normally
+        return sanitise_filename(name)
+    
+    elif convention == "UNREAL":
+        # Unreal Engine: PascalCase, no spaces, remove illegal chars
+        try:
+            # Replace all illegal/separator characters with spaces for splitting
+            # This includes: \ / : * ? " < > | . - 
+            temp_name = re.sub(r'[\\/:*?"<>|.\-]', ' ', name)
+            
+            # Handle underscores: check if this looks like a known Unreal prefix
+            # Common Unreal prefixes: SM_ (Static Mesh), SK_ (Skeletal Mesh), BP_ (Blueprint), etc.
+            known_prefixes = {'SM', 'SK', 'BP', 'M', 'T', 'MT', 'MI', 'A', 'S', 'E', 'W', 'P'}
+            prefix = ""
+            if '_' in temp_name and len(temp_name) > 4:  # Make sure string is long enough
+                parts = temp_name.split('_', 1)
+                if len(parts) > 0 and parts[0].upper() in known_prefixes:  # Known Unreal prefix
+                    prefix = parts[0].upper() + '_'
+                    temp_name = parts[1] if len(parts) > 1 else ""
+            
+            # Split on spaces and underscores for PascalCase conversion
+            temp_name = temp_name.replace('_', ' ')
+            words = [w for w in temp_name.split() if w]
+            
+            # Capitalise each word for PascalCase
+            pascal_case = ''.join(word.capitalise() for word in words)
+            
+            # Make sure we return a valid name
+            result = prefix + pascal_case
+            if not result:  # Fallback if something went wrong
+                result = "Unnamed"
+            
+            return result
+            
+        except Exception as e:
+            # Fallback to standard sanitisation on any error
+            return sanitise_filename(name)
+    
+    elif convention == "UNITY":
+        # Unity: More flexible, capitalise words, keep underscores
+        try:
+            # First sanitise illegal chars and replace spaces with underscores
+            temp_name = re.sub(r'[\\/:*?"<>|.]', '_', name)
+            temp_name = temp_name.replace(' ', '_')
+            # Replace multiple underscores with single
+            temp_name = re.sub(r'_+', '_', temp_name)
+            # Remove leading/trailing underscores
+            temp_name = temp_name.strip('_')
+            # Split, capitalise, rejoin
+            parts = temp_name.split('_')
+            parts = [p.capitalise() if p else '' for p in parts]
+            result = '_'.join(filter(None, parts))  # Filter out empty strings
+            return result if result else sanitise_filename(name)
+        except Exception:
+            return sanitise_filename(name)
+    
+    return sanitise_filename(name)  # Fallback to standard sanitisation
+
+
 def setup_export_object(obj, original_obj_name, scene_props, lod_level=None):
     """
     Renames object, applies prefix/suffix/LOD naming, zeros location.
@@ -769,18 +840,20 @@ def setup_export_object(obj, original_obj_name, scene_props, lod_level=None):
     if not obj:
         return None, None
     try:
-        # Sanitise the original object name
-        original_obj_name = sanitise_filename(original_obj_name)
-        
         # Remove any existing LOD suffix if re-processing the same object
         if "_LOD" in original_obj_name:
             original_obj_name = original_obj_name.split("_LOD")[0]
-            
+        
+        # Apply naming convention (this handles sanitisation internally)
+        original_obj_name = apply_naming_convention(original_obj_name, scene_props.mesh_export_naming_convention)
+        
+        # Apply prefix and suffix
         base_name = (
             scene_props.mesh_export_prefix +
             original_obj_name +
             scene_props.mesh_export_suffix
         )
+        
         # Truncate if name too long (conservatively 100 chars)
         max_base_length = 100
         if len(base_name) > max_base_length:
@@ -789,6 +862,7 @@ def setup_export_object(obj, original_obj_name, scene_props, lod_level=None):
                 f"Name too long, truncating: {base_name} → {truncated}"
             )
             base_name = truncated
+            
         final_name = (
             f"{base_name}_LOD{lod_level:02d}"
             if lod_level is not None
@@ -2206,7 +2280,7 @@ class MESH_OT_batch_export(Operator):
         ]
         ratios = [1.0] + lod_ratios_prop[:scene_props.mesh_export_lod_count]
         
-        # Initialize tracking variables
+        # Initialise tracking variables
         successful_exports = 0
         failed_exports = []
         base_lod_obj = None
@@ -2391,7 +2465,7 @@ class MESH_OT_batch_export(Operator):
             logger.error(f"Unexpected validation error: {e}", exc_info=True)
             return {"CANCELLED"}
         
-        # Initialize tracking
+        # Initialise tracking
         scene_props = context.scene.mesh_exporter
         wm = context.window_manager
         successful_exports = 0

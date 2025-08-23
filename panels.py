@@ -138,6 +138,7 @@ class MESH_PT_exporter_panel(Panel):
         col = layout.column(heading="Rename file", align=True)
         col.prop(settings, "mesh_export_prefix")
         col.prop(settings, "mesh_export_suffix")
+        col.prop(settings, "mesh_export_naming_convention", text="Convention")
 
         # Texture embedding option (for formats that support it)
         if settings.mesh_export_format in {"FBX", "USD"}:

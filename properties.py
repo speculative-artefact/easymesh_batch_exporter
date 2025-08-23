@@ -195,6 +195,17 @@ class MeshExporterSettings(PropertyGroup):
         description="Suffix for exported file names",
         default=""
     )
+    
+    mesh_export_naming_convention: EnumProperty(
+        name="Naming Convention",
+        description="Apply specific naming conventions to exported files",
+        items=[
+            ("DEFAULT", "Default", "Keep original naming"),
+            ("UNREAL", "Unreal Engine", "PascalCase naming (MyMeshName)"),
+            ("UNITY", "Unity", "Flexible naming with underscores"),
+        ],
+        default="DEFAULT"
+    )
 
     # Export indicators property
     mesh_export_show_indicators: BoolProperty(
