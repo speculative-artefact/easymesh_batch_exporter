@@ -201,9 +201,9 @@ class MeshExporterSettings(PropertyGroup):
         description="Apply specific naming conventions to exported files",
         items=[
             ("DEFAULT", "Default", "Keep original naming"),
-            ("UNREAL", "Unreal Engine", "PascalCase naming (MyMeshName)"),
-            ("UNITY", "Unity", "Capitalised words with underscores (My_Mesh_Name)"),
             ("GODOT", "Godot", "snake_case naming (my_mesh_name)"),
+            ("UNITY", "Unity", "Capitalised words with underscores (My_Mesh_Name)"),
+            ("UNREAL", "Unreal Engine", "PascalCase naming (MyMeshName)"),
         ],
         default="DEFAULT"
     )
