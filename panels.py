@@ -217,6 +217,17 @@ class MESH_PT_exporter_panel_lod(Panel):
         # Enable/disable based on the header checkbox
         layout.enabled = settings.mesh_export_lod
 
+        # Show LOD hierarchy option only for FBX format
+        if settings.mesh_export_format == "FBX":
+            col = layout.column(heading="LOD Hierarchy", align=True)
+            col.prop(settings, "mesh_export_lod_hierarchy")
+
+        col = layout.column(align=True)
+        col.prop(settings, "mesh_export_lod_count")
+        # Hide the decimate type bc I'm not sure if it's needed yet
+        # col.prop(settings, "mesh_export_lod_type")
+
+        # Symmetry
         col = layout.column(heading="Symmetry", align=True)
         row = col.row(align=True)
         # Add the symmetry checkbox to the row
@@ -227,15 +238,6 @@ class MESH_PT_exporter_panel_lod(Panel):
         sub.enabled = settings.mesh_export_lod_symmetry
         # Add the axis enum property to the sub-row
         sub.prop(settings, "mesh_export_lod_symmetry_axis", expand=True)
-
-        col = layout.column(align=True)
-        col.prop(settings, "mesh_export_lod_count")
-        # Hide the decimate type bc I'm not sure if it's needed yet
-        # col.prop(settings, "mesh_export_lod_type")
-        
-        # Show LOD hierarchy option only for FBX format
-        if settings.mesh_export_format == "FBX":
-            col.prop(settings, "mesh_export_lod_hierarchy")
         
         col = layout.column(heading="Textures", align=True)
         
