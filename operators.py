@@ -781,9 +781,13 @@ def apply_naming_convention(name, convention):
     elif convention == "UNREAL":
         # Unreal Engine: PascalCase, no spaces, remove illegal chars
         try:
-            # Replace all illegal/separator characters with spaces for splitting
-            # This includes: \ / : * ? " < > | . - 
-            temp_name = re.sub(r'[\\/:*?"<>|.\-]', ' ', name)
+            # Replace illegal characters with spaces for splitting
+            # Don't treat dots as separators - they could be version numbers (e.g., "object.2")
+            # This includes: \ / : * ? " < > | - 
+            temp_name = re.sub(r'[\\/:*?"<>|\-]', ' ', name)
+            # Convert dots that are likely separators (surrounded by letters) to spaces
+            # but preserve dots that are likely version numbers (followed by digits)
+            temp_name = re.sub(r'\.(?![0-9])', ' ', temp_name)
             
             # Handle underscores: check if this looks like a known Unreal prefix
             # Common Unreal prefixes: SM_ (Static Mesh), SK_ (Skeletal Mesh), BP_ (Blueprint), etc.
@@ -799,8 +803,23 @@ def apply_naming_convention(name, convention):
             temp_name = temp_name.replace('_', ' ')
             words = [w for w in temp_name.split() if w]
             
-            # Capitalise each word for PascalCase
-            pascal_case = ''.join(word.capitalise() for word in words)
+            # Convert each word to PascalCase, handling dots within words
+            pascal_parts = []
+            for word in words:
+                if '.' in word:
+                    # Handle version numbers like "cube.2" -> "Cube2"
+                    parts = word.split('.')
+                    converted_parts = []
+                    for part in parts:
+                        if part.isdigit():
+                            converted_parts.append(part)  # Keep numbers as-is
+                        else:
+                            converted_parts.append(part.capitalize())
+                    pascal_parts.append(''.join(converted_parts))
+                else:
+                    pascal_parts.append(word.capitalize())
+            
+            pascal_case = ''.join(pascal_parts)
             
             # Make sure we return a valid name
             result = prefix + pascal_case
