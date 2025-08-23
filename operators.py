@@ -2067,49 +2067,86 @@ class MESH_OT_batch_export(Operator):
         logger.info(f"Processing object '{obj.name}' for hierarchy export")
         successful_exports = 0
         failed_exports = []
+        temp_metaball_mesh = None
         
         try:
-            # Create a copy of the object to work with
-            work_obj, temp_metaball_mesh = create_export_copy(obj, context)
+            # Get LOD ratios
+            lod_ratios_prop = [
+                scene_props.mesh_export_lod_ratio_01,
+                scene_props.mesh_export_lod_ratio_02,
+                scene_props.mesh_export_lod_ratio_03,
+                scene_props.mesh_export_lod_ratio_04,
+            ]
+            ratios = [1.0] + lod_ratios_prop[:scene_props.mesh_export_lod_count]
             
-            # Generate LODs for the object
+            # Create all LOD objects
             lod_objects = []
-            lod_count = scene_props.mesh_export_lod_count
+            base_lod_obj = None
+            previous_ratio = 1.0
             
-            for lod_level in range(1, lod_count + 1):
-                # Create LOD copy
-                lod_obj = work_obj.copy()
-                lod_obj.data = work_obj.data.copy()
-                context.collection.objects.link(lod_obj)
-                
-                # Apply decimation
-                ratio_value = getattr(scene_props, f"mesh_export_lod_ratio_{lod_level:02d}")
-                decimate_modifier = lod_obj.modifiers.new(name=f"Decimate_LOD{lod_level}", type="DECIMATE")
-                decimate_modifier.decimate_type = scene_props.mesh_export_lod_type
-                decimate_modifier.ratio = ratio_value
-                
-                if scene_props.mesh_export_lod_symmetry:
-                    decimate_modifier.use_symmetry = True
-                    decimate_modifier.symmetry_axis = scene_props.mesh_export_lod_symmetry_axis
-                
-                # Apply modifier
-                context.view_layer.objects.active = lod_obj
-                MeshOperations.safe_mode_set(lod_obj, "OBJECT")
-                bpy.ops.object.modifier_apply(modifier=decimate_modifier.name)
+            for lod_level, target_ratio in enumerate(ratios):
+                if lod_level == 0:
+                    # LOD0: Create base copy with all processing
+                    logger.info("Creating base LOD0...")
+                    lod_obj, temp_metaball_mesh = create_export_copy(obj, context)
+                    
+                    # Setup object (naming, location, scale)
+                    (lod_obj_name, base_name, export_scale) = setup_export_object(
+                        lod_obj, obj.name, scene_props, lod_level
+                    )
+                    
+                    # Apply modifiers if needed
+                    apply_mesh_modifiers(lod_obj, scene_props.mesh_export_apply_modifiers)
+                    
+                    # Triangulate if needed
+                    if scene_props.mesh_export_tri:
+                        method = scene_props.mesh_export_tri_method
+                        k_nrms = scene_props.mesh_export_keep_normals
+                        triangulate_mesh(lod_obj, method, k_nrms)
+                    
+                    base_lod_obj = lod_obj
+                else:
+                    # LOD1+: Create copy and apply progressive decimation
+                    logger.info(f"Creating LOD{lod_level} with ratio {target_ratio}...")
+                    
+                    # Create a copy of the base LOD
+                    lod_obj = base_lod_obj.copy()
+                    lod_obj.data = base_lod_obj.data.copy()
+                    context.collection.objects.link(lod_obj)
+                    
+                    # Only rename for LOD level (scale/location already handled in LOD0)
+                    # Note: We pass the original object name, not the LOD0's modified name
+                    (lod_obj_name, _, _) = setup_export_object(
+                        lod_obj, obj.name, scene_props, lod_level
+                    )
+                    
+                    # Apply decimation
+                    decimate_modifier = lod_obj.modifiers.new(name=f"Decimate_LOD{lod_level}", type="DECIMATE")
+                    decimate_modifier.decimate_type = scene_props.mesh_export_lod_type
+                    decimate_modifier.ratio = target_ratio
+                    
+                    if scene_props.mesh_export_lod_symmetry:
+                        decimate_modifier.use_symmetry = True
+                        decimate_modifier.symmetry_axis = scene_props.mesh_export_lod_symmetry_axis
+                    
+                    # Apply modifier
+                    context.view_layer.objects.active = lod_obj
+                    MeshOperations.safe_mode_set(lod_obj, "OBJECT")
+                    bpy.ops.object.modifier_apply(modifier=decimate_modifier.name)
                 
                 lod_objects.append(lod_obj)
-                logger.info(f"Created LOD{lod_level} with ratio {ratio_value}")
+                previous_ratio = target_ratio
             
-            # Create hierarchy structure
-            parent_empty = create_lod_hierarchy(work_obj, lod_objects, obj.name, context)
+            # Create hierarchy structure (base_lod_obj is LOD0, first in list)
+            parent_empty = create_lod_hierarchy(lod_objects[0], lod_objects[1:], obj.name, context)
             
             # Export the hierarchy as FBX
-            export_path = os.path.join(export_base_path, f"{obj.name}_LODGroup.fbx")
+            # Use base_name which includes prefix/suffix but not LOD suffix
+            export_path = os.path.join(export_base_path, f"{base_name}_LODGroup.fbx")
             
             # Select all LOD objects and parent for export
             bpy.ops.object.select_all(action='DESELECT')
             parent_empty.select_set(True)
-            work_obj.select_set(True)
             for lod_obj in lod_objects:
                 lod_obj.select_set(True)
             context.view_layer.objects.active = parent_empty
@@ -2129,7 +2166,7 @@ class MESH_OT_batch_export(Operator):
                     path_mode='COPY' if scene_props.mesh_export_embed_textures else 'AUTO',
                     embed_textures=scene_props.mesh_export_embed_textures
                 )
-                successful_exports = len(lod_objects) + 1  # LODs + base
+                successful_exports = len(lod_objects)  # All LODs including base
                 logger.info(f"Successfully exported hierarchy to {export_path}")
             except Exception as e:
                 failed_exports.append(f"{obj.name} (Export failed: {e})")
@@ -2137,7 +2174,6 @@ class MESH_OT_batch_export(Operator):
             
             # Clean up temporary objects
             bpy.data.objects.remove(parent_empty, do_unlink=True)
-            bpy.data.objects.remove(work_obj, do_unlink=True)
             for lod_obj in lod_objects:
                 bpy.data.objects.remove(lod_obj, do_unlink=True)
             
