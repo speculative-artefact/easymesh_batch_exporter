@@ -312,20 +312,52 @@ def set_object_colour(obj):
 
 
 def _get_cached_exported_objects():
-    """Get cached list of objects with export properties."""
+    """Get cached list of objects with export properties.
+
+    Returns:
+        list: List of valid mesh objects with export properties
+    """
     global _exported_objects_cache, _cache_last_update
     current_time = time.time()
-    
+
     # Update cache if it's stale
     if (current_time - _cache_last_update) >= _cache_update_interval:
-        _exported_objects_cache = [
-            obj for obj in bpy.data.objects 
-            if obj and obj.type == "MESH" and EXPORT_TIME_PROP in obj
-        ]
+        valid_objects = []
+        for obj in bpy.data.objects:
+            try:
+                # Verify object is still valid by accessing a property
+                if obj and obj.type == "MESH" and EXPORT_TIME_PROP in obj:
+                    valid_objects.append(obj)
+            except ReferenceError:
+                # Object was deleted, skip it
+                logger.debug("Skipping invalid object reference in cache update")
+                continue
+
+        _exported_objects_cache = valid_objects
         _cache_last_update = current_time
         logger.debug(f"Updated exported objects cache: {len(_exported_objects_cache)} objects")
-    
-    return _exported_objects_cache
+
+    # Filter out any invalid references that may have appeared since last update
+    return [obj for obj in _exported_objects_cache if _is_valid_object(obj)]
+
+
+def _is_valid_object(obj):
+    """Check if an object reference is still valid.
+
+    Args:
+        obj: The object to check
+
+    Returns:
+        bool: True if object is valid, False otherwise
+    """
+    if not obj:
+        return False
+    try:
+        # Access a property to trigger ReferenceError if object was deleted
+        _ = obj.type
+        return True
+    except ReferenceError:
+        return False
 
 
 def update_all_export_statuses():

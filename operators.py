@@ -12,7 +12,9 @@ import contextlib
 import re
 import math
 import logging
-from bpy.types import Operator
+import weakref
+from typing import Optional, Tuple, List, Iterator, Any
+from bpy.types import Operator, Object, Mesh, Context, Collection
 from bpy.props import StringProperty
 from . import export_indicators
 
@@ -68,13 +70,13 @@ class ExportFormatError(MeshExportError):
 # --- Context Managers for Safe Resource Management ---
 
 @contextlib.contextmanager
-def temporary_mesh(mesh_data, name="temp_mesh"):
+def temporary_mesh(mesh_data: Optional[Mesh], name: str = "temp_mesh") -> Iterator[Optional[Mesh]]:
     """Context manager for temporary mesh data that ensures cleanup.
-    
+
     Args:
         mesh_data: The mesh data to manage
         name: Name identifier for logging
-        
+
     Yields:
         The mesh data object
     """
@@ -90,13 +92,13 @@ def temporary_mesh(mesh_data, name="temp_mesh"):
 
 
 @contextlib.contextmanager
-def temporary_object(obj, name=None):
+def temporary_object(obj: Optional[Object], name: Optional[str] = None) -> Iterator[Optional[Object]]:
     """Context manager for temporary objects that ensures cleanup.
-    
+
     Args:
         obj: The Blender object to manage
         name: Name identifier for logging (uses obj.name if not provided)
-        
+
     Yields:
         The object
     """
@@ -108,12 +110,12 @@ def temporary_object(obj, name=None):
 
 
 @contextlib.contextmanager
-def temporary_image_file(filepath):
+def temporary_image_file(filepath: str) -> Iterator[str]:
     """Context manager for temporary image files that ensures cleanup.
-    
+
     Args:
         filepath: Path to the temporary file
-        
+
     Yields:
         The filepath
     """
@@ -132,28 +134,65 @@ def temporary_image_file(filepath):
 
 class MemoryManager:
     """Centralised memory management to avoid excessive gc.collect() calls."""
-    
-    _last_gc_time = 0
-    _gc_interval = 5.0  # Minimum seconds between gc.collect() calls
-    _pending_cleanup = False
-    
+
+    _last_gc_time: float = 0
+    _gc_interval: float = 5.0  # Minimum seconds between gc.collect() calls (default)
+    _pending_cleanup: bool = False
+    _adaptive_mode: bool = True  # Whether to adjust interval based on mesh size
+
     @classmethod
-    def request_cleanup(cls, force=False):
-        """Request garbage collection, but throttle to avoid performance issues."""
+    def set_gc_interval(cls, interval: float) -> None:
+        """Set the minimum garbage collection interval.
+
+        Args:
+            interval: Minimum seconds between GC calls (must be positive)
+        """
+        if interval > 0:
+            cls._gc_interval = interval
+            logger.info(f"GC interval set to {interval} seconds")
+        else:
+            logger.warning(f"Invalid GC interval {interval}, must be positive")
+
+    @classmethod
+    def set_adaptive_mode(cls, enabled: bool) -> None:
+        """Enable or disable adaptive GC interval based on mesh size.
+
+        Args:
+            enabled: Whether to enable adaptive mode
+        """
+        cls._adaptive_mode = enabled
+        logger.info(f"Adaptive GC mode {'enabled' if enabled else 'disabled'}")
+
+    @classmethod
+    def request_cleanup(cls, force: bool = False, poly_count: int = 0) -> None:
+        """Request garbage collection, but throttle to avoid performance issues.
+
+        Args:
+            force: If True, bypass throttling and force immediate collection
+            poly_count: Number of polygons being processed (for adaptive mode)
+        """
         current_time = time.time()
-        
-        if force or (current_time - cls._last_gc_time) >= cls._gc_interval:
+
+        # Adaptive interval based on mesh size
+        effective_interval = cls._gc_interval
+        if cls._adaptive_mode and poly_count > 0:
+            if poly_count > VERY_LARGE_MESH_THRESHOLD:  # 1M+ polygons
+                effective_interval = max(2.0, cls._gc_interval * 0.5)  # More frequent GC
+            elif poly_count > LARGE_MESH_THRESHOLD:  # 500K+ polygons
+                effective_interval = max(3.0, cls._gc_interval * 0.75)
+
+        if force or (current_time - cls._last_gc_time) >= effective_interval:
             import gc
             gc.collect()
             cls._last_gc_time = current_time
             cls._pending_cleanup = False
-            logger.debug(f"Garbage collection performed (forced={force})")
+            logger.debug(f"Garbage collection performed (forced={force}, interval={effective_interval:.1f}s)")
         else:
             cls._pending_cleanup = True
-            logger.debug("Garbage collection deferred (too frequent)")
-    
+            logger.debug(f"Garbage collection deferred (too frequent, interval={effective_interval:.1f}s)")
+
     @classmethod
-    def cleanup_if_pending(cls):
+    def cleanup_if_pending(cls) -> None:
         """Perform cleanup if it was previously deferred."""
         if cls._pending_cleanup:
             cls.request_cleanup(force=True)
@@ -163,8 +202,13 @@ class MeshOperations:
     """Common mesh operations to reduce code duplication."""
 
     @staticmethod
-    def update_mesh_data(obj, with_memory_cleanup=False):
-        """Update mesh data and optionally trigger memory cleanup for large meshes."""
+    def update_mesh_data(obj: Optional[Object], with_memory_cleanup: bool = False) -> None:
+        """Update mesh data and optionally trigger memory cleanup for large meshes.
+
+        Args:
+            obj: The object whose mesh data to update
+            with_memory_cleanup: Whether to trigger garbage collection for large meshes
+        """
         if not obj or not obj.data:
             return
 
@@ -173,11 +217,11 @@ class MeshOperations:
         if with_memory_cleanup:
             poly_count = len(obj.data.polygons) if hasattr(obj.data, 'polygons') else 0
             if poly_count > LARGE_MESH_THRESHOLD:
-                MemoryManager.request_cleanup()
+                MemoryManager.request_cleanup(poly_count=poly_count)
                 logger.debug(f"Memory cleanup after mesh update for {obj.name} ({poly_count:,} polygons)")
 
     @staticmethod
-    def update_view_layer():
+    def update_view_layer() -> None:
         """Update view layer with error handling."""
         try:
             bpy.context.view_layer.update()
@@ -185,7 +229,7 @@ class MeshOperations:
             logger.warning(f"Failed to update view layer: {e}")
 
     @staticmethod
-    def safe_operator_call(operator_func, error_msg="Operator call failed", **kwargs):
+    def safe_operator_call(operator_func: Any, error_msg: str = "Operator call failed", **kwargs: Any) -> Tuple[bool, Optional[set]]:
         """
         Safely call a Blender operator with context validation.
 
@@ -210,8 +254,16 @@ class MeshOperations:
             return (False, None)
 
     @staticmethod
-    def safe_mode_set(obj, mode):
-        """Safely set object mode with error handling."""
+    def safe_mode_set(obj: Optional[Object], mode: str) -> bool:
+        """Safely set object mode with error handling.
+
+        Args:
+            obj: The object to change mode for
+            mode: The target mode ('OBJECT', 'EDIT', etc.)
+
+        Returns:
+            True if mode was changed successfully, False otherwise
+        """
         if not obj:
             return False
 
@@ -232,19 +284,19 @@ class MeshOperations:
 
 # --- Memory Optimisation Functions ---
 
-def optimise_for_large_mesh(obj):
+def optimise_for_large_mesh(obj: Optional[Object]) -> bool:
     """
     Memory optimisation for large meshes.
-    
+
     Args:
-        obj (bpy.types.Object): The mesh object to optimise.
-        
+        obj: The mesh object to optimise
+
     Returns:
-        bool: True if optimisation was applied, False otherwise.
+        True if optimisation was applied, False otherwise
     """
     if not obj or obj.type != "MESH" or not obj.data:
         return False
-        
+
     poly_count = len(obj.data.polygons)
     if poly_count > LARGE_MESH_THRESHOLD:
         logger.info(f"Applying memory optimisation for large mesh: {poly_count} polygons")
@@ -523,7 +575,8 @@ def merge_collection_objects(collection, context):
     # Get all mesh objects in the collection (including converted curves/metaballs)
     mesh_objects = []
     temp_objects = []  # Track temporary objects for cleanup
-    
+    skipped_objects = []  # Track objects that were skipped
+
     for obj in collection.objects:
         if obj.type == 'MESH':
             # Check if object has geometry nodes with instances
@@ -542,6 +595,7 @@ def merge_collection_objects(collection, context):
                 temp_objects.append(converted)
             except Exception as e:
                 logger.warning(f"Failed to convert curve {obj.name} to mesh: {e}")
+                skipped_objects.append((obj.name, "curve conversion failed"))
                 continue
         elif obj.type == 'META':
             # Convert metaball to mesh first
@@ -553,12 +607,28 @@ def merge_collection_objects(collection, context):
                 temp_objects.append(copy_obj)
             except Exception as e:
                 logger.warning(f"Failed to convert metaball {obj.name} to mesh: {e}")
+                skipped_objects.append((obj.name, "metaball conversion failed"))
                 continue
         elif obj.type == 'EMPTY' and obj.instance_type == 'COLLECTION':
             # Handle collection instances (often from geometry nodes)
-            logger.info(f"Skipping collection instance '{obj.name}' - would need recursive processing")
-    
+            logger.warning(f"Skipping collection instance '{obj.name}' - recursive processing not yet supported")
+            skipped_objects.append((obj.name, "collection instance not supported"))
+        else:
+            # Unsupported object type
+            logger.debug(f"Skipping object '{obj.name}' of type '{obj.type}' - not exportable")
+            skipped_objects.append((obj.name, f"unsupported type {obj.type}"))
+
+    # Log summary of skipped objects if any
+    if skipped_objects:
+        skipped_summary = ", ".join([f"'{name}' ({reason})" for name, reason in skipped_objects])
+        logger.warning(f"Skipped {len(skipped_objects)} object(s) in collection '{collection.name}': {skipped_summary}")
+
     if not mesh_objects:
+        if skipped_objects:
+            raise ValidationError(
+                f"Collection '{collection.name}' contains no valid mesh objects. "
+                f"Skipped {len(skipped_objects)} unsupported object(s)."
+            )
         raise ValidationError(f"Collection '{collection.name}' contains no valid mesh objects")
     
     try:
@@ -808,31 +878,31 @@ def create_export_copy(original_obj, context):
             ) from e
 
 
-def sanitise_filename(name):
+def sanitise_filename(name: str) -> str:
     """
     Remove characters that are problematic in filenames.
-    
+
     Args:
-        name (str): The name to sanitise.
-    
+        name: The name to sanitise
+
     Returns:
-        str: The sanitised name.
+        The sanitised name
     """
     # Replace invalid characters with underscores
     sanitised = re.sub(r'[\\/:*?"<>|.]', '_', name)
     return sanitised
 
 
-def apply_naming_convention(name, convention):
+def apply_naming_convention(name: str, convention: str) -> str:
     """
     Apply specific naming convention to a filename.
-    
+
     Args:
-        name (str): The name to convert
-        convention (str): The convention to apply ("DEFAULT", "UNREAL", "UNITY")
-    
+        name: The name to convert
+        convention: The convention to apply ("DEFAULT", "GODOT", "UNITY", "UNREAL")
+
     Returns:
-        str: The converted name
+        The converted name
     """
     if convention == "DEFAULT":
         # For default, just sanitise normally
