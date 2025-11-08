@@ -6,6 +6,7 @@ texture compression, and cleanup of temporary objects.
 """
 
 import bpy
+import bmesh
 import os
 import time
 import contextlib
@@ -14,11 +15,38 @@ import math
 import logging
 import weakref
 import json
+from datetime import datetime
+from mathutils import Matrix
 from typing import Optional, Tuple, List, Iterator, Any, Dict
 from bpy.types import Operator, Object, Mesh, Context, Collection
-from bpy.props import StringProperty
+from bpy.props import StringProperty, BoolProperty, EnumProperty
 from . import export_indicators
 from . import builtin_presets
+
+# --- Safe LogRecord for Blender 5.0 Extension System ---
+class SafeLogRecord(logging.LogRecord):
+    """Custom LogRecord that safely handles pathname inspection.
+
+    Prevents PyUnicode crashes in Blender 5.0's extension system where
+    call stack inspection can encounter corrupted/unusual module paths.
+    Falls back to module name if pathname operations fail.
+    """
+    def __init__(self, name, level, pathname, lineno, msg, args, exc_info,
+                 func=None, sinfo=None, **kwargs):
+        # Safely handle pathname which can crash in Blender extensions
+        try:
+            # Let parent class handle pathname normally
+            super().__init__(name, level, pathname, lineno, msg, args,
+                           exc_info, func, sinfo, **kwargs)
+        except (TypeError, ValueError, UnicodeDecodeError) as e:
+            # Fallback: use module name instead of pathname
+            # This prevents crashes while still providing useful log context
+            safe_pathname = name if name else "unknown"
+            super().__init__(name, level, safe_pathname, lineno, msg, args,
+                           exc_info, func, sinfo, **kwargs)
+
+# Set custom LogRecord factory before creating logger
+logging.setLogRecordFactory(SafeLogRecord)
 
 # --- Setup Logger ---
 logger = logging.getLogger(__name__)
@@ -1069,16 +1097,101 @@ def apply_naming_convention(name: str, convention: str) -> str:
     return sanitise_filename(name)  # Fallback to standard sanitisation
 
 
-def setup_export_object(obj, original_obj_name, scene_props, lod_level=None):
+def get_batch_export_filename(objects: List[Object], scene_props, override_name: Optional[str] = None) -> str:
+    """
+    Determine the filename for batch glTF export based on collection membership.
+
+    Uses the collection name if all objects belong to the same collection,
+    otherwise uses the first object's name as fallback. Applies naming convention,
+    prefix, and suffix according to scene properties.
+
+    Args:
+        objects: List of objects being exported
+        scene_props: Scene export properties containing naming settings
+        override_name: Optional user-specified name from dialog (takes precedence)
+
+    Returns:
+        Base filename (without extension) for the batch export
+
+    Examples:
+        >>> # Objects from "Trees" collection
+        >>> get_batch_export_filename([oak, pine, birch], scene_props)
+        'trees'  # With Godot convention
+
+        >>> # Objects from different collections
+        >>> get_batch_export_filename([rock1, tree1], scene_props)
+        'rock1'  # Uses first object's name
+
+        >>> # User-specified name
+        >>> get_batch_export_filename([oak, pine], scene_props, override_name="forest")
+        'forest'  # Uses override name
+    """
+    # Use override name if provided
+    if override_name:
+        base_name = override_name
+        logger.info(f"Using user-specified batch export name: '{base_name}'")
+    elif not objects:
+        base_name = "batch_export"
+    else:
+        # Try to find a common collection
+        common_collection = None
+
+        # Get all collections for the first object
+        first_obj_collections = set(objects[0].users_collection)
+
+        # Find intersection of collections across all objects
+        if len(objects) > 1:
+            for obj in objects[1:]:
+                obj_collections = set(obj.users_collection)
+                first_obj_collections = first_obj_collections.intersection(obj_collections)
+                if not first_obj_collections:
+                    break
+
+        # If we found a common collection, use its name
+        if first_obj_collections:
+            # Use the first common collection (usually there's only one)
+            common_collection = next(iter(first_obj_collections))
+            base_name = common_collection.name
+            logger.info(f"Using collection name for batch export: '{base_name}'")
+        else:
+            # Fallback to first object's name
+            base_name = objects[0].name
+            logger.info(f"No common collection found, using first object name: '{base_name}'")
+
+    # Apply prefix and suffix
+    prefix = scene_props.mesh_export_prefix
+    suffix = scene_props.mesh_export_suffix
+
+    if prefix:
+        base_name = f"{prefix}{base_name}"
+    if suffix:
+        base_name = f"{base_name}{suffix}"
+
+    # Apply naming convention
+    convention = scene_props.mesh_export_naming_convention
+    final_name = apply_naming_convention(base_name, convention)
+
+    # Ensure name doesn't exceed maximum length
+    if len(final_name) > MAX_FILENAME_LENGTH:
+        truncated = final_name[:MAX_FILENAME_LENGTH - len(FILENAME_TRUNCATE_SUFFIX)]
+        final_name = truncated + FILENAME_TRUNCATE_SUFFIX
+        logger.warning(f"Batch filename truncated to {MAX_FILENAME_LENGTH} characters")
+
+    return final_name
+
+
+def setup_export_object(obj, original_obj_name, scene_props, lod_level=None, skip_zero_location=False):
     """
     Renames object, applies prefix/suffix/LOD naming, zeros location.
-    
+
     Args:
         obj (bpy.types.Object): The object to set up for export.
         original_obj_name (str): The original name of the object.
         scene_props (bpy.types.PropertyGroup): Scene properties for export.
         lod_level (int, optional): LOD level for naming. Defaults to None.
-    
+        skip_zero_location (bool): Skip zero location even if enabled in settings.
+            Used for batch exports to preserve spatial relationships. Defaults to False.
+
     Returns:
         tuple: The final name, base name, and export scale of the object.
     """
@@ -1127,7 +1240,8 @@ def setup_export_object(obj, original_obj_name, scene_props, lod_level=None):
             apply_transforms(obj, apply_scale=True)
 
         # Zero location if specified in scene properties
-        if scene_props.mesh_export_zero_location:
+        # Skip for batch exports to preserve spatial relationships
+        if scene_props.mesh_export_zero_location and not skip_zero_location:
             obj.location = (0.0, 0.0, 0.0)
             logger.info(f"Zeroed location for {obj.name}")
 
@@ -1158,10 +1272,13 @@ def setup_export_object(obj, original_obj_name, scene_props, lod_level=None):
         ) from e
     
 
-def apply_transforms(obj, apply_location=False, 
+def apply_transforms(obj, apply_location=False,
                      apply_rotation=False, apply_scale=False):
     """
-    Applies specified transforms to the object.
+    Applies specified transforms to the object using direct matrix manipulation.
+
+    This function uses direct mesh data manipulation instead of operators to avoid
+    context-related crashes when processing objects from different collections.
 
     Args:
         obj (bpy.types.Object): The object to apply transforms to.
@@ -1171,36 +1288,72 @@ def apply_transforms(obj, apply_location=False,
 
     Returns:
         None
+
+    Raises:
+        RuntimeError: If transform application fails
     """
     if not obj:
         logger.warning("Attempted to apply transforms to an invalid object.")
         return
+
+    if not obj.data or obj.type != 'MESH':
+        logger.warning(f"Object {obj.name} is not a mesh, skipping transform apply.")
+        return
+
     if not (apply_location or apply_rotation or apply_scale):
         logger.info(f"No transforms requested for {obj.name}. Skipping apply.")
         return
 
     transforms_to_apply = []
-    if apply_location: 
+    if apply_location:
         transforms_to_apply.append("location")
-    if apply_rotation: 
+    if apply_rotation:
         transforms_to_apply.append("rotation")
-    if apply_scale: 
+    if apply_scale:
         transforms_to_apply.append("scale")
 
-    logger.info(f"Applying {', '.join(transforms_to_apply)} "
-                f"transforms for {obj.name}...")
+    logger.info(f"Applying {', '.join(transforms_to_apply)} transforms for {obj.name}...")
+
     try:
-        with bpy.context.temp_override(
-            selected_editable_objects=[obj],
-            selected_objects=[obj], active_object=obj):
-            bpy.ops.object.transform_apply(location=apply_location,
-                                           rotation=apply_rotation,
-                                           scale=apply_scale)
-        logger.info(f"Successfully applied {', '.join(transforms_to_apply)} "
-                    f"for {obj.name}")
+        # Get current matrix components
+        loc, rot, scale = obj.matrix_world.decompose()
+
+        # Build transform matrix from only the components we want to apply
+        transform_matrix = Matrix.Identity(4)
+
+        if apply_scale:
+            scale_matrix = Matrix.Diagonal((scale.x, scale.y, scale.z, 1.0))
+            transform_matrix = transform_matrix @ scale_matrix
+
+        if apply_rotation:
+            rot_matrix = rot.to_matrix().to_4x4()
+            transform_matrix = transform_matrix @ rot_matrix
+
+        if apply_location:
+            loc_matrix = Matrix.Translation(loc)
+            transform_matrix = loc_matrix @ transform_matrix
+
+        # Apply transform to mesh data
+        mesh = obj.data
+        mesh.transform(transform_matrix)
+
+        # Reset the applied components on the object
+        if apply_location:
+            obj.location = (0.0, 0.0, 0.0)
+        if apply_rotation:
+            obj.rotation_euler = (0.0, 0.0, 0.0)
+            obj.rotation_quaternion = (1.0, 0.0, 0.0, 0.0)
+        if apply_scale:
+            obj.scale = (1.0, 1.0, 1.0)
+
+        # Update mesh
+        mesh.update()
+
+        logger.info(f"Successfully applied {', '.join(transforms_to_apply)} for {obj.name}")
+
     except Exception as e:
         logger.error(f"Failed to apply transforms for {obj.name}: {e}")
-        raise
+        raise RuntimeError(f"Transform application failed for {obj.name}") from e
 
 
 def apply_mesh_modifiers(obj, modifier_mode="VISIBLE"):
@@ -1992,16 +2145,18 @@ def restore_material_references(original_references):
             logger.warning(f"Error restoring material reference: {e}")
 
 
-def export_object(obj, file_path, scene_props, export_scale=1.0):
+def export_object(obj, file_path, scene_props, export_scale=1.0, use_existing_selection=False):
     """
-    Exports a single object using scene properties.
-    
+    Exports a single object or current selection using scene properties.
+
     Args:
-        obj (bpy.types.Object): The object to export.
+        obj (bpy.types.Object): The object to export (or representative object for batch).
         file_path (str): The file path for the export.
         scene_props (bpy.types.PropertyGroup): Scene properties for export.
         export_scale (float): Scale factor to apply during export.
-    
+        use_existing_selection (bool): If True, uses current scene selection instead of
+            creating temp context. Used for batch exports. Defaults to False.
+
     Returns:
         bool: True if export was successful, False otherwise.
     """
@@ -2070,8 +2225,13 @@ def export_object(obj, file_path, scene_props, export_scale=1.0):
             return f"NEGATIVE_{axis_value[1]}"
         return axis_value
 
-    with temp_selection_context(bpy.context, active_object=obj,
-                                selected_objects=[obj]):
+    # Use existing selection for batch exports, or create temp context for single exports
+    selection_context = (
+        contextlib.nullcontext() if use_existing_selection
+        else temp_selection_context(bpy.context, active_object=obj, selected_objects=[obj])
+    )
+
+    with selection_context:
         try:
             if fmt == "FBX":
                 bpy.ops.export_scene.fbx(
@@ -2816,10 +2976,100 @@ class MESH_OT_batch_export(Operator):
     bl_label = "Export Selected Meshes"
     bl_options = {"REGISTER", "UNDO"}
 
+    # Batch export filename (for dialog)
+    batch_name: StringProperty(
+        name="Batch Export Filename",
+        description="Name for the combined batch export file (without extension)",
+        default="",
+        maxlen=MAX_FILENAME_LENGTH
+    )
+
     @classmethod
     def poll(cls, context):
         """Enable only if mesh, curve, or metaball objects are selected."""
         return any(obj.type in ["MESH", "CURVE", "META"] for obj in context.selected_objects)
+
+    def invoke(self, context, event):
+        """Show batch name selection dialog if in batch mode with multiple objects."""
+        scene_props = context.scene.mesh_exporter
+
+        # Get objects to export
+        objects_to_export = [
+            obj for obj in context.selected_objects
+            if obj.type in ["MESH", "CURVE", "META"]
+        ]
+
+        # Check if we're in batch glTF mode with multiple objects
+        is_batch_mode = (
+            scene_props.mesh_export_format == "GLTF" and
+            scene_props.mesh_export_gltf_batch_mode == "COMBINE" and
+            len(objects_to_export) > 1
+        )
+
+        if is_batch_mode:
+            # Detect best default filename for batch
+            default_name = ""
+            # Check for common collection
+            first_obj_collections = set(objects_to_export[0].users_collection)
+            for obj in objects_to_export[1:]:
+                first_obj_collections = first_obj_collections.intersection(
+                    set(obj.users_collection)
+                )
+
+            # Prefer collection name if found
+            if first_obj_collections:
+                collection = next(iter(first_obj_collections))
+                default_name = collection.name
+            else:
+                # Otherwise use first object name
+                default_name = objects_to_export[0].name
+
+            # Pre-fill batch name with detected default
+            self.batch_name = default_name
+
+            # Show dialog
+            return context.window_manager.invoke_props_dialog(self, width=400)
+        else:
+            # Single object or non-batch mode: skip dialog, use normal naming
+            return self.execute(context)
+
+    def draw(self, context):
+        """Draw the batch export name selection dialog."""
+        layout = self.layout
+        scene_props = context.scene.mesh_exporter
+
+        layout.label(text="Combined Filename:")
+        # layout.separator()
+
+        # Show filename text field
+        # box = layout.box()
+        # box.prop(self, "batch_name", text="")
+        col = layout.column(align=True)
+        col.prop(self, "batch_name", text="")
+
+        # Show helpful note
+        # layout.separator()
+        col = layout.column(align=True)
+        col.label(text="Pre-filled with the detected collection or object name. Edit if needed.", icon='INFO')
+        col.label(text="For Godot we recommend using snake_case naming")
+
+        # Show preview with naming convention applied
+        if self.batch_name.strip():
+            layout.separator()
+            preview_box = layout.box()
+            preview_name = apply_naming_convention(
+                self.batch_name,
+                scene_props.mesh_export_naming_convention
+            )
+            # Add prefix/suffix preview
+            prefix = scene_props.mesh_export_prefix
+            suffix = scene_props.mesh_export_suffix
+            if prefix:
+                preview_name = f"{prefix}{preview_name}"
+            if suffix:
+                preview_name = f"{preview_name}{suffix}"
+
+            preview_box.label(text=f"Final filename: {preview_name}.glb", icon='CHECKMARK')
 
     def _validate_export_setup(self, context):
         """Validate objects and export path before processing.
@@ -3162,6 +3412,184 @@ class MESH_OT_batch_export(Operator):
             if temp_metaball_mesh:
                 cleanup_object(temp_metaball_mesh, "temp_metaball_mesh")
 
+    def _process_batch_gltf_export(self, objects_to_export, context, scene_props, export_base_path, override_name=None):
+        """Process batch glTF export - combine all objects into single file.
+
+        Creates copies of all objects, processes them (modifiers, triangulation, LODs),
+        then exports everything as a single glTF file. Uses collection name, first
+        object's name, or user-specified name for the batch filename.
+
+        Args:
+            objects_to_export: List of original objects to export
+            context: Blender context
+            scene_props: Export settings from scene properties
+            export_base_path: Directory path for export
+            override_name: Optional user-specified name from dialog
+
+        Returns:
+            tuple: (success_count, failed_list)
+        """
+        # Track all processed objects and temporary resources
+        processed_objects = []  # Objects to include in final export
+        temp_objects = []  # All temporary objects for cleanup
+        temp_metaball_meshes = []  # Temporary metaball meshes
+        failed_objects = []
+
+        try:
+            logger.info(f"Processing batch glTF export for {len(objects_to_export)} objects...")
+
+            # Process each object
+            for idx, original_obj in enumerate(objects_to_export):
+                try:
+                    logger.info(f"Processing object {idx + 1}/{len(objects_to_export)}: {original_obj.name}")
+
+                    # Create export copy
+                    export_obj, temp_metaball_mesh = create_export_copy(original_obj, context)
+                    if temp_metaball_mesh:
+                        temp_metaball_meshes.append(temp_metaball_mesh)
+
+                    # Process the base object (LOD0 or single export)
+                    # Skip zero location for batch to preserve spatial relationships
+                    (export_obj_name, base_name, export_scale) = setup_export_object(
+                        export_obj, original_obj.name, scene_props, skip_zero_location=True
+                    )
+
+                    # Apply modifiers
+                    apply_mesh_modifiers(export_obj, scene_props.mesh_export_apply_modifiers)
+
+                    # Triangulate if needed
+                    if scene_props.mesh_export_tri:
+                        triangulate_mesh(
+                            export_obj,
+                            scene_props.mesh_export_tri_method,
+                            scene_props.mesh_export_keep_normals
+                        )
+
+                    # Add to processed list and track for cleanup
+                    processed_objects.append(export_obj)
+                    temp_objects.append(export_obj)
+
+                    # Handle LOD generation if enabled
+                    if scene_props.mesh_export_lod:
+                        logger.info(f"Generating LODs for {original_obj.name}...")
+                        lod_count = scene_props.mesh_export_lod_count
+
+                        # Get LOD ratios
+                        lod_ratios = [
+                            scene_props.mesh_export_lod_ratio_01,
+                            scene_props.mesh_export_lod_ratio_02,
+                            scene_props.mesh_export_lod_ratio_03,
+                            scene_props.mesh_export_lod_ratio_04,
+                        ]
+
+                        # Generate LODs using progressive building
+                        base_lod_obj = export_obj
+                        previous_ratio = 1.0
+
+                        for lod_level in range(1, lod_count + 1):
+                            try:
+                                target_ratio = lod_ratios[lod_level - 1]
+
+                                # Create LOD copy from previous LOD
+                                lod_obj = base_lod_obj.copy()
+                                lod_obj.data = base_lod_obj.data.copy()
+                                context.collection.objects.link(lod_obj)
+                                temp_objects.append(lod_obj)
+
+                                # Rename for current LOD
+                                lod_obj.name = f"{base_name}_LOD{lod_level:02d}"
+
+                                # Calculate progressive ratio
+                                if previous_ratio > 0:
+                                    progressive_ratio = target_ratio / previous_ratio
+                                else:
+                                    progressive_ratio = target_ratio
+
+                                logger.info(
+                                    f"Building LOD{lod_level} with progressive ratio: {progressive_ratio:.3f}"
+                                )
+
+                                # Apply decimation
+                                apply_decimate_modifier(
+                                    lod_obj, progressive_ratio,
+                                    scene_props.mesh_export_lod_type,
+                                    scene_props.mesh_export_lod_symmetry_axis,
+                                    scene_props.mesh_export_lod_symmetry,
+                                )
+
+                                # Add to processed list
+                                processed_objects.append(lod_obj)
+                                base_lod_obj = lod_obj
+                                previous_ratio = target_ratio
+
+                            except Exception as lod_e:
+                                logger.error(f"Failed to generate LOD{lod_level} for {original_obj.name}: {lod_e}")
+                                # Continue with other objects even if LOD generation fails
+
+                    logger.info(f"Successfully processed {original_obj.name}")
+
+                except Exception as obj_e:
+                    logger.error(f"Failed to process {original_obj.name}: {obj_e}")
+                    failed_objects.append(original_obj.name)
+                    # Continue processing other objects
+
+            # Check if we have any objects to export
+            if not processed_objects:
+                logger.error("No objects were successfully processed for batch export")
+                return 0, failed_objects
+
+            # Determine batch filename (with optional user override)
+            batch_filename = get_batch_export_filename(objects_to_export, scene_props, override_name)
+            file_path = os.path.join(export_base_path, batch_filename)
+
+            # Select all processed objects for export
+            logger.info(f"Exporting {len(processed_objects)} processed objects as single glTF file: {batch_filename}")
+
+            # Deselect all first
+            for obj in context.scene.objects:
+                obj.select_set(False)
+
+            # Select all processed objects
+            for obj in processed_objects:
+                obj.select_set(True)
+
+            # Set one as active (required for export)
+            if processed_objects:
+                context.view_layer.objects.active = processed_objects[0]
+
+            # Export all selected objects as single file
+            # Note: We pass export_scale=1.0 because scaling was already applied to individual objects
+            # use_existing_selection=True tells export_object to use the selection we set up above
+            if export_object(processed_objects[0], file_path, scene_props, export_scale=1.0, use_existing_selection=True):
+                logger.info(f"Batch export successful: {batch_filename}")
+                # Count as 1 successful export (the batch file)
+                return 1, failed_objects
+            else:
+                logger.error(f"Batch export failed for {batch_filename}")
+                return 0, [obj.name for obj in objects_to_export]
+
+        except Exception as e:
+            logger.error(f"Critical error during batch glTF export: {e}", exc_info=True)
+            return 0, [obj.name for obj in objects_to_export]
+
+        finally:
+            # Cleanup all temporary objects
+            logger.info(f"Cleaning up {len(temp_objects)} temporary objects...")
+            for temp_obj in temp_objects:
+                cleanup_object(temp_obj, temp_obj.name if temp_obj else "temp_object")
+
+            # Cleanup temp metaball meshes
+            for temp_mesh in temp_metaball_meshes:
+                cleanup_object(temp_mesh, "temp_metaball_mesh")
+
+            # Memory cleanup for large batch exports
+            if len(objects_to_export) > 5 or any(
+                obj.type == "MESH" and len(obj.data.polygons if obj.data else []) > LARGE_MESH_THRESHOLD
+                for obj in objects_to_export
+            ):
+                MemoryManager.request_cleanup()
+                logger.debug("Memory cleanup after batch export")
+
     def _generate_export_report(self, successful_exports, failed_exports, elapsed_time):
         """Generate final export report message.
         
@@ -3190,7 +3618,7 @@ class MESH_OT_batch_export(Operator):
     def execute(self, context):
         """Runs the batch export process."""
         start_time = time.time()
-        
+
         try:
             # Validate setup
             objects_to_export, export_base_path, hierarchy_mode = self._validate_export_setup(context)
@@ -3215,70 +3643,120 @@ class MESH_OT_batch_export(Operator):
         
         # Get total items to process
         total_items = len(objects_to_export)
-        if hierarchy_mode:
+
+        # Check for glTF batch mode - export all objects as single file
+        # Only applies when we have multiple objects
+        is_batch_gltf = (scene_props.mesh_export_format == "GLTF" and
+                        scene_props.mesh_export_gltf_batch_mode == "COMBINE" and
+                        len(objects_to_export) > 1 and
+                        not hierarchy_mode)  # Batch mode incompatible with hierarchy export
+
+        if is_batch_gltf:
+            # Get user-specified batch name from dialog
+            override_name = self.batch_name.strip() if self.batch_name else None
+            if not override_name:
+                self.report({"WARNING"}, "Batch export name cannot be empty")
+                return {"CANCELLED"}
+
             logger.info(
-                f"Starting batch export for {total_items} objects with LOD hierarchies to {export_base_path}"
+                f"Starting batch glTF export for {total_items} objects (single file) to {export_base_path}"
             )
+
+            wm.progress_begin(0, 100)
+            try:
+                wm.progress_update(50)
+
+                # Process all objects as a batch with user-specified name
+                successful_exports, failed_exports = self._process_batch_gltf_export(
+                    objects_to_export, context, scene_props, export_base_path, override_name
+                )
+
+                # Mark all original objects as exported if successful
+                if successful_exports > 0:
+                    for original_obj in objects_to_export:
+                        if original_obj.name not in failed_exports:
+                            export_indicators.mark_object_as_exported(original_obj)
+
+                wm.progress_update(100)
+
+            except KeyboardInterrupt:
+                logger.info("Batch export cancelled by user")
+                self.report({"INFO"}, "Export cancelled by user")
+                return {"CANCELLED"}
+            except Exception as e:
+                logger.error(f"Critical error during batch export: {e}", exc_info=True)
+                self.report({"ERROR"}, f"Critical batch export error: {e}")
+                return {"CANCELLED"}
+            finally:
+                wm.progress_end()
+                MemoryManager.cleanup_if_pending()
+
         else:
-            logger.info(
-                f"Starting batch export for {total_items} objects to {export_base_path}"
-            )
-        
-        wm.progress_begin(0, total_items)
-        try:
-            # Process each object
-            for index, original_obj in enumerate(objects_to_export):
-                wm.progress_update(index + 1)
-                logger.info(f"Processing ({index + 1}/{total_items}): {original_obj.name}")
-                
-                try:
-                    # Process with hierarchy mode, regular LOD, or single export
-                    if hierarchy_mode:
-                        success_count, failures = self._process_object_hierarchy_export(
-                            original_obj, context, scene_props, export_base_path
-                        )
-                    elif scene_props.mesh_export_lod:
-                        success_count, failures = self._process_lod_export(
-                            original_obj, context, scene_props, export_base_path
-                        )
-                    else:
-                        success_count, failures = self._process_single_export(
-                            original_obj, context, scene_props, export_base_path
-                        )
-                    
-                    # Update tracking
-                    successful_exports += success_count
-                    failed_exports.extend(failures)
-                    
-                    # Mark object if successful
-                    if not failures:
-                        export_indicators.mark_object_as_exported(original_obj)
-                        logger.info(f"Marked original {original_obj.name} as exported.")
-                    else:
-                        logger.info(f"Skipped marking {original_obj.name} due to errors.")
-                        
-                except ProcessingError as e:
-                    logger.error(f"Processing error for {original_obj.name}: {e}")
-                    failed_exports.append(f"{original_obj.name} (Processing Error)")
-                except ResourceError as e:
-                    logger.error(f"Resource error for {original_obj.name}: {e}")
-                    failed_exports.append(f"{original_obj.name} (Resource Error)")
-                except Exception as e:
-                    logger.error(f"Unexpected error for {original_obj.name}: {e}", exc_info=True)
-                    failed_exports.append(f"{original_obj.name} (Unexpected Error)")
-                    
-        except KeyboardInterrupt:
-            logger.info("Export cancelled by user")
-            self.report({"INFO"}, "Export cancelled by user")
-            return {"CANCELLED"}
-        except Exception as e:
-            logger.error(f"Critical error during export: {e}", exc_info=True)
-            self.report({"ERROR"}, f"Critical export error: {e}")
-            return {"CANCELLED"}
-        finally:
-            wm.progress_end()
-            # Ensure any pending memory cleanup is performed
-            MemoryManager.cleanup_if_pending()
+            # Standard per-object export
+            if hierarchy_mode:
+                logger.info(
+                    f"Starting batch export for {total_items} objects with LOD hierarchies to {export_base_path}"
+                )
+            else:
+                logger.info(
+                    f"Starting batch export for {total_items} objects to {export_base_path}"
+                )
+
+            wm.progress_begin(0, total_items)
+            try:
+                # Process each object
+                for index, original_obj in enumerate(objects_to_export):
+                    wm.progress_update(index + 1)
+                    logger.info(f"Processing ({index + 1}/{total_items}): {original_obj.name}")
+
+                    try:
+                        # Process with hierarchy mode, regular LOD, or single export
+                        if hierarchy_mode:
+                            success_count, failures = self._process_object_hierarchy_export(
+                                original_obj, context, scene_props, export_base_path
+                            )
+                        elif scene_props.mesh_export_lod:
+                            success_count, failures = self._process_lod_export(
+                                original_obj, context, scene_props, export_base_path
+                            )
+                        else:
+                            success_count, failures = self._process_single_export(
+                                original_obj, context, scene_props, export_base_path
+                            )
+
+                        # Update tracking
+                        successful_exports += success_count
+                        failed_exports.extend(failures)
+
+                        # Mark object if successful
+                        if not failures:
+                            export_indicators.mark_object_as_exported(original_obj)
+                            logger.info(f"Marked original {original_obj.name} as exported.")
+                        else:
+                            logger.info(f"Skipped marking {original_obj.name} due to errors.")
+
+                    except ProcessingError as e:
+                        logger.error(f"Processing error for {original_obj.name}: {e}")
+                        failed_exports.append(f"{original_obj.name} (Processing Error)")
+                    except ResourceError as e:
+                        logger.error(f"Resource error for {original_obj.name}: {e}")
+                        failed_exports.append(f"{original_obj.name} (Resource Error)")
+                    except Exception as e:
+                        logger.error(f"Unexpected error for {original_obj.name}: {e}", exc_info=True)
+                        failed_exports.append(f"{original_obj.name} (Unexpected Error)")
+
+            except KeyboardInterrupt:
+                logger.info("Export cancelled by user")
+                self.report({"INFO"}, "Export cancelled by user")
+                return {"CANCELLED"}
+            except Exception as e:
+                logger.error(f"Critical error during export: {e}", exc_info=True)
+                self.report({"ERROR"}, f"Critical export error: {e}")
+                return {"CANCELLED"}
+            finally:
+                wm.progress_end()
+                # Ensure any pending memory cleanup is performed
+                MemoryManager.cleanup_if_pending()
         
         # Generate and display report
         elapsed_time = time.time() - start_time
@@ -3332,7 +3810,7 @@ class MESH_OT_save_export_preset(Operator):
     """Save current export settings as a preset."""
     bl_idname = "mesh.save_export_preset"
     bl_label = "Save Preset"
-    bl_description = "Save current export settings as a named preset"
+    bl_description = "Create new preset from current export settings and give it a name"
     bl_options = {"REGISTER", "UNDO"}
 
     # Property for preset name with annotation

@@ -134,7 +134,7 @@ class MeshExporterSettings(PropertyGroup):
 
     # GLTF type property
     mesh_export_gltf_type: EnumProperty(
-        name="glTF type",
+        name="glTF Type",
         description="Type of glTF to export",
         items=[
             ("GLB", "Binary", "Export as binary glTF (GLB)"),
@@ -160,6 +160,17 @@ class MeshExporterSettings(PropertyGroup):
         name="Draco Compression",
         description="Enable Draco mesh compression for smaller file sizes. Note: Godot has its own runtime compression, so this is typically not needed for Godot imports",
         default=False
+    )
+
+    # GLTF batch export property
+    mesh_export_gltf_batch_mode: EnumProperty(
+        name="Batching",
+        description="Choose how to export multiple selected meshes in glTF format",
+        items=[
+            ("COMBINE", "Combine", "Export all selected meshes into a single glTF file (recommended for Godot)"),
+            ("INDIVIDUAL", "Individual", "Export each selected mesh as a separate glTF file"),
+        ],
+        default="COMBINE"
     )
 
     # Scale property

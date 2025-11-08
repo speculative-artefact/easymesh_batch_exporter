@@ -108,6 +108,11 @@ You can also find the add-on directly on [Blender Extensions](https://extensions
     ### Basic Settings
     * **Export Path:** Choose the directory where files will be saved
     * **Format:** Select output format (FBX, OBJ, glTF, USD, STL)
+    * **glTF Batch Export:** (glTF only) Combine all selected meshes into a single file
+      * **Enabled by default** - Perfect for Godot imports
+      * Uses collection name for filename (or first object's name as fallback)
+      * Disable to export each mesh as a separate file
+      * Compatible with LOD generation
     * **Coordinate System:** Set Forward and Up axes for your target application
     * **Scale & Units:** Set global scale and choose between metres/centimetres
     * **Smoothing:** Select smoothing method (Face, Edge, Off) for supported formats

@@ -85,11 +85,13 @@ class MESH_PT_exporter_panel(Panel):
             col = layout.column(heading="GLTF Type", align=True)
             row = col.row(align=True)
             row.prop(settings, "mesh_export_gltf_type", expand=True)
+            row = col.row(align=True)
+            row.prop(settings, "mesh_export_gltf_batch_mode", expand=True)
 
             col = layout.column(heading="Materials", align=True)
             row = col.row(align=True)
             row.prop(settings, "mesh_export_gltf_materials")
-            
+
             col = layout.column(heading="Compression", align=True)
             col.prop(settings, "mesh_export_use_draco_compression")
 
@@ -121,7 +123,19 @@ class MESH_PT_exporter_panel(Panel):
 
         # Zero location settings
         col = layout.column(heading="Transform", align=True)
-        col.prop(settings, "mesh_export_zero_location")
+        row = col.row()
+
+        # Disable if in GLTF COMBINE mode (preserves spatial relationships)
+        is_batch_mode = (settings.mesh_export_format == "GLTF" and
+                        settings.mesh_export_gltf_batch_mode == "COMBINE")
+        row.enabled = not is_batch_mode
+        row.prop(settings, "mesh_export_zero_location")
+
+        # Show helpful note when disabled
+        if is_batch_mode:
+            sub = col.row()
+            sub.label(text="Zero Location is disabled for batch combine mode", icon='INFO')
+            sub.scale_y = 0.8  # Make text smaller
 
         # Modifier application settings
         col = layout.column(heading="Modifier Mode", align=True)
@@ -259,7 +273,7 @@ class MESH_PT_exporter_panel_presets(Panel):
         rename_row.operator("mesh.rename_preset", text="Rename")
 
         # Save As (always enabled)
-        row.operator("mesh.save_export_preset", text="Save As...")
+        row.operator("mesh.save_export_preset", text="Save As")
 
         # Save button (disabled if no preset)
         save_row = row.row(align=True)
