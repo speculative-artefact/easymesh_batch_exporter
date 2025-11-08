@@ -13,10 +13,12 @@ import re
 import math
 import logging
 import weakref
-from typing import Optional, Tuple, List, Iterator, Any
+import json
+from typing import Optional, Tuple, List, Iterator, Any, Dict
 from bpy.types import Operator, Object, Mesh, Context, Collection
 from bpy.props import StringProperty
 from . import export_indicators
+from . import builtin_presets
 
 # --- Setup Logger ---
 logger = logging.getLogger(__name__)
@@ -67,6 +69,11 @@ UNREAL_KNOWN_PREFIXES = {
     'W',   # Widget
     'P',   # Physics Asset
 }
+
+# Preset system constants
+MAX_PRESET_NAME_LENGTH = 50  # Maximum characters for preset names
+PRESET_FILE_EXTENSION = ".json"  # File extension for preset files
+PRESET_DIRECTORY_NAME = "presets"  # Directory name for storing presets
 
 
 # --- Custom Exceptions ---
@@ -2309,6 +2316,498 @@ def cleanup_object(obj, obj_name_for_log):
         logger.warning(f"Issue during cleanup of {log_name}: {remove_e}")
 
 
+# --- Preset System Helper Functions ---
+
+def get_preset_directory() -> str:
+    """Get the directory path for storing presets, creating it if needed.
+
+    Returns:
+        Absolute path to the presets directory
+
+    Raises:
+        ResourceError: If directory cannot be created
+
+    Example:
+        >>> preset_dir = get_preset_directory()
+        >>> "/home/user/.config/blender/4.2/scripts/addons/easymesh_batch_exporter/presets"
+    """
+    # Get the addon directory
+    addon_dir = os.path.dirname(os.path.realpath(__file__))
+    preset_dir = os.path.join(addon_dir, PRESET_DIRECTORY_NAME)
+
+    # Create directory if it doesn't exist
+    if not os.path.exists(preset_dir):
+        try:
+            os.makedirs(preset_dir)
+            logger.info(f"Created preset directory: {preset_dir}")
+        except OSError as e:
+            raise ResourceError(f"Failed to create preset directory: {e}")
+
+    return preset_dir
+
+
+def list_available_presets() -> List[str]:
+    """List all available preset names (without file extension).
+
+    Returns:
+        List of preset names sorted alphabetically
+
+    Example:
+        >>> list_available_presets()
+        ['godot_game', 'unity_mobile', 'unreal_archviz']
+    """
+    try:
+        preset_dir = get_preset_directory()
+    except ResourceError as e:
+        logger.warning(f"Cannot list presets: {e}")
+        return []
+
+    if not os.path.exists(preset_dir):
+        return []
+
+    presets = []
+    for filename in os.listdir(preset_dir):
+        if filename.endswith(PRESET_FILE_EXTENSION):
+            # Remove extension from name
+            preset_name = filename[:-len(PRESET_FILE_EXTENSION)]
+            presets.append(preset_name)
+
+    return sorted(presets)
+
+
+def validate_preset_name(name: str) -> bool:
+    """Validate a preset name for illegal characters and length.
+
+    Args:
+        name: The preset name to validate
+
+    Returns:
+        True if valid
+
+    Raises:
+        ValidationError: If name is invalid with specific reason
+
+    Example:
+        >>> validate_preset_name("my_preset")
+        True
+        >>> validate_preset_name("preset/with/slashes")
+        ValidationError: Preset name contains illegal characters
+    """
+    if not name:
+        raise ValidationError("Preset name cannot be empty")
+
+    if len(name) > MAX_PRESET_NAME_LENGTH:
+        raise ValidationError(f"Preset name exceeds {MAX_PRESET_NAME_LENGTH} characters")
+
+    # Check for illegal filesystem characters
+    illegal_chars = r'[<>:"/\\|?*]'
+    if re.search(illegal_chars, name):
+        raise ValidationError("Preset name contains illegal characters: < > : \" / \\ | ? *")
+
+    # Check for reserved names on Windows
+    reserved_names = {'CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4',
+                      'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2',
+                      'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'}
+    if name.upper() in reserved_names:
+        raise ValidationError(f"Preset name '{name}' is reserved by the operating system")
+
+    return True
+
+
+def serialise_settings_to_dict(settings) -> dict:
+    """Convert PropertyGroup to JSON-compatible dictionary.
+
+    Serialises all export settings including format, scale, units, axis,
+    LOD settings, texture settings, naming conventions, etc.
+
+    Args:
+        settings: MeshExporterSettings PropertyGroup instance
+
+    Returns:
+        Dictionary with property names as keys and values
+
+    Example:
+        >>> settings = context.scene.mesh_exporter
+        >>> data = serialise_settings_to_dict(settings)
+        >>> data['mesh_export_format']
+        'FBX'
+    """
+    data = {}
+
+    # Get all properties from the PropertyGroup
+    # Exclude special properties and the current preset name
+    for prop_name in dir(settings):
+        # Skip private attributes, methods, and special properties
+        if prop_name.startswith('_') or prop_name.startswith('bl_') or prop_name.startswith('rna_'):
+            continue
+
+        # Skip the current_preset property to avoid recursion
+        if prop_name == 'mesh_export_current_preset':
+            continue
+
+        # Skip methods and built-in attributes
+        if callable(getattr(settings, prop_name, None)):
+            continue
+
+        # Get property value
+        try:
+            value = getattr(settings, prop_name)
+            # Only include property types that are JSON-serialisable
+            if isinstance(value, (str, int, float, bool)):
+                data[prop_name] = value
+        except (AttributeError, TypeError):
+            # Skip properties that can't be accessed
+            continue
+
+    return data
+
+
+def deserialise_settings_from_dict(settings, data: dict) -> None:
+    """Apply dictionary values to PropertyGroup settings.
+
+    Args:
+        settings: MeshExporterSettings PropertyGroup instance
+        data: Dictionary with property names and values
+
+    Raises:
+        ProcessingError: If critical settings cannot be applied
+
+    Example:
+        >>> settings = context.scene.mesh_exporter
+        >>> data = {'mesh_export_format': 'FBX', 'mesh_export_scale': 1.0}
+        >>> deserialise_settings_from_dict(settings, data)
+    """
+    errors = []
+    applied_count = 0
+    skipped_count = 0
+
+    for prop_name, value in data.items():
+        # Skip the current_preset property
+        if prop_name == 'mesh_export_current_preset':
+            continue
+
+        # Check if property exists on settings
+        if not hasattr(settings, prop_name):
+            logger.warning(f"Skipping unknown property: {prop_name}")
+            skipped_count += 1
+            continue
+
+        # Try to set the property
+        try:
+            setattr(settings, prop_name, value)
+            applied_count += 1
+        except (AttributeError, TypeError) as e:
+            error_msg = f"Failed to set {prop_name} = {value}: {e}"
+            logger.warning(error_msg)
+            errors.append(error_msg)
+
+    logger.info(f"Applied {applied_count} settings, skipped {skipped_count} unknown properties")
+
+    if errors:
+        # Log errors but don't raise exception - partial loading is acceptable
+        logger.warning(f"Encountered {len(errors)} errors during preset loading")
+
+
+def initialise_builtin_presets() -> None:
+    """Create JSON files for built-in presets if they don't exist.
+
+    This function should be called on addon registration to ensure built-in
+    presets are available as files. Also creates "Custom 01" as the first
+    user preset.
+
+    Example:
+        >>> initialise_builtin_presets()
+        # Creates Godot.json, Unity.json, Unreal.json (built-in)
+        # Creates Custom 01.json (user preset)
+    """
+    try:
+        preset_dir = get_preset_directory()
+    except ResourceError as e:
+        logger.error(f"Cannot initialise built-in presets: {e}")
+        return
+
+    # Create built-in presets
+    for preset_name in builtin_presets.get_builtin_preset_names():
+        filename = preset_name + PRESET_FILE_EXTENSION
+        filepath = os.path.join(preset_dir, filename)
+
+        # Only create if doesn't exist (don't overwrite user modifications)
+        if not os.path.exists(filepath):
+            try:
+                preset_data = builtin_presets.get_builtin_preset_data(preset_name)
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    json.dump(preset_data, f, indent=2, sort_keys=True)
+                logger.info(f"Created built-in preset file: {filepath}")
+            except (OSError, IOError) as e:
+                logger.error(f"Failed to create built-in preset '{preset_name}': {e}")
+
+    # Create "Custom 01" as first user preset (not built-in)
+    custom_preset_name = "Custom 01"
+    custom_filename = custom_preset_name + PRESET_FILE_EXTENSION
+    custom_filepath = os.path.join(preset_dir, custom_filename)
+
+    if not os.path.exists(custom_filepath):
+        try:
+            # Define Custom 01 settings (generic template)
+            custom_preset_data = {
+                "metadata": {
+                    "description": "Generic custom preset template (FBX, Z-up, Y-forward, meters)",
+                    "icon": "FILE_3D",
+                    "is_builtin": False,
+                    "created": datetime.now().isoformat(),
+                    "modified": datetime.now().isoformat()
+                },
+                "settings": {
+                    # Export format
+                    "mesh_export_format": "FBX",
+                    "mesh_export_gltf_type": "GLB",
+                    "mesh_export_gltf_materials": "EXPORT",
+                    "mesh_export_use_draco_compression": False,
+
+                    # Coordinate system
+                    "mesh_export_coord_up": "Z",
+                    "mesh_export_coord_forward": "Y",
+
+                    # Scale and units
+                    "mesh_export_scale": 1.0,
+                    "mesh_export_units": "METERS",
+
+                    # Transform
+                    "mesh_export_zero_location": True,
+                    "mesh_export_smoothing": "FACE",
+
+                    # Triangulation
+                    "mesh_export_tri": True,
+                    "mesh_export_tri_method": "BEAUTY",
+                    "mesh_export_keep_normals": True,
+
+                    # Modifiers
+                    "mesh_export_apply_modifiers": "VISIBLE",
+
+                    # Naming
+                    "mesh_export_prefix": "",
+                    "mesh_export_suffix": "",
+                    "mesh_export_naming_convention": "DEFAULT",
+
+                    # Export indicators
+                    "mesh_export_show_indicators": True,
+
+                    # LOD settings
+                    "mesh_export_lod": False,
+                    "mesh_export_lod_count": 4,
+                    "mesh_export_lod_symmetry": False,
+                    "mesh_export_lod_symmetry_axis": "X",
+                    "mesh_export_lod_type": "COLLAPSE",
+                    "mesh_export_lod_hierarchy": True,
+
+                    # Texture settings
+                    "mesh_export_resize_textures": True,
+                    "mesh_export_texture_quality": 85,
+                    "mesh_export_lod1_texture_size": "2048",
+                    "mesh_export_lod2_texture_size": "1024",
+                    "mesh_export_lod3_texture_size": "512",
+                    "mesh_export_lod4_texture_size": "256",
+                    "mesh_export_preserve_normal_maps": True,
+                    "mesh_export_embed_textures": True,
+
+                    # LOD ratios
+                    "mesh_export_lod_ratio_01": 0.75,
+                    "mesh_export_lod_ratio_02": 0.50,
+                    "mesh_export_lod_ratio_03": 0.25,
+                    "mesh_export_lod_ratio_04": 0.10,
+                }
+            }
+
+            with open(custom_filepath, 'w', encoding='utf-8') as f:
+                json.dump(custom_preset_data, f, indent=2, sort_keys=True)
+            logger.info(f"Created default user preset file: {custom_filepath}")
+        except (OSError, IOError) as e:
+            logger.error(f"Failed to create user preset '{custom_preset_name}': {e}")
+
+    # Refresh the preset enum cache after initialization
+    from . import properties
+    properties.refresh_preset_items_cache()
+
+
+def get_preset_icon(preset_name: str) -> str:
+    """Get the appropriate icon for a preset.
+
+    Args:
+        preset_name: Name of the preset
+
+    Returns:
+        Blender icon identifier string
+
+    Example:
+        >>> get_preset_icon("Godot")
+        'COMMUNITY'
+        >>> get_preset_icon("My Custom Preset")
+        'FILE_3D'
+    """
+    # Check if it's a built-in preset
+    if builtin_presets.is_builtin_preset(preset_name):
+        return builtin_presets.get_builtin_preset_icon(preset_name)
+
+    # User preset - use generic icon
+    return 'FILE_3D'
+
+
+def get_preset_description(preset_name: str) -> str:
+    """Get the description for a preset.
+
+    Args:
+        preset_name: Name of the preset
+
+    Returns:
+        Description string (empty for user presets without metadata)
+
+    Example:
+        >>> get_preset_description("Godot")
+        'Optimised for Godot 4.x (Y-up, Z-forward, meters, snake_case)'
+    """
+    # Check if it's a built-in preset
+    if builtin_presets.is_builtin_preset(preset_name):
+        return builtin_presets.get_builtin_preset_description(preset_name)
+
+    # Try to get description from JSON file metadata
+    try:
+        preset_dir = get_preset_directory()
+        filename = preset_name + PRESET_FILE_EXTENSION
+        filepath = os.path.join(preset_dir, filename)
+
+        if os.path.exists(filepath):
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if 'metadata' in data and 'description' in data['metadata']:
+                    return data['metadata']['description']
+    except (OSError, IOError, json.JSONDecodeError):
+        pass
+
+    return ""
+
+
+def settings_match_preset(settings, preset_name: str) -> bool:
+    """Check if current settings match a saved preset.
+
+    Args:
+        settings: MeshExporterSettings PropertyGroup instance
+        preset_name: Name of the preset to compare against
+
+    Returns:
+        True if all settings match the saved preset, False otherwise
+
+    Example:
+        >>> settings = context.scene.mesh_exporter
+        >>> settings_match_preset(settings, "Godot")
+        False  # If settings have been modified
+    """
+    if not preset_name:
+        return True  # No preset loaded, consider it matching
+
+    # Get saved preset data
+    try:
+        preset_dir = get_preset_directory()
+        filename = preset_name + PRESET_FILE_EXTENSION
+        filepath = os.path.join(preset_dir, filename)
+
+        if not os.path.exists(filepath):
+            return False
+
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        # Extract settings dict (handle both old and new format)
+        if 'settings' in data:
+            saved_settings = data['settings']
+        else:
+            # Old format - entire file is settings
+            saved_settings = data
+
+        # Compare current settings with saved
+        current_settings = serialise_settings_to_dict(settings)
+
+        for key, saved_value in saved_settings.items():
+            current_value = current_settings.get(key)
+            if current_value != saved_value:
+                return False
+
+        return True
+
+    except (OSError, IOError, json.JSONDecodeError) as e:
+        logger.warning(f"Failed to compare settings with preset '{preset_name}': {e}")
+        return False
+
+
+def get_all_preset_names() -> List[str]:
+    """Get list of all preset names (built-in and user), sorted appropriately.
+
+    Built-in presets come first in their defined order, followed by user
+    presets in alphabetical order.
+
+    Returns:
+        List of all preset names
+
+    Example:
+        >>> get_all_preset_names()
+        ['Godot', 'Unity', 'Unreal', 'Custom 01', 'my_preset_a', 'my_preset_b']
+    """
+    # Get built-in presets in order
+    builtin_names = builtin_presets.get_builtin_preset_names()
+
+    # Get user presets (exclude built-ins)
+    user_names = []
+    try:
+        all_files = list_available_presets()
+        for name in all_files:
+            if name not in builtin_names:
+                user_names.append(name)
+    except Exception as e:
+        logger.warning(f"Failed to list user presets: {e}")
+
+    # Sort user presets alphabetically
+    user_names.sort()
+
+    # Return built-ins first, then user presets
+    return builtin_names + user_names
+
+
+def reset_preset_to_builtin(preset_name: str) -> None:
+    """Reset a built-in preset to its factory default settings.
+
+    Args:
+        preset_name: Name of the built-in preset to reset
+
+    Raises:
+        ValidationError: If preset is not a built-in
+        ResourceError: If file cannot be written
+
+    Example:
+        >>> reset_preset_to_builtin("Godot")
+        # Restores Godot preset to factory settings
+    """
+    if not builtin_presets.is_builtin_preset(preset_name):
+        raise ValidationError(f"'{preset_name}' is not a built-in preset")
+
+    try:
+        preset_dir = get_preset_directory()
+    except ResourceError as e:
+        raise ResourceError(f"Cannot access preset directory: {e}")
+
+    filename = preset_name + PRESET_FILE_EXTENSION
+    filepath = os.path.join(preset_dir, filename)
+
+    # Get factory default data
+    preset_data = builtin_presets.get_builtin_preset_data(preset_name)
+
+    # Write to file
+    try:
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(preset_data, f, indent=2, sort_keys=True)
+        logger.info(f"Reset built-in preset '{preset_name}' to factory defaults")
+    except (OSError, IOError) as e:
+        raise ResourceError(f"Failed to reset preset file: {e}")
+
+
 # --- Operators ---
 
 class MESH_OT_batch_export(Operator):
@@ -2829,10 +3328,532 @@ class OBJECT_OT_select_by_name(Operator):
         return {"FINISHED"}
 
 
+class MESH_OT_save_export_preset(Operator):
+    """Save current export settings as a preset."""
+    bl_idname = "mesh.save_export_preset"
+    bl_label = "Save Preset"
+    bl_description = "Save current export settings as a named preset"
+    bl_options = {"REGISTER", "UNDO"}
+
+    # Property for preset name with annotation
+    preset_name: StringProperty(
+        name="Preset Name",
+        description="Name for the preset",
+        default="",
+        maxlen=MAX_PRESET_NAME_LENGTH
+    )
+
+    def invoke(self, context, event):
+        """Show dialog to enter preset name."""
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        """Draw the dialog UI."""
+        layout = self.layout
+        layout.prop(self, "preset_name")
+
+    def execute(self, context):
+        """Save the preset to a JSON file."""
+        settings = context.scene.mesh_exporter
+
+        # Validate preset name
+        try:
+            validate_preset_name(self.preset_name)
+        except ValidationError as e:
+            self.report({'ERROR'}, str(e))
+            return {'CANCELLED'}
+
+        # Get preset directory
+        try:
+            preset_dir = get_preset_directory()
+        except ResourceError as e:
+            self.report({'ERROR'}, f"Cannot access preset directory: {e}")
+            logger.error(f"Preset directory error: {e}")
+            return {'CANCELLED'}
+
+        # Build file path
+        filename = self.preset_name + PRESET_FILE_EXTENSION
+        filepath = os.path.join(preset_dir, filename)
+
+        # Check if file already exists
+        if os.path.exists(filepath):
+            self.report({'WARNING'}, f"Preset '{self.preset_name}' already exists and will be overwritten")
+
+        # Serialise settings to dict
+        try:
+            settings_data = serialise_settings_to_dict(settings)
+        except Exception as e:
+            self.report({'ERROR'}, f"Failed to serialise settings: {e}")
+            logger.error(f"Serialisation error: {e}", exc_info=True)
+            return {'CANCELLED'}
+
+        # Create preset data with metadata (new format)
+        import datetime
+        preset_data = {
+            "metadata": {
+                "description": "",  # User can add description later
+                "created": datetime.datetime.now().isoformat(),
+                "modified": datetime.datetime.now().isoformat(),
+                "is_builtin": False
+            },
+            "settings": settings_data
+        }
+
+        # Write to JSON file
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(preset_data, f, indent=2, sort_keys=True)
+            logger.info(f"Saved preset '{self.preset_name}' to {filepath}")
+        except (OSError, IOError) as e:
+            self.report({'ERROR'}, f"Failed to save preset file: {e}")
+            logger.error(f"File write error: {e}", exc_info=True)
+            return {'CANCELLED'}
+
+        # Refresh the preset enum cache FIRST (before setting selector)
+        from . import properties
+        properties.refresh_preset_items_cache()
+
+        # Update current preset properties
+        settings.mesh_export_current_preset = self.preset_name
+        settings.mesh_export_preset_modified = False  # Just saved, so not modified
+        settings.mesh_export_preset_is_builtin = False  # User-created preset
+        settings.mesh_export_preset_selector = self.preset_name  # Sync selector (now safe)
+
+        self.report({'INFO'}, f"Preset '{self.preset_name}' saved successfully")
+        return {'FINISHED'}
+
+
+class MESH_OT_load_export_preset(Operator):
+    """Load export settings from a preset."""
+    bl_idname = "mesh.load_export_preset"
+    bl_label = "Load Preset"
+    bl_description = "Load export settings from a saved preset"
+    bl_options = {"REGISTER", "UNDO"}
+
+    # Property for preset name with annotation
+    preset_name: StringProperty(
+        name="Preset Name",
+        description="Name of the preset to load",
+        default=""
+    )
+
+    def execute(self, context):
+        """Load the preset from a JSON file."""
+        settings = context.scene.mesh_exporter
+
+        if not self.preset_name:
+            self.report({'ERROR'}, "No preset name specified")
+            return {'CANCELLED'}
+
+        # Get preset directory
+        try:
+            preset_dir = get_preset_directory()
+        except ResourceError as e:
+            self.report({'ERROR'}, f"Cannot access preset directory: {e}")
+            logger.error(f"Preset directory error: {e}")
+            return {'CANCELLED'}
+
+        # Build file path
+        filename = self.preset_name + PRESET_FILE_EXTENSION
+        filepath = os.path.join(preset_dir, filename)
+
+        # Check if file exists
+        if not os.path.exists(filepath):
+            self.report({'ERROR'}, f"Preset '{self.preset_name}' not found")
+            return {'CANCELLED'}
+
+        # Read JSON file
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            logger.info(f"Loaded preset data from {filepath}")
+        except (OSError, IOError) as e:
+            self.report({'ERROR'}, f"Failed to read preset file: {e}")
+            logger.error(f"File read error: {e}", exc_info=True)
+            return {'CANCELLED'}
+        except json.JSONDecodeError as e:
+            self.report({'ERROR'}, f"Invalid preset file format: {e}")
+            logger.error(f"JSON decode error: {e}", exc_info=True)
+            return {'CANCELLED'}
+
+        # Extract settings dict (handle both old and new format with metadata)
+        if 'settings' in data:
+            settings_data = data['settings']
+        else:
+            # Old format - entire file is settings
+            settings_data = data
+
+        # Deserialise settings from dict
+        try:
+            deserialise_settings_from_dict(settings, settings_data)
+        except Exception as e:
+            self.report({'ERROR'}, f"Failed to apply preset settings: {e}")
+            logger.error(f"Deserialisation error: {e}", exc_info=True)
+            return {'CANCELLED'}
+
+        # Update current preset properties
+        settings.mesh_export_current_preset = self.preset_name
+        settings.mesh_export_preset_modified = False  # Just loaded, so not modified
+        settings.mesh_export_preset_is_builtin = builtin_presets.is_builtin_preset(self.preset_name)
+        settings.mesh_export_preset_selector = self.preset_name  # Sync selector
+
+        # Refresh the preset enum cache
+        from . import properties
+        properties.refresh_preset_items_cache()
+
+        self.report({'INFO'}, f"Preset '{self.preset_name}' loaded successfully")
+        return {'FINISHED'}
+
+
+class MESH_OT_delete_export_preset(Operator):
+    """Delete a saved preset."""
+    bl_idname = "mesh.delete_export_preset"
+    bl_label = "Delete Preset"
+    bl_description = "Delete a saved export preset"
+    bl_options = {"REGISTER", "UNDO"}
+
+    # Property for preset name with annotation
+    preset_name: StringProperty(
+        name="Preset Name",
+        description="Name of the preset to delete",
+        default=""
+    )
+
+    def invoke(self, context, event):
+        """Show confirmation dialog."""
+        return context.window_manager.invoke_confirm(self, event)
+
+    def execute(self, context):
+        """Delete the preset file."""
+        settings = context.scene.mesh_exporter
+
+        if not self.preset_name:
+            self.report({'ERROR'}, "No preset name specified")
+            return {'CANCELLED'}
+
+        # Prevent deletion of built-in presets
+        if builtin_presets.is_builtin_preset(self.preset_name):
+            self.report({'ERROR'}, f"Cannot delete built-in preset '{self.preset_name}'. Use 'Reset to Default' instead.")
+            return {'CANCELLED'}
+
+        # Get preset directory
+        try:
+            preset_dir = get_preset_directory()
+        except ResourceError as e:
+            self.report({'ERROR'}, f"Cannot access preset directory: {e}")
+            logger.error(f"Preset directory error: {e}")
+            return {'CANCELLED'}
+
+        # Build file path
+        filename = self.preset_name + PRESET_FILE_EXTENSION
+        filepath = os.path.join(preset_dir, filename)
+
+        # Check if file exists
+        if not os.path.exists(filepath):
+            self.report({'ERROR'}, f"Preset '{self.preset_name}' not found")
+            return {'CANCELLED'}
+
+        # Delete file
+        try:
+            os.remove(filepath)
+            logger.info(f"Deleted preset '{self.preset_name}' from {filepath}")
+        except OSError as e:
+            self.report({'ERROR'}, f"Failed to delete preset file: {e}")
+            logger.error(f"File delete error: {e}", exc_info=True)
+            return {'CANCELLED'}
+
+        # Refresh the preset enum cache FIRST (removes deleted preset from enum)
+        from . import properties
+        properties.refresh_preset_items_cache()
+
+        # Clear current preset if it was the deleted one
+        if settings.mesh_export_current_preset == self.preset_name:
+            settings.mesh_export_current_preset = ""
+            settings.mesh_export_preset_modified = False
+            settings.mesh_export_preset_is_builtin = False
+            # Get first available preset from refreshed cache for selector
+            all_presets = get_all_preset_names()
+            if all_presets:
+                settings.mesh_export_preset_selector = all_presets[0]
+            # Note: If no presets available, 'NONE' will be the only option
+
+        self.report({'INFO'}, f"Preset '{self.preset_name}' deleted successfully")
+        return {'FINISHED'}
+
+
+class MESH_OT_update_current_preset(Operator):
+    """Update the current preset with current settings (quick save)."""
+    bl_idname = "mesh.update_current_preset"
+    bl_label = "Save"
+    bl_description = "Update current preset with current settings"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        """Update the current preset file with current settings."""
+        settings = context.scene.mesh_exporter
+
+        # Check if there's a current preset
+        if not settings.mesh_export_current_preset:
+            self.report({'ERROR'}, "No preset currently loaded. Use 'Save As...' to create a new preset")
+            return {'CANCELLED'}
+
+        preset_name = settings.mesh_export_current_preset
+
+        # Get preset directory
+        try:
+            preset_dir = get_preset_directory()
+        except ResourceError as e:
+            self.report({'ERROR'}, f"Cannot access preset directory: {e}")
+            logger.error(f"Preset directory error: {e}")
+            return {'CANCELLED'}
+
+        # Build file path
+        filename = preset_name + PRESET_FILE_EXTENSION
+        filepath = os.path.join(preset_dir, filename)
+
+        # Check if file exists
+        if not os.path.exists(filepath):
+            self.report({'ERROR'}, f"Preset file '{preset_name}' not found")
+            return {'CANCELLED'}
+
+        # Serialise settings
+        try:
+            settings_data = serialise_settings_to_dict(settings)
+        except Exception as e:
+            self.report({'ERROR'}, f"Failed to serialise settings: {e}")
+            logger.error(f"Serialisation error: {e}", exc_info=True)
+            return {'CANCELLED'}
+
+        # Read existing file to preserve metadata
+        import datetime
+        metadata = {
+            "description": "",
+            "created": datetime.datetime.now().isoformat(),
+            "modified": datetime.datetime.now().isoformat(),
+            "is_builtin": settings.mesh_export_preset_is_builtin
+        }
+
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                existing_data = json.load(f)
+                if 'metadata' in existing_data:
+                    # Preserve existing metadata but update modified time
+                    metadata = existing_data['metadata']
+                    metadata['modified'] = datetime.datetime.now().isoformat()
+        except (OSError, IOError, json.JSONDecodeError):
+            # If can't read, use defaults
+            pass
+
+        # Create updated preset data
+        preset_data = {
+            "metadata": metadata,
+            "settings": settings_data
+        }
+
+        # Write to file
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(preset_data, f, indent=2, sort_keys=True)
+            logger.info(f"Updated preset '{preset_name}'")
+        except (OSError, IOError) as e:
+            self.report({'ERROR'}, f"Failed to update preset file: {e}")
+            logger.error(f"File write error: {e}", exc_info=True)
+            return {'CANCELLED'}
+
+        # Clear modified flag
+        settings.mesh_export_preset_modified = False
+
+        # Refresh the preset enum cache (in case description changed)
+        from . import properties
+        properties.refresh_preset_items_cache()
+
+        self.report({'INFO'}, f"Preset '{preset_name}' updated successfully")
+        return {'FINISHED'}
+
+
+class MESH_OT_rename_preset(Operator):
+    """Rename the current preset."""
+    bl_idname = "mesh.rename_preset"
+    bl_label = "Rename Preset"
+    bl_description = "Rename the current preset"
+    bl_options = {"REGISTER", "UNDO"}
+
+    # Property for new preset name
+    new_name: StringProperty(
+        name="New Name",
+        description="New name for the preset",
+        default="",
+        maxlen=MAX_PRESET_NAME_LENGTH
+    )
+
+    def invoke(self, context, event):
+        """Show dialog to enter new name."""
+        settings = context.scene.mesh_exporter
+
+        # Check if there's a current preset
+        if not settings.mesh_export_current_preset:
+            self.report({'ERROR'}, "No preset currently loaded")
+            return {'CANCELLED'}
+
+        # Prevent renaming built-in presets
+        if settings.mesh_export_preset_is_builtin:
+            self.report({'ERROR'}, "Cannot rename built-in presets")
+            return {'CANCELLED'}
+
+        # Set default to current name
+        self.new_name = settings.mesh_export_current_preset
+
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        """Draw the dialog UI."""
+        layout = self.layout
+        layout.prop(self, "new_name")
+
+    def execute(self, context):
+        """Rename the preset file."""
+        settings = context.scene.mesh_exporter
+        old_name = settings.mesh_export_current_preset
+
+        # Validate new name
+        try:
+            validate_preset_name(self.new_name)
+        except ValidationError as e:
+            self.report({'ERROR'}, str(e))
+            return {'CANCELLED'}
+
+        # Check if new name is same as old
+        if self.new_name == old_name:
+            self.report({'INFO'}, "Preset name unchanged")
+            return {'CANCELLED'}
+
+        # Prevent renaming to a built-in preset name
+        if builtin_presets.is_builtin_preset(self.new_name):
+            self.report({'ERROR'}, f"Cannot use built-in preset name '{self.new_name}'")
+            return {'CANCELLED'}
+
+        # Get preset directory
+        try:
+            preset_dir = get_preset_directory()
+        except ResourceError as e:
+            self.report({'ERROR'}, f"Cannot access preset directory: {e}")
+            return {'CANCELLED'}
+
+        old_filepath = os.path.join(preset_dir, old_name + PRESET_FILE_EXTENSION)
+        new_filepath = os.path.join(preset_dir, self.new_name + PRESET_FILE_EXTENSION)
+
+        # Check if old file exists
+        if not os.path.exists(old_filepath):
+            self.report({'ERROR'}, f"Preset '{old_name}' not found")
+            return {'CANCELLED'}
+
+        # Check if new name already exists
+        if os.path.exists(new_filepath):
+            self.report({'ERROR'}, f"Preset '{self.new_name}' already exists")
+            return {'CANCELLED'}
+
+        # Rename file
+        try:
+            os.rename(old_filepath, new_filepath)
+            logger.info(f"Renamed preset from '{old_name}' to '{self.new_name}'")
+        except OSError as e:
+            self.report({'ERROR'}, f"Failed to rename preset: {e}")
+            logger.error(f"File rename error: {e}", exc_info=True)
+            return {'CANCELLED'}
+
+        # Refresh the preset enum cache FIRST (before setting selector)
+        from . import properties
+        properties.refresh_preset_items_cache()
+
+        # Update current preset name
+        settings.mesh_export_current_preset = self.new_name
+        settings.mesh_export_preset_selector = self.new_name  # Sync selector (now safe)
+
+        self.report({'INFO'}, f"Preset renamed to '{self.new_name}'")
+        return {'FINISHED'}
+
+
+class MESH_OT_reset_preset_to_default(Operator):
+    """Reset a built-in preset to factory default settings."""
+    bl_idname = "mesh.reset_preset_to_default"
+    bl_label = "Reset to Default"
+    bl_description = "Reset this built-in preset to factory default settings"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def invoke(self, context, event):
+        """Show confirmation dialog."""
+        return context.window_manager.invoke_confirm(self, event)
+
+    def execute(self, context):
+        """Reset the built-in preset to factory defaults."""
+        settings = context.scene.mesh_exporter
+
+        # Check if there's a current preset
+        if not settings.mesh_export_current_preset:
+            self.report({'ERROR'}, "No preset currently loaded")
+            return {'CANCELLED'}
+
+        preset_name = settings.mesh_export_current_preset
+
+        # Check if it's a built-in preset
+        if not settings.mesh_export_preset_is_builtin:
+            self.report({'ERROR'}, f"'{preset_name}' is not a built-in preset")
+            return {'CANCELLED'}
+
+        # Reset to factory defaults
+        try:
+            reset_preset_to_builtin(preset_name)
+        except ValidationError as e:
+            self.report({'ERROR'}, str(e))
+            return {'CANCELLED'}
+        except ResourceError as e:
+            self.report({'ERROR'}, str(e))
+            logger.error(f"Reset error: {e}", exc_info=True)
+            return {'CANCELLED'}
+
+        # Reload the preset
+        try:
+            preset_dir = get_preset_directory()
+            filename = preset_name + PRESET_FILE_EXTENSION
+            filepath = os.path.join(preset_dir, filename)
+
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            # Extract settings
+            if 'settings' in data:
+                settings_data = data['settings']
+            else:
+                settings_data = data
+
+            # Apply settings
+            deserialise_settings_from_dict(settings, settings_data)
+
+            # Clear modified flag
+            settings.mesh_export_preset_modified = False
+
+        except Exception as e:
+            self.report({'WARNING'}, f"Preset reset but failed to reload: {e}")
+            logger.error(f"Reload error: {e}", exc_info=True)
+
+        # Refresh the preset enum cache (in case description changed)
+        from . import properties
+        properties.refresh_preset_items_cache()
+
+        self.report({'INFO'}, f"Preset '{preset_name}' reset to factory defaults")
+        return {'FINISHED'}
+
+
 # --- Registration ---
 classes = (
     MESH_OT_batch_export,
     OBJECT_OT_select_by_name,
+    MESH_OT_save_export_preset,
+    MESH_OT_load_export_preset,
+    MESH_OT_delete_export_preset,
+    MESH_OT_update_current_preset,
+    MESH_OT_rename_preset,
+    MESH_OT_reset_preset_to_default,
 )
 
 

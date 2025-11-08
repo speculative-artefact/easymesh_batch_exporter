@@ -12,6 +12,41 @@ from bpy.props import (StringProperty, EnumProperty,
 from bpy.types import PropertyGroup
 
 
+# Module-level cache for preset enum items
+# This prevents expensive file I/O on every UI draw/hover event
+_preset_items_cache = None
+
+
+def refresh_preset_items_cache():
+    """Refresh the cached preset enum items.
+
+    This should be called after any operation that changes the preset list
+    (save, load, delete, rename).
+
+    Note:
+        Updates the module-level _preset_items_cache variable.
+    """
+    global _preset_items_cache
+    from . import operators
+
+    items = []
+    try:
+        all_presets = operators.get_all_preset_names()
+        for i, preset_name in enumerate(all_presets):
+            icon = operators.get_preset_icon(preset_name)
+            desc = operators.get_preset_description(preset_name) or preset_name
+            items.append((preset_name, preset_name, desc, icon, i))
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Failed to refresh preset items cache: {e}")
+
+    if not items:
+        items.append(('NONE', 'No Presets', 'No presets available', 'SETTINGS', 0))
+
+    _preset_items_cache = items
+
+
 def clear_indicators_if_disabled(self, context):
     """Callback to clear all indicators when the checkbox is unchecked.
 
@@ -29,6 +64,47 @@ def clear_indicators_if_disabled(self, context):
         except (AttributeError, RuntimeError):
             # Operator might not be registered yet during addon startup
             pass
+
+
+def get_preset_items(self, context):
+    """Generate enum items from available presets.
+
+    Returns:
+        List of tuples (identifier, name, description, icon, number)
+
+    Note:
+        This is called dynamically to populate the preset selector enum.
+        Uses cached items to avoid expensive file I/O on every draw/hover event.
+    """
+    global _preset_items_cache
+
+    # If cache is empty, refresh it
+    if _preset_items_cache is None:
+        refresh_preset_items_cache()
+
+    # Return cached items (always returns a valid list)
+    return _preset_items_cache if _preset_items_cache else [('NONE', 'No Presets', 'No presets available', 'SETTINGS', 0)]
+
+
+def load_preset_on_change(self, context):
+    """Load preset when enum selection changes.
+
+    Args:
+        self: The property group instance
+        context: The current Blender context
+
+    Note:
+        Auto-loads the selected preset when user clicks a different preset button.
+    """
+    if self.mesh_export_preset_selector and self.mesh_export_preset_selector != 'NONE':
+        # Only load if different from current
+        if self.mesh_export_preset_selector != self.mesh_export_current_preset:
+            try:
+                bpy.ops.mesh.load_export_preset(preset_name=self.mesh_export_preset_selector)
+            except (AttributeError, RuntimeError) as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to auto-load preset: {e}")
 
 
 class MeshExporterSettings(PropertyGroup):
@@ -375,9 +451,35 @@ class MeshExporterSettings(PropertyGroup):
         default=0.25, min=0.0, max=1.0, subtype="FACTOR"
     )
     mesh_export_lod_ratio_04: FloatProperty(
-        name="LOD4 Ratio", 
+        name="LOD4 Ratio",
         description="Decimate factor for LOD 4",
         default=0.10, min=0.0, max=1.0, subtype="FACTOR"
+    )
+
+    # Preset system properties
+    mesh_export_current_preset: StringProperty(
+        name="Current Preset",
+        description="Currently active export preset",
+        default=""
+    )
+
+    mesh_export_preset_modified: BoolProperty(
+        name="Preset Modified",
+        description="True if current settings differ from saved preset",
+        default=False
+    )
+
+    mesh_export_preset_is_builtin: BoolProperty(
+        name="Is Built-in Preset",
+        description="True if current preset is a built-in factory preset",
+        default=False
+    )
+
+    mesh_export_preset_selector: EnumProperty(
+        name="Preset",
+        description="Select and load a preset",
+        items=get_preset_items,
+        update=load_preset_on_change
     )
 
 

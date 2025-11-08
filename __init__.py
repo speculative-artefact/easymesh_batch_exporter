@@ -52,6 +52,10 @@ def register():
     test = hasattr(bpy.types.Scene, "mesh_exporter")
     logger.info(f"Verification - mesh_exporter exists: {test}")
 
+    # 1.5 Initialise built-in presets
+    operators.initialise_builtin_presets()
+    logger.info("Built-in presets initialised.")
+
     # 2. Other Classes (Operators, Panels)
     for cls in classes:
         bpy.utils.register_class(cls)

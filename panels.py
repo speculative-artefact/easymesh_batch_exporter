@@ -9,6 +9,8 @@ import time
 import logging
 from bpy.types import Panel
 from . import export_indicators
+from . import operators
+from . import builtin_presets
 
 # --- Setup Logger ---
 logger = logging.getLogger(__name__)
@@ -43,7 +45,6 @@ class MESH_PT_exporter_panel(Panel):
     def format_has_smoothing(self, format):
         """Check if the format is compatible with smoothing export settings"""
         return format in {"FBX"}
-
 
     def draw(self, context):
         layout = self.layout
@@ -185,6 +186,91 @@ class MESH_PT_exporter_panel(Panel):
         
         # Pass the generated text to the "text" parameter
         row.operator("mesh.batch_export", text=button_text, icon="EXPORT")
+
+
+# Presets Panel
+class MESH_PT_exporter_panel_presets(Panel):
+    bl_label = "Export Presets"
+    bl_idname = "MESH_PT_exporter_panel_presets"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Exporter"
+    bl_parent_id = "MESH_PT_exporter_panel"
+    bl_options = {"DEFAULT_CLOSED"} # Optional: Start closed
+
+    @classmethod
+    def poll(cls, context):
+        # Show only if the main panel exists and path is set
+        settings = context.scene.mesh_exporter
+        # Check if the path property itself exists and is not None/empty
+        return (settings
+                and settings.mesh_export_path
+                is not None
+                and settings.mesh_export_path != "")
+
+    def draw_header(self, context):
+        """Draw the panel header with current preset name."""
+        layout = self.layout
+        settings = context.scene.mesh_exporter
+
+        # Display preset name in header if one is loaded
+        if settings.mesh_export_current_preset:
+            layout.label(text=f"({settings.mesh_export_current_preset})")
+        # else:
+        #     layout.label(text="Export Presets")
+
+    def draw_preset_selector(self, layout, settings):
+        """Draw vertical enum buttons for preset selection."""
+        
+        # box = layout.box()
+        # col = box.column(align=True)
+        col = layout.column(align=True)
+
+        # Header
+        # col.label(text="Preset Selection", icon='SETTINGS')
+
+        # Vertical enum buttons for preset selection
+        col.prop(settings, "mesh_export_preset_selector", expand=True)
+
+        # Modified indicator (prominent warning)
+        if settings.mesh_export_preset_modified and settings.mesh_export_current_preset:
+            row = col.row()
+            row.alert = True
+            row.label(text="* Modified", icon='ERROR')
+
+        col.separator()
+
+        # Action buttons row
+        row = col.row(align=True)
+
+        # Delete OR Reset (mutually exclusive based on preset type)
+        if settings.mesh_export_current_preset:
+            if settings.mesh_export_preset_is_builtin:
+                # Built-in: show Reset
+                row.operator("mesh.reset_preset_to_default", text="Reset")
+            else:
+                # User preset: show Delete
+                delete_op = row.operator("mesh.delete_export_preset", text="Delete")
+                delete_op.preset_name = settings.mesh_export_current_preset
+
+        # Rename button (always visible, enabled only for user presets)
+        rename_row = row.row(align=True)
+        rename_row.enabled = bool(settings.mesh_export_current_preset and not settings.mesh_export_preset_is_builtin)
+        rename_row.operator("mesh.rename_preset", text="Rename")
+
+        # Save As (always enabled)
+        row.operator("mesh.save_export_preset", text="Save As...")
+
+        # Save button (disabled if no preset)
+        save_row = row.row(align=True)
+        save_row.enabled = bool(settings.mesh_export_current_preset)
+        save_row.operator("mesh.update_current_preset", text="Save")
+
+    def draw(self, context):
+        layout = self.layout
+        settings = context.scene.mesh_exporter
+        self.draw_preset_selector(layout, settings)
+        # layout.separator()
 
 
 # LOD Panel
@@ -525,6 +611,7 @@ class MESH_EXPORT_PT_texture_info(Panel):
 # Registration
 classes = (
     MESH_PT_exporter_panel,
+    MESH_PT_exporter_panel_presets,
     MESH_PT_exporter_panel_lod,
     MESH_EXPORT_PT_texture_info,
     MESH_EXPORT_PT_recent_exports,
