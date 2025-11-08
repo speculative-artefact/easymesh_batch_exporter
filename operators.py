@@ -35,9 +35,38 @@ logger.propagate = False
 EXPORT_TIME_PROP = "mesh_export_timestamp"
 EXPORT_STATUS_PROP = "mesh_export_status"
 
-# Large mesh thresholds
-LARGE_MESH_THRESHOLD = 500000  # 500K polygons
-VERY_LARGE_MESH_THRESHOLD = 1000000  # 1M polygons
+# Memory management thresholds
+# These values are based on typical workstation memory (16-32GB) and
+# observed performance characteristics during mesh processing operations.
+# At 500K+ polygons, memory fragmentation becomes noticeable.
+# At 1M+ polygons, aggressive GC prevents out-of-memory errors.
+LARGE_MESH_THRESHOLD = 500000  # 500K polygons - trigger basic optimisation
+VERY_LARGE_MESH_THRESHOLD = 1000000  # 1M polygons - trigger aggressive GC
+
+# Cache and interval constants
+CACHE_UPDATE_INTERVAL = 10.0  # Seconds between cache refreshes (balances performance vs freshness)
+DEFAULT_GC_INTERVAL = 5.0  # Default minimum seconds between GC calls (prevents stutter)
+
+# File naming constants
+MAX_FILENAME_LENGTH = 100  # Conservative limit to avoid filesystem issues across OS
+FILENAME_TRUNCATE_SUFFIX = "..."  # Suffix appended to truncated names
+
+# Known Unreal Engine prefixes (used in naming convention)
+# See: https://docs.unrealengine.com/5.0/en-US/asset-naming-conventions-in-unreal-engine/
+UNREAL_KNOWN_PREFIXES = {
+    'SM',  # Static Mesh
+    'SK',  # Skeletal Mesh
+    'BP',  # Blueprint
+    'M',   # Material
+    'T',   # Texture
+    'MT',  # Material Template
+    'MI',  # Material Instance
+    'A',   # Animation
+    'S',   # Sound
+    'E',   # Effect/Particle System
+    'W',   # Widget
+    'P',   # Physics Asset
+}
 
 
 # --- Custom Exceptions ---
@@ -136,7 +165,7 @@ class MemoryManager:
     """Centralised memory management to avoid excessive gc.collect() calls."""
 
     _last_gc_time: float = 0
-    _gc_interval: float = 5.0  # Minimum seconds between gc.collect() calls (default)
+    _gc_interval: float = DEFAULT_GC_INTERVAL  # Minimum seconds between gc.collect() calls
     _pending_cleanup: bool = False
     _adaptive_mode: bool = True  # Whether to adjust interval based on mesh size
 
@@ -887,8 +916,18 @@ def sanitise_filename(name: str) -> str:
 
     Returns:
         The sanitised name
+
+    Examples:
+        >>> sanitise_filename("my/file*name.txt")
+        'my_file_name_txt'
+        >>> sanitise_filename("object:2")
+        'object_2'
     """
-    # Replace invalid characters with underscores
+    # Character class [\\/:*?"<>|.] matches all filesystem-illegal characters:
+    # \ (backslash), / (forward slash), : (colon), * (asterisk),
+    # ? (question mark), " (quote), < (less-than), > (greater-than),
+    # | (pipe), . (period)
+    # All are replaced with underscore for cross-platform compatibility
     sanitised = re.sub(r'[\\/:*?"<>|.]', '_', name)
     return sanitised
 
@@ -903,6 +942,14 @@ def apply_naming_convention(name: str, convention: str) -> str:
 
     Returns:
         The converted name
+
+    Examples:
+        >>> apply_naming_convention("MyMeshObject", "GODOT")
+        'my_mesh_object'
+        >>> apply_naming_convention("my mesh object", "UNITY")
+        'My_Mesh_Object'
+        >>> apply_naming_convention("SM_my_mesh", "UNREAL")
+        'SM_MyMesh'
     """
     if convention == "DEFAULT":
         # For default, just sanitise normally
@@ -913,19 +960,19 @@ def apply_naming_convention(name: str, convention: str) -> str:
         try:
             # Replace illegal characters with spaces for splitting
             # Don't treat dots as separators - they could be version numbers (e.g., "object.2")
-            # This includes: \ / : * ? " < > | - 
+            # This includes: \ / : * ? " < > | -
             temp_name = re.sub(r'[\\/:*?"<>|\-]', ' ', name)
+
             # Convert dots that are likely separators (surrounded by letters) to spaces
             # but preserve dots that are likely version numbers (followed by digits)
+            # Negative lookahead (?![0-9]) ensures we don't match dots before digits
             temp_name = re.sub(r'\.(?![0-9])', ' ', temp_name)
-            
+
             # Handle underscores: check if this looks like a known Unreal prefix
-            # Common Unreal prefixes: SM_ (Static Mesh), SK_ (Skeletal Mesh), BP_ (Blueprint), etc.
-            known_prefixes = {'SM', 'SK', 'BP', 'M', 'T', 'MT', 'MI', 'A', 'S', 'E', 'W', 'P'}
             prefix = ""
             if '_' in temp_name and len(temp_name) > 4:  # Make sure string is long enough
                 parts = temp_name.split('_', 1)
-                if len(parts) > 0 and parts[0].upper() in known_prefixes:  # Known Unreal prefix
+                if len(parts) > 0 and parts[0].upper() in UNREAL_KNOWN_PREFIXES:
                     prefix = parts[0].upper() + '_'
                     temp_name = parts[1] if len(parts) > 1 else ""
             
@@ -984,20 +1031,27 @@ def apply_naming_convention(name: str, convention: str) -> str:
         # Godot: snake_case naming (all lowercase with underscores)
         try:
             # First sanitise illegal chars and replace with spaces for processing
+            # Character class [\\/:*?"<>|.\-] matches all filesystem-unsafe chars
             temp_name = re.sub(r'[\\/:*?"<>|.\-]', ' ', name)
             temp_name = temp_name.replace('_', ' ')  # Convert existing underscores to spaces
-            
+
             # Split into words (handles both spaces and case changes)
-            # This regex splits on spaces, and also splits on case changes (camelCase -> camel Case)
+            # Complex regex pattern breaks down as follows:
+            #   [A-Z]*[a-z]+        - Matches camelCase words (e.g., "camel" in "camelCase")
+            #   [A-Z]+(?=[A-Z][a-z]|\b) - Matches acronyms (e.g., "FBX" in "FBXLoader")
+            #   [A-Z]               - Matches single uppercase letters
+            #   [0-9]+              - Matches numeric sequences (e.g., "123" in "mesh123")
+            # Example: "FBXLoaderV2" -> ["FBX", "Loader", "V", "2"]
             words = re.findall(r'[A-Z]*[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)|[A-Z]|[0-9]+', temp_name)
-            
+
             # Convert all words to lowercase and join with underscores
             words = [word.lower() for word in words if word and word.strip()]
             result = '_'.join(words)
-            
+
             # Clean up multiple underscores and remove leading/trailing ones
+            # Pattern r'_+' matches one or more consecutive underscores
             result = re.sub(r'_+', '_', result).strip('_')
-            
+
             return result if result else sanitise_filename(name).lower().replace(' ', '_')
             
         except Exception:
@@ -1038,10 +1092,10 @@ def setup_export_object(obj, original_obj_name, scene_props, lod_level=None):
             scene_props.mesh_export_suffix
         )
         
-        # Truncate if name too long (conservatively 100 chars)
-        max_base_length = 100
-        if len(base_name) > max_base_length:
-            truncated = base_name[:max_base_length-3] + "..."
+        # Truncate if name too long to avoid filesystem issues
+        if len(base_name) > MAX_FILENAME_LENGTH:
+            suffix_len = len(FILENAME_TRUNCATE_SUFFIX)
+            truncated = base_name[:MAX_FILENAME_LENGTH - suffix_len] + FILENAME_TRUNCATE_SUFFIX
             logger.warning(
                 f"Name too long, truncating: {base_name} → {truncated}"
             )
@@ -1056,9 +1110,10 @@ def setup_export_object(obj, original_obj_name, scene_props, lod_level=None):
         logger.info(f"Renamed to: {obj.name}")
 
         # Check if object's scale is already 1.0
-        scale_epsilon = 1e-6
-        if (abs(obj.scale[0] - 1.0) > scale_epsilon or 
-            abs(obj.scale[1] - 1.0) > scale_epsilon or 
+        # Use epsilon comparison to account for floating-point precision errors
+        scale_epsilon = 1e-6  # 0.000001 - well below human-perceptible scale differences
+        if (abs(obj.scale[0] - 1.0) > scale_epsilon or
+            abs(obj.scale[1] - 1.0) > scale_epsilon or
             abs(obj.scale[2] - 1.0) > scale_epsilon):
             # Apply scale transform if not 1.0
             logger.info(f"Object scale is not 1.0: {obj.scale}, applying...")

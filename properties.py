@@ -13,12 +13,20 @@ from bpy.types import PropertyGroup
 
 
 def clear_indicators_if_disabled(self, context):
-    """Callback to clear all indicators when the checkbox is unchecked."""
+    """Callback to clear all indicators when the checkbox is unchecked.
+
+    Args:
+        self: The property group instance containing mesh_export_show_indicators
+        context: The current Blender context
+
+    Note:
+        Silently fails if the clear operator hasn't been registered yet during addon startup.
+    """
     if not self.mesh_export_show_indicators:
         # Clear all export indicators
         try:
             bpy.ops.mesh.clear_export_indicators()
-        except (AttributeError, RuntimeError) as e:
+        except (AttributeError, RuntimeError):
             # Operator might not be registered yet during addon startup
             pass
 
@@ -374,7 +382,14 @@ class MeshExporterSettings(PropertyGroup):
 
 
 def register_properties():
-    """Register the property group and create the Scene property"""
+    """Register the property group and create the Scene property.
+
+    Creates a pointer property on bpy.types.Scene called 'mesh_exporter' that
+    stores all export settings. Prints verification message to console.
+
+    Raises:
+        Exception: If registration fails, error is caught and printed to console
+    """
     try:
         bpy.utils.register_class(MeshExporterSettings)
         bpy.types.Scene.mesh_exporter = PointerProperty(
@@ -390,7 +405,11 @@ def register_properties():
 
 
 def unregister_properties():
-    """Unregister the property group and remove the Scene property"""
+    """Unregister the property group and remove the Scene property.
+
+    Removes the 'mesh_exporter' property from bpy.types.Scene and unregisters
+    the MeshExporterSettings class. Safe to call even if property doesn't exist.
+    """
     if hasattr(bpy.types.Scene, "mesh_exporter"):
         delattr(bpy.types.Scene, "mesh_exporter")
     bpy.utils.unregister_class(MeshExporterSettings)
