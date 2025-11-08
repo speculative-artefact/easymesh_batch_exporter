@@ -77,6 +77,9 @@ VERY_LARGE_MESH_THRESHOLD = 1000000  # 1M polygons - trigger aggressive GC
 CACHE_UPDATE_INTERVAL = 10.0  # Seconds between cache refreshes (balances performance vs freshness)
 DEFAULT_GC_INTERVAL = 5.0  # Default minimum seconds between GC calls (prevents stutter)
 
+# Unit conversion constants
+METERS_TO_CENTIMETERS = 100.0  # Conversion factor from metres (Blender default) to centimetres
+
 # File naming constants
 MAX_FILENAME_LENGTH = 100  # Conservative limit to avoid filesystem issues across OS
 FILENAME_TRUNCATE_SUFFIX = "..."  # Suffix appended to truncated names
@@ -1249,18 +1252,20 @@ def setup_export_object(obj, original_obj_name, scene_props, lod_level=None, ski
         # This avoids memory-intensive vertex transformations
         final_scale_factor = scene_props.mesh_export_scale
         if scene_props.mesh_export_units == "CENTIMETERS":
-            # Apply 100x scale for Meters (Blender default) 
-            # to Centimeters (UE default)
-            final_scale_factor *= 100.0 
+            # Apply conversion factor for Metres (Blender default) to Centimetres
+            final_scale_factor *= METERS_TO_CENTIMETERS
             logger.info(f"Export scale factor: {final_scale_factor:.2f} (includes M to CM conversion)")
         else:
             logger.info(f"Export scale factor: {final_scale_factor:.2f}")
 
-        # For GLTF and USD, we don't support scaling to avoid crashes
+        # For GLTF and USD, apply scale to object transform instead of passing to exporter
+        # This avoids potential exporter parameter issues whilst maintaining zero performance cost
         if scene_props.mesh_export_format in ["GLTF", "USD"]:
             if abs(final_scale_factor - 1.0) > 1e-6:
-                logger.info(f"Scale will be ignored for {scene_props.mesh_export_format} format")
-            final_scale_factor = 1.0
+                # Set object-level scale (zero-cost, no mesh vertex transformation)
+                obj.scale = (final_scale_factor, final_scale_factor, final_scale_factor)
+                logger.info(f"Applied {final_scale_factor}x scale to object transform for {scene_props.mesh_export_format}")
+                final_scale_factor = 1.0  # Don't pass to exporter, already applied to object
 
         # Only apply rotation transform - scale will be passed to exporters
         apply_transforms(obj, apply_rotation=True, apply_scale=False)
@@ -3434,6 +3439,7 @@ class MESH_OT_batch_export(Operator):
         temp_objects = []  # All temporary objects for cleanup
         temp_metaball_meshes = []  # Temporary metaball meshes
         failed_objects = []
+        batch_export_scale = 1.0  # Track scale from first object (all use same scene_props)
 
         try:
             logger.info(f"Processing batch glTF export for {len(objects_to_export)} objects...")
@@ -3453,6 +3459,10 @@ class MESH_OT_batch_export(Operator):
                     (export_obj_name, base_name, export_scale) = setup_export_object(
                         export_obj, original_obj.name, scene_props, skip_zero_location=True
                     )
+
+                    # Track scale from first object (all objects use same scene_props settings)
+                    if idx == 0:
+                        batch_export_scale = export_scale
 
                     # Apply modifiers
                     apply_mesh_modifiers(export_obj, scene_props.mesh_export_apply_modifiers)
@@ -3558,9 +3568,10 @@ class MESH_OT_batch_export(Operator):
                 context.view_layer.objects.active = processed_objects[0]
 
             # Export all selected objects as single file
-            # Note: We pass export_scale=1.0 because scaling was already applied to individual objects
+            # For glTF/USD, scale is already applied to obj.scale (batch_export_scale will be 1.0)
+            # For other formats, batch_export_scale contains the actual scale to pass to exporter
             # use_existing_selection=True tells export_object to use the selection we set up above
-            if export_object(processed_objects[0], file_path, scene_props, export_scale=1.0, use_existing_selection=True):
+            if export_object(processed_objects[0], file_path, scene_props, export_scale=batch_export_scale, use_existing_selection=True):
                 logger.info(f"Batch export successful: {batch_filename}")
                 # Count as 1 successful export (the batch file)
                 return 1, failed_objects

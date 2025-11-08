@@ -36,7 +36,7 @@ class MESH_PT_exporter_panel(Panel):
     # Helper functions
     def format_has_scale(self, format):
         """Check if the format is compatible with scale export setting"""
-        return format in {"FBX", "OBJ", "STL"}
+        return format in {"FBX", "OBJ", "STL", "GLTF", "USD"}
 
     def format_has_coordinates(self, format):
         """Check if the format is compatible with coordinate export settings"""
