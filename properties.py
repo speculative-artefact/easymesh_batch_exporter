@@ -18,7 +18,7 @@ def clear_indicators_if_disabled(self, context):
         # Clear all export indicators
         try:
             bpy.ops.mesh.clear_export_indicators()
-        except:
+        except (AttributeError, RuntimeError) as e:
             # Operator might not be registered yet during addon startup
             pass
 

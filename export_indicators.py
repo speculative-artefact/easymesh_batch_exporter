@@ -19,12 +19,16 @@ from bpy.types import Operator
 
 # --- Setup Logger ---
 logger = logging.getLogger(__name__)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter("%(name)s:%(levelname)s: %(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)  # Default level
+# Clear any existing handlers to prevent accumulation on addon reload
+if logger.handlers:
+    logger.handlers.clear()
+handler = logging.StreamHandler()
+formatter = logging.Formatter("%(name)s:%(levelname)s: %(message)s")
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)  # Default level
+# Prevent propagation to avoid duplicate logs
+logger.propagate = False
 
 # --- Constants ---
 
