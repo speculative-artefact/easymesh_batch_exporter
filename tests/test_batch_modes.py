@@ -32,7 +32,7 @@ class TestGLTFBatchMode:
         create_cube.select_set(True)
         create_sphere.select_set(True)
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Batch combine export should succeed"
 
         # Should create only one combined GLB file
@@ -55,7 +55,7 @@ class TestGLTFBatchMode:
         create_cube.select_set(True)
         create_sphere.select_set(True)
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Batch individual export should succeed"
 
         # Should create separate GLB files for each object
@@ -81,7 +81,7 @@ class TestGLTFBatchMode:
         create_cube.select_set(True)
         create_sphere.select_set(True)
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Batch combine with JSON glTF should succeed"
 
         # Should create one combined GLTF file
@@ -110,7 +110,7 @@ class TestBatchModeWithCollections:
         for obj in create_collection.objects:
             obj.select_set(True)
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Batch export with collection should succeed"
 
         # Should create file named after the collection
@@ -154,7 +154,7 @@ class TestBatchModeWithCollections:
         obj1.select_set(True)
         obj2.select_set(True)
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, (
             "Batch export with mixed collections should succeed"
         )
@@ -187,7 +187,7 @@ class TestBatchModeWithLOD:
         create_cube.select_set(True)
         create_sphere.select_set(True)
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Batch combine with LOD should succeed"
 
         # Note: When combining with LOD, implementation details determine
@@ -214,7 +214,7 @@ class TestBatchModeWithLOD:
         create_cube.select_set(True)
         create_sphere.select_set(True)
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Batch individual with LOD should succeed"
 
         # Should have: 2 base files + 2 LOD1 files + 2 LOD2 files = 6 files
@@ -240,7 +240,7 @@ class TestBatchModeOnlyForGLTF:
         create_cube.select_set(True)
         create_sphere.select_set(True)
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "FBX export should succeed"
 
         # Should create individual FBX files (batch mode ignored)
@@ -261,7 +261,7 @@ class TestBatchModeOnlyForGLTF:
         create_cube.select_set(True)
         create_sphere.select_set(True)
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "OBJ export should succeed"
 
         # Should create individual OBJ files
@@ -288,7 +288,7 @@ class TestBatchModeWithNamingConventions:
         create_cube.select_set(True)
         create_sphere.select_set(True)
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Batch export with Godot naming should succeed"
 
         # Should create one file with snake_case naming
@@ -313,7 +313,7 @@ class TestBatchModeWithNamingConventions:
         create_cube.select_set(True)
         create_sphere.select_set(True)
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Batch export with prefix/suffix should succeed"
 
         # Should apply prefix and suffix to combined filename

@@ -21,7 +21,7 @@ class TestNamingConventions:
         props.mesh_export_naming_convention = "DEFAULT"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with default naming should succeed"
 
         expected_file = temp_export_dir / "TestCube.fbx"
@@ -37,7 +37,7 @@ class TestNamingConventions:
         props.mesh_export_naming_convention = "GODOT"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with Godot naming should succeed"
 
         # TestCube -> test_cube in Godot convention
@@ -54,7 +54,7 @@ class TestNamingConventions:
         props.mesh_export_naming_convention = "UNITY"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with Unity naming should succeed"
 
         # TestCube -> Test_Cube in Unity convention
@@ -71,7 +71,7 @@ class TestNamingConventions:
         props.mesh_export_naming_convention = "UNREAL"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with Unreal naming should succeed"
 
         # TestCube -> TestCube in Unreal convention (already PascalCase)
@@ -96,7 +96,7 @@ class TestUnrealPrefixPreservation:
         props.mesh_export_naming_convention = "UNREAL"
 
         obj.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export should succeed"
 
         # SM_ prefix should be preserved
@@ -117,7 +117,7 @@ class TestUnrealPrefixPreservation:
         props.mesh_export_naming_convention = "UNREAL"
 
         obj.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export should succeed"
 
         expected_file = temp_export_dir / "SK_MyCharacter.fbx"
@@ -137,7 +137,7 @@ class TestPrefixSuffix:
         props.mesh_export_prefix = "mesh_"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with prefix should succeed"
 
         expected_file = temp_export_dir / "mesh_TestCube.fbx"
@@ -153,7 +153,7 @@ class TestPrefixSuffix:
         props.mesh_export_suffix = "_export"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with suffix should succeed"
 
         expected_file = temp_export_dir / "TestCube_export.fbx"
@@ -170,7 +170,7 @@ class TestPrefixSuffix:
         props.mesh_export_suffix = "_final"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with prefix and suffix should succeed"
 
         expected_file = temp_export_dir / "mesh_TestCube_final.fbx"
@@ -190,7 +190,7 @@ class TestPrefixSuffix:
         props.mesh_export_suffix = "_final"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export should succeed"
 
         # TestCube -> test_cube (Godot) -> mesh_test_cube_final
@@ -215,7 +215,7 @@ class TestFilenameSanitisation:
         props.mesh_export_format = "FBX"
 
         obj.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with special characters should succeed"
 
         # Characters should be sanitised (removed or replaced)
@@ -234,7 +234,7 @@ class TestFilenameSanitisation:
         props.mesh_export_format = "FBX"
 
         obj.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with slashes should succeed"
 
         fbx_files = list(temp_export_dir.glob("*.fbx"))
@@ -252,7 +252,7 @@ class TestFilenameSanitisation:
         props.mesh_export_format = "FBX"
 
         obj.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with long filename should succeed"
 
         fbx_files = list(temp_export_dir.glob("*.fbx"))
@@ -282,7 +282,7 @@ class TestNamingWithLOD:
         props.mesh_export_lod_hierarchy = False
 
         create_sphere.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with Godot naming and LOD should succeed"
 
         # TestSphere -> test_sphere (Godot)

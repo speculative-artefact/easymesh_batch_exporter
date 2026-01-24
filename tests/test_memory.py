@@ -30,7 +30,7 @@ class TestLargeMeshHandling:
         props.mesh_export_format = "FBX"
 
         create_large_mesh.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Large mesh export should succeed"
 
         expected_file = temp_export_dir / "TestLargeMesh.fbx"
@@ -49,7 +49,7 @@ class TestLargeMeshHandling:
         props.mesh_export_format = "FBX"
 
         create_very_large_mesh.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Very large mesh export should succeed"
 
         expected_file = temp_export_dir / "TestVeryLargeMesh.fbx"
@@ -72,7 +72,7 @@ class TestLargeMeshHandling:
         props.mesh_export_tri_method = "BEAUTY"
 
         create_large_mesh.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Large mesh with triangulation should succeed"
 
     @pytest.mark.slow
@@ -90,7 +90,7 @@ class TestLargeMeshHandling:
         props.mesh_export_apply_modifiers = "VISIBLE"
 
         create_large_mesh.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Large mesh with modifiers should succeed"
 
 
@@ -113,7 +113,7 @@ class TestLargeMeshWithLOD:
         props.mesh_export_lod_hierarchy = False
 
         create_large_mesh.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Large mesh LOD generation should succeed"
 
         # Verify LOD files were created
@@ -139,7 +139,7 @@ class TestLargeMeshWithLOD:
         props.mesh_export_lod_hierarchy = False
 
         create_very_large_mesh.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Very large mesh LOD generation should succeed"
 
 
@@ -163,7 +163,7 @@ class TestMemoryCleanup:
         for i in range(5):
             props.mesh_export_suffix = f"_{i}"
 
-            result = bpy.ops.mesh.batch_export_selected()
+            result = bpy.ops.mesh.batch_export()
             assert result == {"FINISHED"}, f"Export {i} should succeed"
 
             # Explicit GC to verify no memory leaks
@@ -194,7 +194,7 @@ class TestMemoryCleanup:
         for i in range(3):
             props.mesh_export_suffix = f"_export{i}"
 
-            result = bpy.ops.mesh.batch_export_selected()
+            result = bpy.ops.mesh.batch_export()
             assert result == {"FINISHED"}, f"Large mesh export {i} should succeed"
 
             # Force GC between exports
@@ -222,7 +222,7 @@ class TestBatchExportMemory:
         props.mesh_export_path = str(temp_export_dir) + "/"
         props.mesh_export_format = "FBX"
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, (
             "Batch export of many small meshes should succeed"
         )
@@ -250,7 +250,7 @@ class TestBatchExportMemory:
         props.mesh_export_gltf_type = "GLB"
         props.mesh_export_gltf_batch_mode = "COMBINE"
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Batch glTF combine should succeed"
 
         # Should create one combined file
@@ -289,7 +289,7 @@ class TestMemoryWithDifferentFormats:
 
             props.mesh_export_suffix = f"_{format_name.lower()}"
 
-            result = bpy.ops.mesh.batch_export_selected()
+            result = bpy.ops.mesh.batch_export()
             assert result == {"FINISHED"}, (
                 f"Large mesh export to {format_name} should succeed"
             )

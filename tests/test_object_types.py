@@ -20,7 +20,7 @@ class TestMeshObjects:
         props.mesh_export_format = "FBX"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Cube export should succeed"
 
         expected_file = temp_export_dir / "TestCube.fbx"
@@ -33,7 +33,7 @@ class TestMeshObjects:
         props.mesh_export_format = "FBX"
 
         create_sphere.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Sphere export should succeed"
 
         expected_file = temp_export_dir / "TestSphere.fbx"
@@ -50,7 +50,7 @@ class TestMeshObjects:
         props.mesh_export_format = "FBX"
 
         obj.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Cylinder export should succeed"
 
         expected_file = temp_export_dir / "TestCylinder.fbx"
@@ -67,7 +67,7 @@ class TestMeshObjects:
         props.mesh_export_format = "FBX"
 
         obj.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Torus export should succeed"
 
         expected_file = temp_export_dir / "TestTorus.fbx"
@@ -84,7 +84,7 @@ class TestCurveObjects:
         props.mesh_export_format = "FBX"
 
         create_curve.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Bezier curve export should succeed"
 
         expected_file = temp_export_dir / "TestCurve.fbx"
@@ -103,7 +103,7 @@ class TestCurveObjects:
         props.mesh_export_format = "FBX"
 
         obj.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "NURBS curve export should succeed"
 
         expected_file = temp_export_dir / "TestNURBSCurve.fbx"
@@ -125,7 +125,7 @@ class TestCurveObjects:
         props.mesh_export_format = "FBX"
 
         obj.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Beveled curve export should succeed"
 
         expected_file = temp_export_dir / "TestBeveledCurve.fbx"
@@ -148,7 +148,7 @@ class TestMetaballObjects:
         props.mesh_export_format = "FBX"
 
         obj.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Metaball export should succeed"
 
         expected_file = temp_export_dir / "TestMetaBall.fbx"
@@ -167,7 +167,7 @@ class TestMetaballObjects:
         props.mesh_export_format = "FBX"
 
         obj.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Metaball capsule export should succeed"
 
         expected_file = temp_export_dir / "TestMetaCapsule.fbx"
@@ -191,7 +191,7 @@ class TestMetaballObjects:
         props.mesh_export_smoothing = "FACE"
 
         obj.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Smooth metaball export should succeed"
 
         expected_file = temp_export_dir / "TestSmoothMetaBall.fbx"
@@ -215,7 +215,7 @@ class TestMixedObjectTypes:
         create_cube.select_set(True)
         create_curve.select_set(True)
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Mixed mesh/curve export should succeed"
 
         # Verify both were exported
@@ -242,7 +242,7 @@ class TestMixedObjectTypes:
         create_curve.select_set(True)
         metaball.select_set(True)
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Mixed object types export should succeed"
 
         # Verify all were exported
@@ -269,7 +269,7 @@ class TestObjectTransforms:
         props.mesh_export_zero_location = True
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with zero location should succeed"
 
         expected_file = temp_export_dir / "TestCube.fbx"
@@ -286,7 +286,7 @@ class TestObjectTransforms:
         props.mesh_export_zero_location = False
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export without zero location should succeed"
 
         expected_file = temp_export_dir / "TestCube.fbx"
@@ -310,7 +310,7 @@ class TestObjectTransforms:
         props.mesh_export_format = "FBX"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Rotated object export should succeed"
 
         expected_file = temp_export_dir / "TestCube.fbx"
@@ -326,7 +326,7 @@ class TestObjectTransforms:
         props.mesh_export_format = "FBX"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Scaled object export should succeed"
 
         expected_file = temp_export_dir / "TestCube.fbx"

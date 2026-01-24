@@ -35,7 +35,7 @@ class TestFBXExport:
         bpy.context.view_layer.objects.active = create_cube
 
         # Export
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export should complete successfully"
 
         # Verify FBX file was created
@@ -57,7 +57,7 @@ class TestFBXExport:
         create_sphere.select_set(True)
 
         # Export
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export should complete successfully"
 
         # Verify both FBX files were created
@@ -76,7 +76,7 @@ class TestFBXExport:
             props.mesh_export_smoothing = smoothing_mode
             props.mesh_export_suffix = f"_{smoothing_mode.lower()}"
 
-            result = bpy.ops.mesh.batch_export_selected()
+            result = bpy.ops.mesh.batch_export()
             assert result == {"FINISHED"}, (
                 f"Export with smoothing={smoothing_mode} should succeed"
             )
@@ -101,7 +101,7 @@ class TestOBJExport:
         create_cube.select_set(True)
         bpy.context.view_layer.objects.active = create_cube
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export should complete successfully"
 
         expected_file = temp_export_dir / "TestCube.obj"
@@ -118,7 +118,7 @@ class TestOBJExport:
         props.mesh_export_format = "OBJ"
 
         create_sphere.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export should complete successfully"
 
         # OBJ export typically creates .mtl file alongside .obj
@@ -137,7 +137,7 @@ class TestGLTFExport:
         props.mesh_export_gltf_type = "GLB"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export should complete successfully"
 
         expected_file = temp_export_dir / "TestCube.glb"
@@ -151,7 +151,7 @@ class TestGLTFExport:
         props.mesh_export_gltf_type = "GLTF_SEPARATE"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export should complete successfully"
 
         expected_file = temp_export_dir / "TestCube.gltf"
@@ -168,7 +168,7 @@ class TestGLTFExport:
         props.mesh_export_use_draco_compression = True
 
         create_sphere.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with Draco should complete successfully"
 
         expected_file = temp_export_dir / "TestSphere.glb"
@@ -188,7 +188,7 @@ class TestGLTFExport:
             props.mesh_export_gltf_materials = material_mode
             props.mesh_export_suffix = f"_{material_mode.lower()}"
 
-            result = bpy.ops.mesh.batch_export_selected()
+            result = bpy.ops.mesh.batch_export()
             assert result == {"FINISHED"}, (
                 f"Export with materials={material_mode} should succeed"
             )
@@ -211,7 +211,7 @@ class TestUSDExport:
         props.mesh_export_format = "USD"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "USD export should complete successfully"
 
         expected_file = temp_export_dir / "TestCube.usd"
@@ -228,7 +228,7 @@ class TestUSDExport:
         create_cube.select_set(True)
         create_sphere.select_set(True)
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "USD export should complete successfully"
 
         assert verify_exported_files(
@@ -248,7 +248,7 @@ class TestSTLExport:
         props.mesh_export_format = "STL"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "STL export should complete successfully"
 
         expected_file = temp_export_dir / "TestCube.stl"
@@ -266,7 +266,7 @@ class TestSTLExport:
         props.mesh_export_tri = True  # Ensure triangulation is enabled
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "STL export with triangulation should succeed"
 
         expected_file = temp_export_dir / "TestCube.stl"
@@ -287,7 +287,7 @@ class TestCoordinateSystem:
             props.mesh_export_coord_up = up_axis
             props.mesh_export_suffix = f"_up{up_axis.replace('-', 'neg')}"
 
-            result = bpy.ops.mesh.batch_export_selected()
+            result = bpy.ops.mesh.batch_export()
             assert result == {"FINISHED"}, f"Export with up={up_axis} should succeed"
 
             suffix = up_axis.replace("-", "neg")
@@ -307,7 +307,7 @@ class TestCoordinateSystem:
             props.mesh_export_coord_forward = forward_axis
             props.mesh_export_suffix = f"_fwd{forward_axis.replace('-', 'neg')}"
 
-            result = bpy.ops.mesh.batch_export_selected()
+            result = bpy.ops.mesh.batch_export()
             assert result == {"FINISHED"}, (
                 f"Export with forward={forward_axis} should succeed"
             )
@@ -330,7 +330,7 @@ class TestUnitsAndScale:
         props.mesh_export_units = "METERS"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with metres should succeed"
 
     def test_centimeters_export(self, create_cube, temp_export_dir, reset_settings):
@@ -341,7 +341,7 @@ class TestUnitsAndScale:
         props.mesh_export_units = "CENTIMETERS"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with centimetres should succeed"
 
     def test_custom_scale_factor(self, create_cube, temp_export_dir, reset_settings):
@@ -355,7 +355,7 @@ class TestUnitsAndScale:
             props.mesh_export_scale = scale
             props.mesh_export_suffix = f"_scale{int(scale * 10)}"
 
-            result = bpy.ops.mesh.batch_export_selected()
+            result = bpy.ops.mesh.batch_export()
             assert result == {"FINISHED"}, f"Export with scale={scale} should succeed"
 
             expected_file = temp_export_dir / f"TestCube_scale{int(scale * 10)}.fbx"

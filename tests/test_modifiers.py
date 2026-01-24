@@ -24,7 +24,7 @@ class TestModifierApplication:
         props.mesh_export_apply_modifiers = "NONE"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with modifiers=NONE should succeed"
 
         expected_file = temp_export_dir / "TestCube.fbx"
@@ -45,7 +45,7 @@ class TestModifierApplication:
         props.mesh_export_apply_modifiers = "VISIBLE"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with modifiers=VISIBLE should succeed"
 
         expected_file = temp_export_dir / "TestCube.fbx"
@@ -66,7 +66,7 @@ class TestModifierApplication:
         props.mesh_export_apply_modifiers = "RENDER"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with modifiers=RENDER should succeed"
 
         expected_file = temp_export_dir / "TestCube.fbx"
@@ -92,7 +92,7 @@ class TestSpecificModifierTypes:
         props.mesh_export_apply_modifiers = "VISIBLE"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with Subdivision Surface should succeed"
 
     def test_bevel_modifier(self, create_cube, temp_export_dir, reset_settings):
@@ -106,7 +106,7 @@ class TestSpecificModifierTypes:
         props.mesh_export_apply_modifiers = "VISIBLE"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with Bevel modifier should succeed"
 
     def test_mirror_modifier(self, create_cube, temp_export_dir, reset_settings):
@@ -120,7 +120,7 @@ class TestSpecificModifierTypes:
         props.mesh_export_apply_modifiers = "VISIBLE"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with Mirror modifier should succeed"
 
     def test_array_modifier(self, create_cube, temp_export_dir, reset_settings):
@@ -134,7 +134,7 @@ class TestSpecificModifierTypes:
         props.mesh_export_apply_modifiers = "VISIBLE"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with Array modifier should succeed"
 
 
@@ -161,7 +161,7 @@ class TestMultipleModifiers:
         props.mesh_export_apply_modifiers = "VISIBLE"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with multiple modifiers should succeed"
 
     def test_mixed_visibility_modifiers(
@@ -187,7 +187,7 @@ class TestMultipleModifiers:
         props.mesh_export_apply_modifiers = "VISIBLE"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, (
             "Export with mixed visibility modifiers should succeed"
         )
@@ -215,7 +215,7 @@ class TestTriangulationWithModifiers:
         props.mesh_export_tri_method = "BEAUTY"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, (
             "Export with modifiers + triangulation should succeed"
         )
@@ -239,7 +239,7 @@ class TestTriangulationWithModifiers:
             props.mesh_export_suffix = f"_{tri_method.lower()}"
 
             create_cube.select_set(True)
-            result = bpy.ops.mesh.batch_export_selected()
+            result = bpy.ops.mesh.batch_export()
             assert result == {"FINISHED"}, (
                 f"Export with {tri_method} triangulation should succeed"
             )
@@ -274,7 +274,7 @@ class TestModifiersWithLOD:
         props.mesh_export_lod_hierarchy = False
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with modifiers + LOD should succeed"
 
         # Verify base and LOD files were created

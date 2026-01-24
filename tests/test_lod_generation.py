@@ -33,7 +33,7 @@ class TestBasicLODGeneration:
         props.mesh_export_lod_hierarchy = False  # Individual files
 
         create_sphere.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "LOD generation should succeed"
 
         # Should have: TestSphere.fbx, TestSphere_LOD01.fbx, TestSphere_LOD02.fbx
@@ -55,7 +55,7 @@ class TestBasicLODGeneration:
         props.mesh_export_lod = False
 
         create_sphere.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export without LOD should succeed"
 
         # Should only have TestSphere.fbx
@@ -78,7 +78,7 @@ class TestBasicLODGeneration:
             props.mesh_export_lod_count = lod_count
 
             create_sphere.select_set(True)
-            result = bpy.ops.mesh.batch_export_selected()
+            result = bpy.ops.mesh.batch_export()
             assert result == {"FINISHED"}, (
                 f"Export with {lod_count} LODs should succeed"
             )
@@ -109,7 +109,7 @@ class TestLODRatios:
         props.mesh_export_lod_ratio_03 = 0.2  # 20% of original
 
         create_sphere.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with custom LOD ratios should succeed"
 
         # Verify all LOD files were created
@@ -136,7 +136,7 @@ class TestLODRatios:
         props.mesh_export_lod_ratio_01 = 0.1  # Only 10% of original
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with extreme LOD ratio should succeed"
 
 
@@ -153,7 +153,7 @@ class TestLODHierarchy:
         props.mesh_export_lod_hierarchy = True  # Export as hierarchy
 
         create_sphere.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "LOD hierarchy export should succeed"
 
         # Should create a single _LODGroup.fbx file
@@ -185,7 +185,7 @@ class TestLODHierarchy:
         create_cube.select_set(True)
         create_sphere.select_set(True)
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, (
             "Multiple object LOD hierarchy export should succeed"
         )
@@ -217,7 +217,7 @@ class TestLODSymmetry:
         props.mesh_export_lod_symmetry_axis = "X"
 
         create_sphere.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "LOD generation with symmetry should succeed"
 
     def test_lod_symmetry_axes(self, create_sphere, temp_export_dir, reset_settings):
@@ -239,7 +239,7 @@ class TestLODSymmetry:
             props.mesh_export_suffix = f"_sym{axis}"
 
             create_sphere.select_set(True)
-            result = bpy.ops.mesh.batch_export_selected()
+            result = bpy.ops.mesh.batch_export()
             assert result == {"FINISHED"}, (
                 f"LOD with symmetry on {axis} axis should succeed"
             )
@@ -265,7 +265,7 @@ class TestLODTextureResizing:
         props.mesh_export_lod2_texture_size = "1024"
 
         create_sphere.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "LOD with texture resizing should succeed"
 
     def test_lod_texture_resizing_disabled(
@@ -281,7 +281,7 @@ class TestLODTextureResizing:
         props.mesh_export_resize_textures = False
 
         create_sphere.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "LOD without texture resizing should succeed"
 
     def test_normal_map_preservation(
@@ -298,7 +298,7 @@ class TestLODTextureResizing:
         props.mesh_export_preserve_normal_maps = True
 
         create_sphere.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "LOD with normal map preservation should succeed"
 
 
@@ -316,7 +316,7 @@ class TestLODWithFormats:
         props.mesh_export_lod_hierarchy = False
 
         create_sphere.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "LOD generation with glTF should succeed"
 
         # Verify LOD files with glb extension
@@ -338,7 +338,7 @@ class TestLODWithFormats:
         props.mesh_export_lod_hierarchy = False
 
         create_sphere.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "LOD generation with OBJ should succeed"
 
     def test_lod_with_stl(self, create_sphere, temp_export_dir, reset_settings):
@@ -351,7 +351,7 @@ class TestLODWithFormats:
         props.mesh_export_lod_hierarchy = False
 
         create_sphere.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "LOD generation with STL should succeed"
 
 
@@ -371,7 +371,7 @@ class TestLODWithLargeMeshes:
         props.mesh_export_lod_hierarchy = False
 
         create_large_mesh.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "LOD generation on large mesh should succeed"
 
         # Verify files were created

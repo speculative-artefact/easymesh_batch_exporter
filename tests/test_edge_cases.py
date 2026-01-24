@@ -28,7 +28,7 @@ class TestEmptySelections:
         props.mesh_export_format = "FBX"
 
         # No objects selected
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
 
         # Should not crash - either CANCELLED or FINISHED with warning
         assert result in [{"CANCELLED"}, {"FINISHED"}], (
@@ -45,7 +45,7 @@ class TestEmptySelections:
         props.mesh_export_path = str(temp_export_dir) + "/"
         props.mesh_export_format = "FBX"
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result in [{"CANCELLED"}, {"FINISHED"}], (
             "Export from empty scene should fail gracefully"
         )
@@ -65,7 +65,7 @@ class TestInvalidPaths:
         props.mesh_export_format = "FBX"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
 
         # Should either succeed (creating directory) or cancel
         assert result in [{"FINISHED"}, {"CANCELLED"}], (
@@ -90,7 +90,7 @@ class TestInvalidPaths:
         props.mesh_export_format = "FBX"
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
 
         # May succeed if blend file location is known, otherwise should cancel
         assert result in [{"FINISHED"}, {"CANCELLED"}], (
@@ -113,7 +113,7 @@ class TestUnsupportedObjectTypes:
         props.mesh_export_format = "FBX"
 
         camera.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
 
         # Should complete but skip the camera
         # Implementation may return FINISHED or CANCELLED
@@ -137,7 +137,7 @@ class TestUnsupportedObjectTypes:
         props.mesh_export_format = "FBX"
 
         light.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
 
         # Should complete but skip the light
         assert result in [{"FINISHED"}, {"CANCELLED"}], (
@@ -159,7 +159,7 @@ class TestUnsupportedObjectTypes:
         props.mesh_export_format = "FBX"
 
         empty.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
 
         # Should complete but skip the empty
         assert result in [{"FINISHED"}, {"CANCELLED"}], (
@@ -191,7 +191,7 @@ class TestMixedSelections:
         create_cube.select_set(True)
         camera.select_set(True)
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Mixed export should succeed"
 
         # Should export only the cube
@@ -219,7 +219,7 @@ class TestMixedSelections:
         create_sphere.select_set(True)
         empty.select_set(True)
 
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Mixed export should succeed"
 
         # Should export only the sphere
@@ -255,7 +255,7 @@ class TestZeroPolygonMeshes:
         props.mesh_export_format = "FBX"
 
         obj.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
 
         # Should complete without crashing
         assert result in [{"FINISHED"}, {"CANCELLED"}], (
@@ -291,7 +291,7 @@ class TestCollectionInstances:
         props.mesh_export_format = "FBX"
 
         instance.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
 
         # Should skip collection instance
         assert result in [{"FINISHED"}, {"CANCELLED"}], (
@@ -314,7 +314,7 @@ class TestSpecialCharactersInNames:
         props.mesh_export_format = "FBX"
 
         obj.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
 
         # Should complete (characters may be sanitised)
         assert result in [{"FINISHED"}, {"CANCELLED"}], (
@@ -336,7 +336,7 @@ class TestSpecialCharactersInNames:
         props.mesh_export_format = "FBX"
 
         obj.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with dots in name should succeed"
 
         fbx_count = count_exported_files(temp_export_dir, "fbx")
@@ -360,7 +360,7 @@ class TestExtremeSettings:
         props.mesh_export_lod_ratio_01 = 0.01  # 1% of original (nearly nothing)
 
         create_sphere.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
 
         # Should complete even with extreme decimation
         assert result in [{"FINISHED"}, {"CANCELLED"}], (
@@ -377,7 +377,7 @@ class TestExtremeSettings:
         props.mesh_export_scale = 1000.0  # Maximum scale
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with large scale should succeed"
 
     def test_very_small_scale_factor(
@@ -390,5 +390,5 @@ class TestExtremeSettings:
         props.mesh_export_scale = 0.001  # Minimum scale
 
         create_cube.select_set(True)
-        result = bpy.ops.mesh.batch_export_selected()
+        result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with small scale should succeed"
