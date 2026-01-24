@@ -12,12 +12,14 @@ A streamlined Blender add-on designed for game development workflows. Batch expo
 ## Features
 
 ### 🚀 **Performance & Memory Optimisation**
+
 * **Large Mesh Support:** Handles meshes with 2+ million polygons without crashes
 * **Smart Memory Management:** Automatic garbage collection and cleanup for large meshes (>500K polygons)
 * **Progressive Processing:** Memory cleanup every 3 modifiers during heavy modifier stacks
 * **Threshold-Based Optimisation:** Different strategies for large (500K+) and very large (1M+) meshes
 
 ### 🎛️ **Advanced Modifier Control**
+
 * **Flexible Modifier Application:** Choose which modifiers to apply during export:
   * **None:** Skip all modifiers for fastest performance
   * **Visible:** Apply only viewport-visible modifiers (default)
@@ -26,34 +28,39 @@ A streamlined Blender add-on designed for game development workflows. Batch expo
 * **Memory Efficient:** Automatic cleanup between modifier applications
 
 ### 📦 **Batch Export**
+
 * **Multi-Object Support:** Export meshes, curves, and metaballs simultaneously
 * **Automatic Conversion:** Curves and metaballs are converted to meshes during export
 * **Error Handling:** Robust error recovery with detailed failure reporting
 * **Multiple Formats:** FBX, OBJ, glTF (binary/JSON), USD, and STL support
 
 ### 🎮 **Game Engine Integration**
+
 * **Naming Conventions:** Built-in support for game engine naming standards:
   * **Godot:** snake_case naming (my_mesh_name)
-  * **Unity:** Capitalised_Words_With_Underscores 
+  * **Unity:** Capitalised_Words_With_Underscores
   * **Unreal Engine:** PascalCase naming (MyMeshName) with prefix preservation
   * **Default:** Keep original naming with basic sanitisation
 * **LOD Hierarchy Export:** Export objects with LOD levels as structured hierarchies for Unity/Unreal workflows (FBX format only)
 * **Game-Ready Output:** Optimised for immediate use in game engines
 
 ### 🎯 **Precision Controls**
+
 * **Transform Options:**
-    * Zero object location before export
-    * Custom export scale with format-specific handling
-    * Configurable Forward and Up axes
+  * Zero object location before export
+  * Custom export scale with format-specific handling
+  * Configurable Forward and Up axes
 * **Units Handling:** Seamless conversion between metres and centimetres
 * **Naming System:** Custom prefixes and suffixes for organised file output
 
 ### 🔧 **Mesh Processing**
+
 * **Triangulation:** Multiple methods (Beauty, Fixed, Alternate, Shortest Diagonal) with normal preservation
 * **Smoothing Control:** Format-specific smoothing options (Face, Edge, Off)
 * **Memory-Safe Operations:** All processing optimised for large mesh stability
 
 ### 📊 **LOD Generation & Hierarchy Export**
+
 * **Automatic LODs:** Generate up to 4 levels of detail using Decimate modifier
 * **Progressive Building:** Each LOD built from previous (making processing faster and uses less memory)
 * **Symmetry Preservation:** Maintain model symmetry during decimation
@@ -72,6 +79,7 @@ A streamlined Blender add-on designed for game development workflows. Batch expo
   * Smart resizing (no upscaling of small textures)
 
 ### 👁️ **Visual Feedback**
+
 * **Export Indicators:** Optional viewport colour coding for recently exported objects
   * Green: Recently exported (< 1 minute)
   * Yellow: Previously exported (< 5 minutes)
@@ -101,11 +109,12 @@ You can also find the add-on directly on [Blender Extensions](https://extensions
 
 ## Usage
 
-1.  **Find the Panel:** The add-on's panel appears in the 3D Viewport's Sidebar (Press `N` key if hidden) under the "Exporter" tab.
-2.  **Select Objects:** Select one or more mesh, curve, or metaball objects you want to export in the 3D Viewport.
-3.  **Configure Settings:** Adjust the settings in the "EasyMesh Batch Exporter" panel:
-    
+1. **Find the Panel:** The add-on's panel appears in the 3D Viewport's Sidebar (Press `N` key if hidden) under the "Exporter" tab.
+2. **Select Objects:** Select one or more mesh, curve, or metaball objects you want to export in the 3D Viewport.
+3. **Configure Settings:** Adjust the settings in the "EasyMesh Batch Exporter" panel:
+
     ### Basic Settings
+
     * **Export Path:** Choose the directory where files will be saved
     * **Format:** Select output format (FBX, OBJ, glTF, USD, STL)
     * **glTF Batch Export:** (glTF only) Combine all selected meshes into a single file
@@ -116,24 +125,27 @@ You can also find the add-on directly on [Blender Extensions](https://extensions
     * **Coordinate System:** Set Forward and Up axes for your target application
     * **Scale & Units:** Set global scale and choose between metres/centimetres
     * **Smoothing:** Select smoothing method (Face, Edge, Off) for supported formats
-    
+
     ### Transform & Processing
+
     * **Zero Location:** Set object location to (0,0,0) before export
     * **Modifier Mode:** Choose which modifiers to apply:
       * **None:** Skip all modifiers (fastest, export base mesh only)
       * **Visible:** Apply viewport-visible modifiers (recommended)
       * **Render:** Apply render-enabled modifiers (most complete)
     * **Triangulate:** Optional mesh triangulation with method selection and normal preservation
-    
+
     ### File Naming & Game Engine Support
+
     * **Prefix/Suffix:** Add custom text to exported filenames for organisation
     * **Naming Conventions:** Choose game engine specific naming:
       * **Godot:** snake_case (my_mesh_name)
       * **Unity:** Capitalised_Words_With_Underscores
-      * **Unreal Engine:** PascalCase (MyMeshName) 
+      * **Unreal Engine:** PascalCase (MyMeshName)
       * **Default:** Basic sanitisation only
-    
+
     ### LOD Generation (Optional)
+
     * **Quick LODs:** Enable in sub-panel header to generate up to 4 detail levels
     * **Export as Hierarchy:** Create structured LOD groups for Unity/Unreal workflows
     * **Symmetry:** Maintain model symmetry during decimation
@@ -145,8 +157,8 @@ You can also find the add-on directly on [Blender Extensions](https://extensions
     * **Ratios:** Individual mesh decimation settings for each LOD level
     * Note: LOD0 = base mesh, LOD1-4 = progressively optimised versions
 
-4.  **Export:** Click the "Export Objects" button (text changes based on selection type)
-5.  **Monitor Progress:** 
+4. **Export:** Click the "Export Objects" button (text changes based on selection type)
+5. **Monitor Progress:**
     * Real-time progress in Blender's status bar
     * Detailed console logs with polygon counts and timing
     * Memory optimisation messages for large meshes
@@ -154,6 +166,7 @@ You can also find the add-on directly on [Blender Extensions](https://extensions
 ## Performance & Large Mesh Handling
 
 ### 🔧 **Automatic Optimisations**
+
 The add-on automatically detects and optimises for large meshes:
 
 * **500K+ polygons:** Basic memory management with progressive cleanup
@@ -164,24 +177,29 @@ The add-on automatically detects and optimises for large meshes:
 
 ### 💡 **Performance Tips**
 
-#### For Large Meshes (500K+ polygons):
+#### For Large Meshes (500K+ polygons)
+
 * **Use "None" modifiers:** Skip modifier application for fastest export
 * **Close other applications:** Maximise available system memory
 * **Export in batches:** Process fewer objects at once to reduce memory pressure
 * **Monitor console:** Watch for "Memory optimisation" messages
 
-#### For Very Large Meshes (1M+ polygons):
+#### For Very Large Meshes (1M+ polygons)
+
 * **Strongly recommend "None" modifiers:** Avoid modifier processing when possible
 * **Single object exports:** Export one object at a time for maximum stability
 * **LOD generation:** Use LODs to create multiple resolution versions efficiently
 
-#### Modifier Application Guidelines:
+#### Modifier Application Guidelines
+
 * **"None":** Best performance, exports base mesh without any modifications
 * **"Visible":** Good balance of functionality and performance (default)
 * **"Render":** Most complete but may impact performance on large meshes
 
 ### 📊 **Console Output**
+
 Monitor the console for detailed information:
+
 ```
 INFO: Applying memory optimisation for large mesh: 1,250,000 polygons
 INFO: Large mesh export: 1,250,000 polygons
@@ -209,6 +227,7 @@ EasyMesh Batch Exporter includes a comprehensive automated test suite to ensure 
 ### Quick Start
 
 Run all tests:
+
 ```bash
 ./run_tests.sh
 ```
@@ -216,23 +235,25 @@ Run all tests:
 ### Test Suite Coverage
 
 The test suite includes:
-- **Export Formats:** FBX, OBJ, glTF (GLB/JSON), USD, STL
-- **Object Types:** Meshes, curves, metaballs, mixed selections
-- **LOD Generation:** Multiple LOD levels, hierarchies, ratios, texture optimisation
-- **Batch Modes:** glTF combine vs individual export
-- **Naming Conventions:** Godot, Unity, Unreal, Default
-- **Modifier Application:** None, Visible, Render modes
-- **Memory Management:** Large mesh handling (500K+, 1M+, 2M+ polygons)
-- **Edge Cases:** Empty selections, invalid paths, special characters, extreme settings
+* **Export Formats:** FBX, OBJ, glTF (GLB/JSON), USD, STL
+* **Object Types:** Meshes, curves, metaballs, mixed selections
+* **LOD Generation:** Multiple LOD levels, hierarchies, ratios, texture optimisation
+* **Batch Modes:** glTF combine vs individual export
+* **Naming Conventions:** Godot, Unity, Unreal, Default
+* **Modifier Application:** None, Visible, Render modes
+* **Memory Management:** Large mesh handling (500K+, 1M+, 2M+ polygons)
+* **Edge Cases:** Empty selections, invalid paths, special characters, extreme settings
 
 ### Setup
 
 1. Install pytest-blender:
+
 ```bash
 pip install pytest-blender
 ```
 
-2. Install test dependencies into Blender's Python:
+1. Install test dependencies into Blender's Python:
+
 ```bash
 blender_python="$(pytest-blender)"
 $blender_python -m ensurepip
@@ -241,37 +262,44 @@ $blender_python -m pip install -r test-requirements.txt
 
 ### Running Tests
 
-#### Run all tests:
+#### Run all tests
+
 ```bash
 ./run_tests.sh
 ```
 
-#### Run specific test file:
+#### Run specific test file
+
 ```bash
 ./run_tests.sh tests/test_export_formats.py
 ```
 
-#### Run tests with verbose output:
+#### Run tests with verbose output
+
 ```bash
 ./run_tests.sh -v
 ```
 
-#### Skip slow tests (large mesh tests):
+#### Skip slow tests (large mesh tests)
+
 ```bash
 ./run_tests.sh -m "not slow"
 ```
 
-#### Skip memory-intensive tests:
+#### Skip memory-intensive tests
+
 ```bash
 ./run_tests.sh -m "not memory"
 ```
 
-#### Run only tests matching a pattern:
+#### Run only tests matching a pattern
+
 ```bash
 ./run_tests.sh -k test_fbx
 ```
 
-#### Run specific test class or method:
+#### Run specific test class or method
+
 ```bash
 ./run_tests.sh tests/test_export_formats.py::TestFBXExport::test_fbx_single_object_export
 ```
@@ -298,6 +326,7 @@ Tests can be integrated into CI/CD pipelines using GitHub Actions or similar. Th
 ### Contributing
 
 When adding new features or fixing bugs:
+
 1. Run existing tests to ensure no regressions
 2. Add new tests covering your changes
 3. Ensure all tests pass before submitting pull requests

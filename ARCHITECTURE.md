@@ -52,6 +52,7 @@ This document provides a comprehensive technical overview of the EasyMesh Batch 
 ```
 
 **Architecture Principles:**
+
 1. **Separation of Concerns**: Each module has a single, well-defined responsibility
 2. **Resource Safety**: Context managers ensure cleanup even on exceptions
 3. **Memory Efficiency**: Adaptive garbage collection and threshold-based optimisation
@@ -63,14 +64,17 @@ This document provides a comprehensive technical overview of the EasyMesh Batch 
 ## Module Structure
 
 ### `__init__.py` - Entry Point & Registration
+
 **Responsibility**: Addon lifecycle management
 
 **Key Functions:**
+
 - `register()`: Registers all classes, properties, and timers
 - `unregister()`: Cleans up and unregisters everything
 - Logger setup with handler deduplication
 
 **Registration Order** (Important for dependencies):
+
 1. Properties (`properties.register_properties()`)
 2. Operators (`operators` module classes)
 3. Panels (`panels` module classes)
@@ -78,6 +82,7 @@ This document provides a comprehensive technical overview of the EasyMesh Batch 
 5. Timer registration (done by export_indicators)
 
 **Logger Configuration:**
+
 ```python
 logger.handlers.clear()  # Prevents accumulation on reload
 logger.propagate = False  # Prevents duplicate logs
@@ -86,11 +91,13 @@ logger.propagate = False  # Prevents duplicate logs
 ---
 
 ### `properties.py` - Data Storage
+
 **Responsibility**: Define all user-configurable settings
 
 **Main Class**: `MeshExporterSettings(PropertyGroup)`
 
 **Property Categories:**
+
 1. **Export Settings**: Path, format, scale, units, coordinate system
 2. **Transform Options**: Zero location, smoothing, triangulation
 3. **Modifier Control**: None/Visible/Render application modes
@@ -102,11 +109,13 @@ logger.propagate = False  # Prevents duplicate logs
 **Storage Location**: `bpy.types.Scene.mesh_exporter`
 
 **Update Callbacks**:
+
 - `clear_indicators_if_disabled()`: Automatically clears indicators when checkbox unchecked
 
 ---
 
 ### `operators.py` - Core Export Logic
+
 **Responsibility**: Implement all export operations and utility functions
 
 **Size**: ~2600 lines (largest module)
@@ -114,6 +123,7 @@ logger.propagate = False  # Prevents duplicate logs
 **Key Components:**
 
 #### Constants (Lines 34-69)
+
 ```python
 LARGE_MESH_THRESHOLD = 500000          # Basic optimisation trigger
 VERY_LARGE_MESH_THRESHOLD = 1000000    # Aggressive GC trigger
@@ -123,6 +133,7 @@ UNREAL_KNOWN_PREFIXES = {SM_, SK_, BP_, ...}  # UE naming prefixes
 ```
 
 #### Custom Exceptions (Lines 72-106)
+
 ```python
 MeshExportError          # Base exception
 ├── ValidationError      # Input validation failures
@@ -132,16 +143,19 @@ MeshExportError          # Base exception
 ```
 
 #### Utility Classes (Lines 135-249)
+
 - `MemoryManager`: Adaptive garbage collection with configurable intervals
 - `MeshOperations`: Safe mesh operations with context validation
 
 #### Context Managers (Lines 112-130)
+
 - `temporary_mesh()`: Safe mesh data cleanup
 - `temporary_object()`: Automatic object deletion
 - `temporary_image_file()`: Temp file management
 - `temp_selection_context()`: Selection state restoration
 
-#### Core Functions:
+#### Core Functions
+
 - `create_export_copy()`: Duplicate objects safely (with metaball conversion)
 - `apply_mesh_modifiers()`: Apply modifiers based on visibility mode
 - `triangulate_mesh()`: Convert quads/ngons to triangles
@@ -149,7 +163,9 @@ MeshExportError          # Base exception
 - `setup_export_object()`: Rename, scale, and prepare for export
 
 #### Main Operator: `MESH_OT_batch_export` (Lines 2129+)
+
 **Methods:**
+
 - `poll()`: Enable only when valid objects selected
 - `_validate_export_setup()`: Input validation and path checking
 - `_process_lod_export()`: LOD-specific processing logic
@@ -161,9 +177,11 @@ MeshExportError          # Base exception
 ---
 
 ### `panels.py` - User Interface
+
 **Responsibility**: Render UI panels in 3D Viewport sidebar
 
 **Panel Hierarchy:**
+
 ```
 MESH_PT_exporter_panel (Main)
 ├── MESH_PT_exporter_format_sub_panel
@@ -174,12 +192,14 @@ MESH_PT_exporter_panel (Main)
 ```
 
 **Visibility Rules:**
+
 - Only shown in Object mode
 - Located in 3D Viewport sidebar under "Exporter" tab
 - LOD panel collapses when disabled
 - Recent exports panel only visible when indicators enabled
 
 **Dynamic Button Text**:
+
 ```python
 "Export Collection" if is_collection else "Export Object(s)"
 ```
@@ -187,11 +207,13 @@ MESH_PT_exporter_panel (Main)
 ---
 
 ### `export_indicators.py` - Visual Feedback System
+
 **Responsibility**: Viewport colour indicators for exported objects
 
 **Architecture:**
 
 #### Status System
+
 ```python
 class ExportStatus(Enum):
     FRESH = 0  # Green, < 1 minute
@@ -200,12 +222,14 @@ class ExportStatus(Enum):
 ```
 
 #### Timer System (Lines 431-474)
+
 - Interval: 5 seconds
 - Persistent: Survives file reloads
 - Function: `update_timer_callback()`
 - Updates all object statuses and triggers viewport redraws
 
 #### Caching System (Lines 314-360)
+
 **Purpose**: Avoid scanning all scene objects every tick
 
 ```python
@@ -217,6 +241,7 @@ _cache_update_interval = 10.0  # Refresh every 10 seconds
 **Cache Validation**: `_is_valid_object()` filters out deleted objects using `ReferenceError` detection
 
 #### Custom Properties Stored on Objects
+
 - `mesh_export_timestamp`: Export time (float)
 - `mesh_export_status`: Current status (int)
 - `mesh_exporter_original_colour`: Saved viewport colour (list[float])
@@ -237,6 +262,7 @@ Exception
 ```
 
 **Usage Pattern:**
+
 ```python
 try:
     # Risky operation
@@ -256,6 +282,7 @@ except (ResourceError, ProcessingError) as e:
 **Purpose**: Centralised garbage collection throttling to prevent stutter
 
 **Class Variables:**
+
 ```python
 _last_gc_time: float = 0               # Timestamp of last GC
 _gc_interval: float = DEFAULT_GC_INTERVAL  # Min seconds between GC
@@ -266,15 +293,19 @@ _adaptive_mode: bool = True            # Adjust interval by mesh size
 **Methods:**
 
 #### `set_gc_interval(interval: float) -> None`
+
 Configure minimum GC interval (must be positive)
 
 #### `set_adaptive_mode(enabled: bool) -> None`
+
 Enable/disable automatic interval adjustment based on mesh size
 
 #### `request_cleanup(force: bool = False, poly_count: int = 0) -> None`
+
 Request GC with optional throttling bypass
 
 **Adaptive Interval Logic:**
+
 ```python
 if poly_count > VERY_LARGE_MESH_THRESHOLD:   # 1M+
     effective_interval = max(2.0, gc_interval * 0.5)  # More frequent
@@ -293,21 +324,27 @@ elif poly_count > LARGE_MESH_THRESHOLD:      # 500K+
 **Methods:**
 
 #### `update_mesh_data(obj, with_memory_cleanup=False) -> None`
+
 Updates mesh and optionally triggers GC for large meshes
+
 - Calls `obj.data.update()`
 - If cleanup enabled and poly_count > threshold: calls `MemoryManager.request_cleanup(poly_count)`
 
 #### `update_view_layer() -> None`
+
 Updates view layer with exception handling
+
 - Wraps `bpy.context.view_layer.update()`
 - Logs warnings on failure (doesn't crash)
 
 #### `safe_operator_call(operator_func, error_msg, **kwargs) -> Tuple[bool, Optional[set]]`
+
 **New in v1.4**: Context-validated operator calls
 
 **Purpose**: Prevents crashes when operators called from CLI/background mode
 
 **Implementation:**
+
 ```python
 if not bpy.context.view_layer:
     logger.warning(f"{error_msg}: No valid context available")
@@ -317,6 +354,7 @@ return (True, result)
 ```
 
 **Usage:**
+
 ```python
 success, result = MeshOperations.safe_operator_call(
     bpy.ops.object.duplicate_move_linked,
@@ -328,7 +366,9 @@ if not success:
 ```
 
 #### `safe_mode_set(obj, mode) -> bool`
+
 Changes object mode with error handling
+
 - Uses `safe_operator_call()` internally
 - Returns True on success, False on failure
 
@@ -399,6 +439,7 @@ def temporary_object(obj: Optional[Object], name: Optional[str] = None) -> Itera
 ```
 
 **Usage:**
+
 ```python
 with temporary_object(duplicate_obj) as temp:
     # Process temp object
@@ -410,6 +451,7 @@ with temporary_object(duplicate_obj) as temp:
 **Critical Pattern**: Always pair `to_mesh()` with `to_mesh_clear()` in try/finally
 
 **Correct Implementation:**
+
 ```python
 depsgraph = context.evaluated_depsgraph_get()
 obj_eval = obj.evaluated_get(depsgraph)
@@ -426,6 +468,7 @@ finally:
 ### BMesh Cleanup Pattern
 
 **Always free BMesh objects:**
+
 ```python
 bm = bmesh.new()
 try:
@@ -461,12 +504,14 @@ Try Block
 ### User-Facing Error Messages
 
 **Best Practices:**
+
 1. **Be Specific**: "Collection 'Trees' contains no valid mesh objects. Skipped 3 unsupported object(s)."
 2. **Include Context**: "Failed to duplicate object 'Cube.001': No valid context available"
 3. **Suggest Action**: "Cannot create export directory '/invalid/path': Permission denied"
 4. **Track Skipped Items**: Maintain list of skipped objects with reasons
 
 **Example:**
+
 ```python
 skipped_objects = []
 for obj in collection.objects:
@@ -485,6 +530,7 @@ if skipped_objects:
 ### 1. Caching System
 
 **Export Indicators Cache:**
+
 ```python
 _exported_objects_cache = []           # Cached object list
 _cache_last_update = 0                # Last refresh timestamp
@@ -492,6 +538,7 @@ _cache_update_interval = 10.0         # Refresh every 10 seconds
 ```
 
 **Cache Invalidation:**
+
 - Time-based: Refresh every 10 seconds
 - Event-based: Cleared when new object exported
 - Validation: Filters out deleted objects on each access
@@ -499,6 +546,7 @@ _cache_update_interval = 10.0         # Refresh every 10 seconds
 ### 2. Progressive LOD Building
 
 **Old Approach** (Memory-intensive):
+
 ```
 LOD0 ──┐
        ├──► LOD1
@@ -508,11 +556,13 @@ LOD0 ──┐
 ```
 
 **New Approach** (Memory-efficient):
+
 ```
 LOD0 ──► LOD1 ──► LOD2 ──► LOD3 ──► LOD4
 ```
 
 **Benefits:**
+
 - 60% less memory usage
 - 40-50% faster processing
 - Each LOD built from previous, not from base
@@ -522,6 +572,7 @@ LOD0 ──► LOD1 ──► LOD2 ──► LOD3 ──► LOD4
 **Problem**: Operators crash when called without valid context (CLI mode, background)
 
 **Solution**: Validate context before every operator call
+
 ```python
 if not bpy.context.view_layer:
     return (False, None)  # Fail gracefully
@@ -530,10 +581,12 @@ if not bpy.context.view_layer:
 ### 4. Adaptive Garbage Collection
 
 **Static Interval Issues:**
+
 - Too short: Performance stutter
 - Too long: OOM on large meshes
 
 **Adaptive Solution:**
+
 ```python
 if poly_count > 1M:
     interval = 2.5s  # Aggressive
@@ -552,6 +605,7 @@ else:
 **Coverage**: 15+ critical functions
 
 **Examples:**
+
 ```python
 def temporary_mesh(mesh_data: Optional[Mesh], name: str = "temp_mesh") -> Iterator[Optional[Mesh]]:
 
@@ -567,6 +621,7 @@ class MemoryManager:
 ```
 
 **Benefits:**
+
 - IDE autocomplete and type checking
 - Self-documenting function signatures
 - Catch type errors during development
@@ -591,6 +646,7 @@ UNREAL_KNOWN_PREFIXES = {
 ```
 
 **Rationale Comments:**
+
 ```python
 # These values are based on typical workstation memory (16-32GB) and
 # observed performance characteristics during mesh processing operations.
@@ -603,6 +659,7 @@ UNREAL_KNOWN_PREFIXES = {
 **Docstring Style**: Google-style
 
 **Example:**
+
 ```python
 def apply_naming_convention(name: str, convention: str) -> str:
     """
@@ -624,6 +681,7 @@ def apply_naming_convention(name: str, convention: str) -> str:
 ```
 
 **Inline Comments for Complex Logic:**
+
 ```python
 # Complex regex pattern breaks down as follows:
 #   [A-Z]*[a-z]+        - Matches camelCase words (e.g., "camel" in "camelCase")
@@ -650,6 +708,7 @@ words = re.findall(r'[A-Z]*[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)|[A-Z]|[0-9]+', temp_na
 ### Unreal Prefix Preservation
 
 **Known Prefixes** (preserved during conversion):
+
 ```python
 UNREAL_KNOWN_PREFIXES = {
     'SM',   # Static Mesh
@@ -668,6 +727,7 @@ UNREAL_KNOWN_PREFIXES = {
 ```
 
 **Example:**
+
 ```
 Input: "SM_my_cool_mesh"
 Output: "SM_MyCoolMesh"  (prefix preserved)
@@ -676,6 +736,7 @@ Output: "SM_MyCoolMesh"  (prefix preserved)
 ### Regex Pattern Explanations
 
 **Godot snake_case Splitter:**
+
 ```python
 # Pattern: [A-Z]*[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)|[A-Z]|[0-9]+
 # Matches: camelCase words, acronyms, single letters, numbers
@@ -683,6 +744,7 @@ Output: "SM_MyCoolMesh"  (prefix preserved)
 ```
 
 **Unreal Dot Preservation:**
+
 ```python
 # Pattern: \.(?![0-9])
 # Negative lookahead (?![0-9]) ensures we don't match dots before digits
@@ -697,6 +759,7 @@ Output: "SM_MyCoolMesh"  (prefix preserved)
 ### Manual Test Scenarios
 
 #### Small Mesh Tests (< 100K polygons)
+
 - ✓ Basic export (all formats)
 - ✓ Modifier application (None/Visible/Render)
 - ✓ LOD generation (2-4 levels)
@@ -704,6 +767,7 @@ Output: "SM_MyCoolMesh"  (prefix preserved)
 - ✓ Export indicators
 
 #### Large Mesh Tests (500K - 1M polygons)
+
 - ✓ Memory optimisation triggers
 - ✓ Modifier application performance
 - ✓ LOD generation memory usage
@@ -711,6 +775,7 @@ Output: "SM_MyCoolMesh"  (prefix preserved)
 - ✓ No crashes during export
 
 #### Very Large Mesh Tests (1M+ polygons)
+
 - ✓ Aggressive GC triggers
 - ✓ Adaptive interval adjustment
 - ✓ Memory warnings appear
@@ -718,6 +783,7 @@ Output: "SM_MyCoolMesh"  (prefix preserved)
 - ✓ No OOM errors
 
 #### Edge Cases
+
 - ✓ Empty collections
 - ✓ Collection instances (should skip with warning)
 - ✓ Curves and metaballs (auto-conversion)
@@ -728,6 +794,7 @@ Output: "SM_MyCoolMesh"  (prefix preserved)
 ### Performance Benchmarks
 
 **Target Performance** (2M polygon mesh):
+
 - Export with no modifiers: < 5 seconds
 - Export with 5 visible modifiers: < 30 seconds
 - LOD generation (4 levels): < 2 minutes
@@ -736,6 +803,7 @@ Output: "SM_MyCoolMesh"  (prefix preserved)
 ### Compatibility Testing
 
 **Blender Versions:**
+
 - ✓ Blender 4.2 LTS
 - ✓ Blender 4.5+ (no deprecated API)
 - ✓ CLI mode (context validation)
@@ -750,6 +818,7 @@ Output: "SM_MyCoolMesh"  (prefix preserved)
 **Deprecated**: `bpy.ops.object.shade_auto_smooth()`
 
 **Replacement**: Direct polygon smooth flags
+
 ```python
 # Old (deprecated):
 bpy.ops.object.shade_auto_smooth(angle=0.523599)
@@ -762,11 +831,13 @@ for poly in mesh_obj.data.polygons:
 ### to_mesh() Best Practices
 
 **Always use full parameter signature:**
+
 ```python
 mesh = obj_eval.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
 ```
 
 **Why:**
+
 - `preserve_all_data_layers=True`: Keeps custom attributes from geometry nodes
 - `depsgraph=depsgraph`: Ensures correct evaluation context
 
@@ -777,6 +848,7 @@ mesh = obj_eval.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
 ## Future Improvements
 
 ### Potential Enhancements
+
 1. **Unit Tests**: Add pytest suite for core functions
 2. **Performance Profiling**: Memory and time profiling for large meshes
 3. **Async Export**: Background export with progress callback
@@ -787,6 +859,7 @@ mesh = obj_eval.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
 8. **Undo Support**: Proper undo integration for non-destructive workflows
 
 ### Known Limitations
+
 1. Collection instances not supported (requires recursive processing)
 2. GLB/GLTF scale parameter ignored (format limitation)
 3. Maximum 4 LOD levels (UI design constraint)
@@ -797,6 +870,7 @@ mesh = obj_eval.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
 ## Contributing Guidelines
 
 ### Code Standards
+
 1. **British English**: Use "colour", "optimise", "sanitise", etc.
 2. **Type Hints**: Add to all new public functions
 3. **Docstrings**: Google-style with Args, Returns, Examples
@@ -806,6 +880,7 @@ mesh = obj_eval.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
 7. **Performance**: Consider memory impact for large meshes
 
 ### Before Submitting
+
 - ✓ Test with large meshes (1M+ polygons)
 - ✓ Verify no memory leaks (check console logs)
 - ✓ Update line numbers in CLAUDE.md if needed
@@ -816,11 +891,11 @@ mesh = obj_eval.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
 
 ## References
 
-- **Blender Python API**: https://docs.blender.org/api/current/
-- **Property Groups**: https://docs.blender.org/api/current/bpy.types.PropertyGroup.html
-- **Operators**: https://docs.blender.org/api/current/bpy.types.Operator.html
-- **BMesh Module**: https://docs.blender.org/api/current/bmesh.html
-- **Blender Extensions**: https://extensions.blender.org/
+- **Blender Python API**: <https://docs.blender.org/api/current/>
+- **Property Groups**: <https://docs.blender.org/api/current/bpy.types.PropertyGroup.html>
+- **Operators**: <https://docs.blender.org/api/current/bpy.types.Operator.html>
+- **BMesh Module**: <https://docs.blender.org/api/current/bmesh.html>
+- **Blender Extensions**: <https://extensions.blender.org/>
 
 ---
 

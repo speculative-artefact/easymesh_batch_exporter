@@ -12,7 +12,9 @@ Comprehensive automated testing for the EasyMesh Batch Exporter addon using pyte
 ## Test Files Overview
 
 ### `test_export_formats.py` - Export Format Testing
+
 Tests all supported export formats and their specific features:
+
 - **FBX Export:** Single/multiple objects, smoothing modes
 - **OBJ Export:** Basic export, material files
 - **glTF Export:** GLB vs JSON, Draco compression, material modes
@@ -26,7 +28,9 @@ Tests all supported export formats and their specific features:
 **Markers:** `export_format`
 
 ### `test_object_types.py` - Object Type Handling
+
 Tests different Blender object types and their conversion:
+
 - **Mesh Objects:** Cube, sphere, cylinder, torus primitives
 - **Curve Objects:** Bezier, NURBS, bevelled curves
 - **Metaball Objects:** Ball, capsule, smooth shading
@@ -37,7 +41,9 @@ Tests different Blender object types and their conversion:
 **Run Time:** ~1-2 minutes
 
 ### `test_lod_generation.py` - LOD System Testing
+
 Tests Level of Detail generation and configuration:
+
 - **Basic LOD:** Enable/disable, varying LOD counts (1-4)
 - **LOD Ratios:** Custom decimation ratios, extreme values
 - **LOD Hierarchies:** Game engine LOD group export
@@ -51,7 +57,9 @@ Tests Level of Detail generation and configuration:
 **Markers:** `slow`
 
 ### `test_batch_modes.py` - Batch Export Testing
+
 Tests glTF batch mode functionality:
+
 - **Batch Combine:** Multiple objects into single glTF file
 - **Batch Individual:** Separate files per object
 - **Collection Naming:** Using collection name for combined files
@@ -63,7 +71,9 @@ Tests glTF batch mode functionality:
 **Run Time:** ~1-2 minutes
 
 ### `test_naming.py` - Naming Convention Testing
+
 Tests filename generation and sanitisation:
+
 - **Naming Conventions:** Default, Godot (snake_case), Unity (Capitalised_Words), Unreal (PascalCase)
 - **Prefix/Suffix:** Adding custom text to filenames
 - **Unreal Prefixes:** SM_, SK_, BP_ prefix preservation
@@ -75,7 +85,9 @@ Tests filename generation and sanitisation:
 **Run Time:** ~1-2 minutes
 
 ### `test_modifiers.py` - Modifier Application Testing
+
 Tests modifier handling during export:
+
 - **Application Modes:** None, Visible, Render
 - **Specific Modifiers:** Subdivision Surface, Bevel, Mirror, Array
 - **Multiple Modifiers:** Modifier stacks, mixed visibility
@@ -86,7 +98,9 @@ Tests modifier handling during export:
 **Run Time:** ~2-3 minutes
 
 ### `test_memory.py` - Memory Management Testing
+
 Tests large mesh handling and memory optimisation:
+
 - **Large Meshes:** 500K+ polygon handling
 - **Very Large Meshes:** 2M+ polygon handling with aggressive GC
 - **Triangulation:** Large mesh triangulation
@@ -101,7 +115,9 @@ Tests large mesh handling and memory optimisation:
 **Markers:** `slow`, `memory`
 
 ### `test_edge_cases.py` - Error Handling Testing
+
 Tests edge cases and error recovery:
+
 - **Empty Selections:** No objects selected, empty scene
 - **Invalid Paths:** Non-existent directories, relative paths
 - **Unsupported Objects:** Camera, light, empty objects
@@ -116,32 +132,38 @@ Tests edge cases and error recovery:
 
 ## Running Specific Test Subsets
 
-### Run only fast tests (skip slow memory tests):
+### Run only fast tests (skip slow memory tests)
+
 ```bash
 ./run_tests.sh -m "not slow and not memory"
 ```
 
-### Run only export format tests:
+### Run only export format tests
+
 ```bash
 ./run_tests.sh tests/test_export_formats.py
 ```
 
-### Run only LOD tests:
+### Run only LOD tests
+
 ```bash
 ./run_tests.sh tests/test_lod_generation.py
 ```
 
-### Run specific test class:
+### Run specific test class
+
 ```bash
 ./run_tests.sh tests/test_export_formats.py::TestFBXExport
 ```
 
-### Run specific test method:
+### Run specific test method
+
 ```bash
 ./run_tests.sh tests/test_export_formats.py::TestFBXExport::test_fbx_single_object_export
 ```
 
-### Run all tests matching a pattern:
+### Run all tests matching a pattern
+
 ```bash
 ./run_tests.sh -k "gltf"  # All glTF-related tests
 ./run_tests.sh -k "lod"   # All LOD-related tests
@@ -160,7 +182,8 @@ Tests use pytest markers to categorise and filter:
 
 ## Fixtures (conftest.py)
 
-### Object Creation Fixtures:
+### Object Creation Fixtures
+
 - `create_cube` - Simple cube mesh
 - `create_sphere` - UV sphere mesh
 - `create_curve` - Bezier curve
@@ -168,13 +191,15 @@ Tests use pytest markers to categorise and filter:
 - `create_very_large_mesh` - 2M+ polygon mesh
 - `create_collection` - Collection with multiple objects
 
-### Utility Fixtures:
+### Utility Fixtures
+
 - `clean_scene` - Auto-cleans scene before each test
 - `temp_export_dir` - Temporary directory for exports
 - `reset_settings` - Resets all export settings to defaults
 - `enable_addon` - Ensures addon is enabled (session scope)
 
-### Helper Functions:
+### Helper Functions
+
 - `verify_file_exists(path, format)` - Check if exported file exists
 - `verify_exported_files(dir, files, format)` - Verify multiple files
 - `count_exported_files(dir, format)` - Count files of specific format
@@ -187,13 +212,15 @@ Tests use pytest markers to categorise and filter:
 **Fast Tests Only:** ~120 tests (~10-15 minutes)
 **All Tests:** ~180 tests (~25-35 minutes)
 
-### Success Criteria:
+### Success Criteria
+
 - All tests pass (green)
 - No memory leaks reported
 - Exported files created correctly
 - Error conditions handled gracefully
 
-### Common Test Failures:
+### Common Test Failures
+
 1. **Blender version mismatch** - Ensure Blender 4.2+ is installed
 2. **Addon not enabled** - Run tests from project root with addon installed
 3. **Missing dependencies** - Install test-requirements.txt into Blender Python
@@ -210,7 +237,8 @@ When adding new features:
 5. **Verify cleanup** - ensure tests don't leak resources
 6. **Document coverage** - update this README
 
-### Example Test:
+### Example Test
+
 ```python
 def test_my_new_feature(create_cube, temp_export_dir, reset_settings):
     """Test description of what this test validates."""
@@ -229,7 +257,8 @@ def test_my_new_feature(create_cube, temp_export_dir, reset_settings):
 
 The test suite can be integrated into CI/CD:
 
-### GitHub Actions Example:
+### GitHub Actions Example
+
 ```yaml
 name: Tests
 on: [push, pull_request]
@@ -252,21 +281,25 @@ jobs:
 ## Troubleshooting
 
 ### Tests fail with "addon not found"
+
 - Ensure addon is installed in Blender
 - Run from project root directory
 - Check addon name matches in conftest.py
 
 ### Tests fail with import errors
+
 - Install test dependencies: `pip install -r test-requirements.txt`
 - Ensure pytest-blender is installed
 - Check Blender Python path
 
 ### Memory tests timeout
+
 - Expected for very large mesh tests (2M+ polygons)
 - Skip with: `./run_tests.sh -m "not memory"`
 - Increase timeout if needed (see pytest.ini)
 
 ### Permission denied errors
+
 - Check write permissions for temp directories
 - Ensure /tmp or system temp dir is writable
 - On Windows, check %TEMP% permissions
@@ -274,6 +307,7 @@ jobs:
 ## Support
 
 For issues with tests:
+
 1. Check existing test output for error messages
 2. Run with verbose flag: `./run_tests.sh -v`
 3. Run specific failing test in isolation
