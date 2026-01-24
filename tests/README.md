@@ -247,7 +247,7 @@ def test_my_new_feature(create_cube, temp_export_dir, reset_settings):
     props.mesh_export_format = "FBX"
 
     create_cube.select_set(True)
-    result = bpy.ops.mesh.batch_export_selected()
+    result = bpy.ops.mesh.batch_export()
 
     assert result == {'FINISHED'}, "Export should succeed"
     assert verify_file_exists(temp_export_dir / "TestCube.fbx", "fbx")

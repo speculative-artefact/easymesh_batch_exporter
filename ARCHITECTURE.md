@@ -18,7 +18,7 @@ This document provides a comprehensive technical overview of the EasyMesh Batch 
 
 ## System Overview
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                      Blender API                            │
 │  (bpy.types, bpy.ops, bpy.data, bpy.context, bpy.props)    │
@@ -182,7 +182,7 @@ MeshExportError          # Base exception
 
 **Panel Hierarchy:**
 
-```
+```text
 MESH_PT_exporter_panel (Main)
 ├── MESH_PT_exporter_format_sub_panel
 ├── MESH_PT_exporter_transform_sub_panel
@@ -252,7 +252,7 @@ _cache_update_interval = 10.0  # Refresh every 10 seconds
 
 ### Exception Hierarchy
 
-```
+```text
 Exception
 └── MeshExportError (Base)
     ├── ValidationError    - User input errors (non-critical)
@@ -379,14 +379,14 @@ Changes object mode with error handling
 ### Threshold-Based Strategy
 
 | Polygon Count | Strategy | GC Interval | Actions |
-|--------------|----------|-------------|---------|
+| ------------ | -------- | ----------- | ------- |
 | < 500K | Normal | 5.0s (default) | Standard processing |
 | 500K - 1M | Optimised | 3.75s (adaptive) | Pre-cleanup, throttled GC |
 | 1M+ | Aggressive | 2.5s (adaptive) | Frequent GC, memory warnings |
 
 ### Memory Optimisation Flow
 
-```
+```text
 Mesh Detection
      │
      ▼
@@ -484,7 +484,7 @@ finally:
 
 ### Exception Flow Diagram
 
-```
+```text
 Operation Starts
      │
      ▼
@@ -547,7 +547,7 @@ _cache_update_interval = 10.0         # Refresh every 10 seconds
 
 **Old Approach** (Memory-intensive):
 
-```
+```text
 LOD0 ──┐
        ├──► LOD1
        ├──► LOD2
@@ -557,7 +557,7 @@ LOD0 ──┐
 
 **New Approach** (Memory-efficient):
 
-```
+```text
 LOD0 ──► LOD1 ──► LOD2 ──► LOD3 ──► LOD4
 ```
 
@@ -699,7 +699,7 @@ words = re.findall(r'[A-Z]*[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)|[A-Z]|[0-9]+', temp_na
 ### Supported Conventions
 
 | Convention | Output Style | Example Transform |
-|-----------|--------------|-------------------|
+| ---------- | ------------ | ----------------- |
 | DEFAULT | Basic sanitisation | `My/Mesh*Name` → `My_Mesh_Name` |
 | GODOT | snake_case | `MyMeshName` → `my_mesh_name` |
 | UNITY | Capitalised_Words | `my mesh name` → `My_Mesh_Name` |
@@ -728,7 +728,7 @@ UNREAL_KNOWN_PREFIXES = {
 
 **Example:**
 
-```
+``` text
 Input: "SM_my_cool_mesh"
 Output: "SM_MyCoolMesh"  (prefix preserved)
 ```

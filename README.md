@@ -113,55 +113,55 @@ You can also find the add-on directly on [Blender Extensions](https://extensions
 2. **Select Objects:** Select one or more mesh, curve, or metaball objects you want to export in the 3D Viewport.
 3. **Configure Settings:** Adjust the settings in the "EasyMesh Batch Exporter" panel:
 
-    ### Basic Settings
+   **Basic Settings**
 
-    * **Export Path:** Choose the directory where files will be saved
-    * **Format:** Select output format (FBX, OBJ, glTF, USD, STL)
-    * **glTF Batch Export:** (glTF only) Combine all selected meshes into a single file
-      * **Enabled by default** - Perfect for Godot imports
-      * Uses collection name for filename (or first object's name as fallback)
-      * Disable to export each mesh as a separate file
-      * Compatible with LOD generation
-    * **Coordinate System:** Set Forward and Up axes for your target application
-    * **Scale & Units:** Set global scale and choose between metres/centimetres
-    * **Smoothing:** Select smoothing method (Face, Edge, Off) for supported formats
+   * **Export Path:** Choose the directory where files will be saved
+   * **Format:** Select output format (FBX, OBJ, glTF, USD, STL)
+   * **glTF Batch Export:** (glTF only) Combine all selected meshes into a single file
+     * **Enabled by default** - Perfect for Godot imports
+     * Uses collection name for filename (or first object's name as fallback)
+     * Disable to export each mesh as a separate file
+     * Compatible with LOD generation
+   * **Coordinate System:** Set Forward and Up axes for your target application
+   * **Scale & Units:** Set global scale and choose between metres/centimetres
+   * **Smoothing:** Select smoothing method (Face, Edge, Off) for supported formats
 
-    ### Transform & Processing
+   **Transform & Processing**
 
-    * **Zero Location:** Set object location to (0,0,0) before export
-    * **Modifier Mode:** Choose which modifiers to apply:
-      * **None:** Skip all modifiers (fastest, export base mesh only)
-      * **Visible:** Apply viewport-visible modifiers (recommended)
-      * **Render:** Apply render-enabled modifiers (most complete)
-    * **Triangulate:** Optional mesh triangulation with method selection and normal preservation
+   * **Zero Location:** Set object location to (0,0,0) before export
+   * **Modifier Mode:** Choose which modifiers to apply:
+     * **None:** Skip all modifiers (fastest, export base mesh only)
+     * **Visible:** Apply viewport-visible modifiers (recommended)
+     * **Render:** Apply render-enabled modifiers (most complete)
+   * **Triangulate:** Optional mesh triangulation with method selection and normal preservation
 
-    ### File Naming & Game Engine Support
+   **File Naming & Game Engine Support**
 
-    * **Prefix/Suffix:** Add custom text to exported filenames for organisation
-    * **Naming Conventions:** Choose game engine specific naming:
-      * **Godot:** snake_case (my_mesh_name)
-      * **Unity:** Capitalised_Words_With_Underscores
-      * **Unreal Engine:** PascalCase (MyMeshName)
-      * **Default:** Basic sanitisation only
+   * **Prefix/Suffix:** Add custom text to exported filenames for organisation
+   * **Naming Conventions:** Choose game engine specific naming:
+     * **Godot:** snake_case (my_mesh_name)
+     * **Unity:** Capitalised_Words_With_Underscores
+     * **Unreal Engine:** PascalCase (MyMeshName)
+     * **Default:** Basic sanitisation only
 
-    ### LOD Generation (Optional)
+   **LOD Generation (Optional)**
 
-    * **Quick LODs:** Enable in sub-panel header to generate up to 4 detail levels
-    * **Export as Hierarchy:** Create structured LOD groups for Unity/Unreal workflows
-    * **Symmetry:** Maintain model symmetry during decimation
-    * **Resize Textures:** Enable automatic texture optimisation for LODs
-    * **Texture Settings** (when resizing enabled):
-      * **Compression:** Quality setting for lossy formats like JPEG (0-100)
-      * **Preserve Normal Maps:** Keep normal maps at higher resolution
-      * **LOD Texture Sizes:** Customisable max size for each LOD (8K to 128px)
-    * **Ratios:** Individual mesh decimation settings for each LOD level
-    * Note: LOD0 = base mesh, LOD1-4 = progressively optimised versions
+   * **Quick LODs:** Enable in sub-panel header to generate up to 4 detail levels
+   * **Export as Hierarchy:** Create structured LOD groups for Unity/Unreal workflows
+   * **Symmetry:** Maintain model symmetry during decimation
+   * **Resize Textures:** Enable automatic texture optimisation for LODs
+   * **Texture Settings** (when resizing enabled):
+     * **Compression:** Quality setting for lossy formats like JPEG (0-100)
+     * **Preserve Normal Maps:** Keep normal maps at higher resolution
+     * **LOD Texture Sizes:** Customisable max size for each LOD (8K to 128px)
+   * **Ratios:** Individual mesh decimation settings for each LOD level
+   * Note: LOD0 = base mesh, LOD1-4 = progressively optimised versions
 
 4. **Export:** Click the "Export Objects" button (text changes based on selection type)
 5. **Monitor Progress:**
-    * Real-time progress in Blender's status bar
-    * Detailed console logs with polygon counts and timing
-    * Memory optimisation messages for large meshes
+   * Real-time progress in Blender's status bar
+   * Detailed console logs with polygon counts and timing
+   * Memory optimisation messages for large meshes
 
 ## Performance & Large Mesh Handling
 
@@ -200,7 +200,7 @@ The add-on automatically detects and optimises for large meshes:
 
 Monitor the console for detailed information:
 
-```
+``` text
 INFO: Applying memory optimisation for large mesh: 1,250,000 polygons
 INFO: Large mesh export: 1,250,000 polygons
 INFO: Memory cleanup after 3 modifiers
@@ -235,6 +235,7 @@ Run all tests:
 ### Test Suite Coverage
 
 The test suite includes:
+
 * **Export Formats:** FBX, OBJ, glTF (GLB/JSON), USD, STL
 * **Object Types:** Meshes, curves, metaballs, mixed selections
 * **LOD Generation:** Multiple LOD levels, hierarchies, ratios, texture optimisation
@@ -306,7 +307,7 @@ $blender_python -m pip install -r test-requirements.txt
 
 ### Test Organisation
 
-```
+``` text
 tests/
 ├── conftest.py                # Shared fixtures and utilities
 ├── test_export_formats.py     # All export formats (FBX, OBJ, glTF, USD, STL)
