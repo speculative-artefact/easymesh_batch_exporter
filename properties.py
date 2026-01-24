@@ -6,9 +6,14 @@ triangulation, LOD generation, and more.
 """
 
 import bpy
-from bpy.props import (StringProperty, EnumProperty, 
-                      FloatProperty, IntProperty, BoolProperty,
-                      PointerProperty)
+from bpy.props import (
+    StringProperty,
+    EnumProperty,
+    FloatProperty,
+    IntProperty,
+    BoolProperty,
+    PointerProperty,
+)
 from bpy.types import PropertyGroup
 
 
@@ -38,11 +43,12 @@ def refresh_preset_items_cache():
             items.append((preset_name, preset_name, desc, icon, i))
     except Exception as e:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.warning(f"Failed to refresh preset items cache: {e}")
 
     if not items:
-        items.append(('NONE', 'No Presets', 'No presets available', 'SETTINGS', 0))
+        items.append(("NONE", "No Presets", "No presets available", "SETTINGS", 0))
 
     _preset_items_cache = items
 
@@ -83,7 +89,11 @@ def get_preset_items(self, context):
         refresh_preset_items_cache()
 
     # Return cached items (always returns a valid list)
-    return _preset_items_cache if _preset_items_cache else [('NONE', 'No Presets', 'No presets available', 'SETTINGS', 0)]
+    return (
+        _preset_items_cache
+        if _preset_items_cache
+        else [("NONE", "No Presets", "No presets available", "SETTINGS", 0)]
+    )
 
 
 def load_preset_on_change(self, context):
@@ -96,26 +106,29 @@ def load_preset_on_change(self, context):
     Note:
         Auto-loads the selected preset when user clicks a different preset button.
     """
-    if self.mesh_export_preset_selector and self.mesh_export_preset_selector != 'NONE':
+    if self.mesh_export_preset_selector and self.mesh_export_preset_selector != "NONE":
         # Only load if different from current
         if self.mesh_export_preset_selector != self.mesh_export_current_preset:
             try:
-                bpy.ops.mesh.load_export_preset(preset_name=self.mesh_export_preset_selector)
+                bpy.ops.mesh.load_export_preset(
+                    preset_name=self.mesh_export_preset_selector
+                )
             except (AttributeError, RuntimeError) as e:
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Failed to auto-load preset: {e}")
 
 
 class MeshExporterSettings(PropertyGroup):
     # Export path property
-    # Default to the current blend file directory 
+    # Default to the current blend file directory
     # with a subfolder "exported_meshes"
     mesh_export_path: StringProperty(
         name="Export Path",
         description="Path to export meshes",
         default="//exported_meshes/",
-        subtype="DIR_PATH"
+        subtype="DIR_PATH",
     )
 
     # Export format property
@@ -123,13 +136,13 @@ class MeshExporterSettings(PropertyGroup):
         name="Format",
         description="File format to export meshes",
         items=[
-             ("FBX", "FBX", "Export as FBX"),
-             ("OBJ", "OBJ", "Export as OBJ"),
-             ("GLTF", "glTF", "Export as glTF"),
-             ("USD", "USD", "Export as USD"),
-             ("STL", "STL", "Export as STL"),
+            ("FBX", "FBX", "Export as FBX"),
+            ("OBJ", "OBJ", "Export as OBJ"),
+            ("GLTF", "glTF", "Export as glTF"),
+            ("USD", "USD", "Export as USD"),
+            ("STL", "STL", "Export as STL"),
         ],
-        default="FBX"
+        default="FBX",
     )
 
     # GLTF type property
@@ -140,26 +153,34 @@ class MeshExporterSettings(PropertyGroup):
             ("GLB", "Binary", "Export as binary glTF (GLB)"),
             ("GLTF_SEPARATE", "JSON", "Export as JSON glTF (GLTF)"),
         ],
-        default="GLB"
+        default="GLB",
     )
 
-    #GLTF export materials property
+    # GLTF export materials property
     mesh_export_gltf_materials: EnumProperty(
         name="Export Materials",
         description="Export materials with glTF",
         items=[
             ("EXPORT", "Export", "Export all materials used by included objects"),
-            ("PLACEHOLDER", "Placeholder", "Do not export materials, but write multiple primitive groups per mesh, keeping material slot information"),
-            ("NONE", "No export", "Do not export materials, and combine mesh primitive groups, losing material slot information"),
+            (
+                "PLACEHOLDER",
+                "Placeholder",
+                "Do not export materials, but write multiple primitive groups per mesh, keeping material slot information",
+            ),
+            (
+                "NONE",
+                "No export",
+                "Do not export materials, and combine mesh primitive groups, losing material slot information",
+            ),
         ],
-        default="EXPORT"
+        default="EXPORT",
     )
-    
+
     # GLTF Draco compression property
     mesh_export_use_draco_compression: BoolProperty(
         name="Draco Compression",
         description="Enable Draco mesh compression for smaller file sizes. Note: Godot has its own runtime compression, so this is typically not needed for Godot imports",
-        default=False
+        default=False,
     )
 
     # GLTF batch export property
@@ -167,10 +188,18 @@ class MeshExporterSettings(PropertyGroup):
         name="Batching",
         description="Choose how to export multiple selected meshes in glTF format",
         items=[
-            ("COMBINE", "Combine", "Export all selected meshes into a single glTF file (recommended for Godot)"),
-            ("INDIVIDUAL", "Individual", "Export each selected mesh as a separate glTF file"),
+            (
+                "COMBINE",
+                "Combine",
+                "Export all selected meshes into a single glTF file (recommended for Godot)",
+            ),
+            (
+                "INDIVIDUAL",
+                "Individual",
+                "Export each selected mesh as a separate glTF file",
+            ),
         ],
-        default="COMBINE"
+        default="COMBINE",
     )
 
     # Scale property
@@ -181,9 +210,9 @@ class MeshExporterSettings(PropertyGroup):
         min=0.001,
         max=1000.0,
         soft_min=0.01,
-        soft_max=100.0
+        soft_max=100.0,
     )
-    
+
     # Units property
     mesh_export_units: EnumProperty(
         name="Units",
@@ -200,47 +229,58 @@ class MeshExporterSettings(PropertyGroup):
         name="Up Axis",
         description="Up axis for exported meshes",
         items=[
-            ("X", "X", ""),("Y", "Y", ""),("Z", "Z", ""),
-            ("-X", "-X", ""),("-Y", "-Y", ""),("-Z", "-Z", "")
+            ("X", "X", ""),
+            ("Y", "Y", ""),
+            ("Z", "Z", ""),
+            ("-X", "-X", ""),
+            ("-Y", "-Y", ""),
+            ("-Z", "-Z", ""),
         ],
-        default="Z"
+        default="Z",
     )
 
     mesh_export_coord_forward: EnumProperty(
         name="Forward Axis",
         description="Forward axis for exported meshes",
         items=[
-            ("X", "X", ""),("Y", "Y", ""),("Z", "Z", ""),
-            ("-X", "-X", ""),("-Y", "-Y", ""),("-Z", "-Z", "")
+            ("X", "X", ""),
+            ("Y", "Y", ""),
+            ("Z", "Z", ""),
+            ("-X", "-X", ""),
+            ("-Y", "-Y", ""),
+            ("-Z", "-Z", ""),
         ],
-        default="X"
+        default="X",
     )
 
     mesh_export_smoothing: EnumProperty(
         name="Smoothing",
         description="Smoothing method for exported meshes",
         items=[
-            ("OFF", "Off", "Export only normals instead "
-            "of writing edge or face smoothing data"),
+            (
+                "OFF",
+                "Off",
+                "Export only normals instead of writing edge or face smoothing data",
+            ),
             ("FACE", "Face", "Write face smoothing"),
             ("EDGE", "Edge", "Write edge smoothing"),
             ("SMOOTH_GROUP", "Smoothing Groups", "Write smoothing groups"),
         ],
-        default="FACE"
+        default="FACE",
     )
 
     # Zero location property
     mesh_export_zero_location: BoolProperty(
         name="Zero Location",
         description="Zero location of the object copy before export",
-        default=True
+        default=True,
     )
 
     # Triangulate properties
     mesh_export_tri: BoolProperty(
         name="Triangulate Faces",
         description="Convert all faces to triangles on the copy",
-        default=True
+        default=True,
     )
 
     # Triangulate method property
@@ -248,23 +288,27 @@ class MeshExporterSettings(PropertyGroup):
         name="Method",
         description="Method used for triangulating quads",
         items=[
-                ("BEAUTY", "Beauty", 
-                 "Triangulate with the best-looking result"),
-                ("FIXED", "Fixed", 
-                 "Split the quad from the first to third vertices"),
-                ("FIXED_ALTERNATE", "Fixed Alternate", 
-                 "Split the quad from the second to fourth vertices"),
-                ("SHORTEST_DIAGONAL", "Shortest Diagonal", 
-                 "Split the quad along the shortest diagonal")
-            ],
-        default="BEAUTY"
+            ("BEAUTY", "Beauty", "Triangulate with the best-looking result"),
+            ("FIXED", "Fixed", "Split the quad from the first to third vertices"),
+            (
+                "FIXED_ALTERNATE",
+                "Fixed Alternate",
+                "Split the quad from the second to fourth vertices",
+            ),
+            (
+                "SHORTEST_DIAGONAL",
+                "Shortest Diagonal",
+                "Split the quad along the shortest diagonal",
+            ),
+        ],
+        default="BEAUTY",
     )
 
     # Keep normals property
     mesh_export_keep_normals: BoolProperty(
         name="Keep Normals",
         description="Preserve normal vectors during triangulation",
-        default=True
+        default=True,
     )
 
     # Modifier application property
@@ -276,22 +320,18 @@ class MeshExporterSettings(PropertyGroup):
             ("VISIBLE", "Visible", "Apply only modifiers visible in viewport"),
             ("RENDER", "Render", "Apply only modifiers enabled for rendering"),
         ],
-        default="VISIBLE"
+        default="VISIBLE",
     )
 
     # Prefix and suffix properties
     mesh_export_prefix: StringProperty(
-        name="Prefix",
-        description="Prefix for exported file names",
-        default=""
+        name="Prefix", description="Prefix for exported file names", default=""
     )
 
     mesh_export_suffix: StringProperty(
-        name="Suffix",
-        description="Suffix for exported file names",
-        default=""
+        name="Suffix", description="Suffix for exported file names", default=""
     )
-    
+
     mesh_export_naming_convention: EnumProperty(
         name="Naming Convention",
         description="Apply specific naming conventions to exported files",
@@ -301,7 +341,7 @@ class MeshExporterSettings(PropertyGroup):
             ("UNITY", "Unity", "Capitalised words with underscores (My_Mesh_Name)"),
             ("UNREAL", "Unreal Engine", "PascalCase naming (MyMeshName)"),
         ],
-        default="DEFAULT"
+        default="DEFAULT",
     )
 
     # Export indicators property
@@ -309,40 +349,36 @@ class MeshExporterSettings(PropertyGroup):
         name="Show Export Indicators",
         description="Display colour indicators in viewport for recently exported objects",
         default=True,
-        update=lambda self, context: clear_indicators_if_disabled(self, context)
+        update=lambda self, context: clear_indicators_if_disabled(self, context),
     )
 
     # LOD properties
     mesh_export_lod: BoolProperty(
         name="Generate LODs",
         description="Generate additional LODs using Decimate (modifies copy)",
-        default=False
+        default=False,
     )
 
     # LOD count property
     mesh_export_lod_count: IntProperty(
         name="Additional LODs",
         description="How many additional LODs to generate (LOD1 to LOD4)",
-        default=4, min=1, max=4, # Max 4 due to 4 ratio properties
+        default=4,
+        min=1,
+        max=4,  # Max 4 due to 4 ratio properties
     )
 
     # LOD symmetry property
     mesh_export_lod_symmetry: BoolProperty(
-        name="Symmetry",
-        description="Use symmetry for LOD generation",
-        default=False
+        name="Symmetry", description="Use symmetry for LOD generation", default=False
     )
 
     # LOD symmetry axis property
     mesh_export_lod_symmetry_axis: EnumProperty(
         name="Symmetry Axis",
         description="Axis of symmetry for LOD generation",
-        items=[
-            ("X", "X", "X axis"),
-            ("Y", "Y", "Y axis"),
-            ("Z", "Z", "Z axis")
-        ],
-        default="X"
+        items=[("X", "X", "X axis"), ("Y", "Y", "Y axis"), ("Z", "Z", "Z axis")],
+        default="X",
     )
 
     # LOD type property
@@ -362,9 +398,9 @@ class MeshExporterSettings(PropertyGroup):
     mesh_export_resize_textures: BoolProperty(
         name="Resize Textures for LODs",
         description="Automatically resize textures for LODs",
-        default=True
+        default=True,
     )
-    
+
     # Texture quality property
     mesh_export_texture_quality: IntProperty(
         name="Texture Compression",
@@ -372,9 +408,9 @@ class MeshExporterSettings(PropertyGroup):
         default=85,
         min=0,
         max=100,
-        subtype='PERCENTAGE'
+        subtype="PERCENTAGE",
     )
-    
+
     # LOD texture size properties
     mesh_export_lod1_texture_size: EnumProperty(
         name="LOD1 Texture Size",
@@ -385,9 +421,9 @@ class MeshExporterSettings(PropertyGroup):
             ("2048", "2K", "2048x2048"),
             ("1024", "1K", "1024x1024"),
         ],
-        default="2048"
+        default="2048",
     )
-    
+
     mesh_export_lod2_texture_size: EnumProperty(
         name="LOD2 Texture Size",
         description="Maximum texture size for LOD2",
@@ -397,9 +433,9 @@ class MeshExporterSettings(PropertyGroup):
             ("1024", "1K", "1024x1024"),
             ("512", "512", "512x512"),
         ],
-        default="1024"
+        default="1024",
     )
-    
+
     mesh_export_lod3_texture_size: EnumProperty(
         name="LOD3 Texture Size",
         description="Maximum texture size for LOD3",
@@ -409,9 +445,9 @@ class MeshExporterSettings(PropertyGroup):
             ("512", "512", "512x512"),
             ("256", "256", "256x256"),
         ],
-        default="512"
+        default="512",
     )
-    
+
     mesh_export_lod4_texture_size: EnumProperty(
         name="LOD4 Texture Size",
         description="Maximum texture size for LOD4",
@@ -421,58 +457,69 @@ class MeshExporterSettings(PropertyGroup):
             ("256", "256", "256x256"),
             ("128", "128", "128x128"),
         ],
-        default="256"
+        default="256",
     )
-    
+
     # Normal map handling
     mesh_export_preserve_normal_maps: BoolProperty(
         name="Preserve Normal Map Quality",
         description="Keep normal maps at one LOD level higher resolution",
-        default=True
+        default=True,
     )
-    
+
     # Texture embedding property
     mesh_export_embed_textures: BoolProperty(
         name="Embed Textures",
         description="Embed textures in the exported file (recommended for game development)",
-        default=True
+        default=True,
     )
-    
 
     # LOD hierarchy export property (for game engines)
     mesh_export_lod_hierarchy: BoolProperty(
         name="Export as Hierarchy",
         description="Export collection as single mesh with LODs in parent/child structure (Unity/Unreal workflow)",
-        default=True
+        default=True,
     )
-    
+
     # LOD ratio properties
     mesh_export_lod_ratio_01: FloatProperty(
-        name="LOD1 Ratio", 
+        name="LOD1 Ratio",
         description="Decimate factor for LOD 1",
-        default=0.75, min=0.0, max=1.0, subtype="FACTOR"
+        default=0.75,
+        min=0.0,
+        max=1.0,
+        subtype="FACTOR",
     )
     mesh_export_lod_ratio_02: FloatProperty(
-        name="LOD2 Ratio", 
+        name="LOD2 Ratio",
         description="Decimate factor for LOD 2",
-        default=0.50, min=0.0, max=1.0, subtype="FACTOR"
+        default=0.50,
+        min=0.0,
+        max=1.0,
+        subtype="FACTOR",
     )
     mesh_export_lod_ratio_03: FloatProperty(
-        name="LOD3 Ratio", 
+        name="LOD3 Ratio",
         description="Decimate factor for LOD 3",
-        default=0.25, min=0.0, max=1.0, subtype="FACTOR"
+        default=0.25,
+        min=0.0,
+        max=1.0,
+        subtype="FACTOR",
     )
     mesh_export_lod_ratio_04: FloatProperty(
         name="LOD4 Ratio",
         description="Decimate factor for LOD 4",
-        default=0.10, min=0.0, max=1.0, subtype="FACTOR"
+        default=0.10,
+        min=0.0,
+        max=1.0,
+        subtype="FACTOR",
     )
 
     # --- Attachment Points & Slot Empties ---
     mesh_export_include_empties: BoolProperty(
         name="Include Attachment Points",
         description="Include empty children of exported objects as attachment points",
-        default=True
+        default=True,
     )
 
     mesh_export_empty_filter: EnumProperty(
@@ -482,51 +529,49 @@ class MeshExporterSettings(PropertyGroup):
             ("ALL", "All Empties", "Include all empty children"),
             ("PREFIXED", "Prefixed Only", "Only empties with specific prefix"),
         ],
-        default="ALL"
+        default="ALL",
     )
 
     mesh_export_empty_prefix: StringProperty(
         name="Empty Prefix",
         description="Only include empties starting with this prefix",
-        default="attach_"
+        default="attach_",
     )
 
     mesh_export_create_slots: BoolProperty(
         name="Create Slot Empties",
         description="Create slot empties marking where child meshes attach",
-        default=False
+        default=False,
     )
 
     mesh_export_slot_prefix: StringProperty(
         name="Slot Prefix",
         description="Prefix for generated slot empties",
-        default="slot_"
+        default="slot_",
     )
 
     # Preset system properties
     mesh_export_current_preset: StringProperty(
-        name="Current Preset",
-        description="Currently active export preset",
-        default=""
+        name="Current Preset", description="Currently active export preset", default=""
     )
 
     mesh_export_preset_modified: BoolProperty(
         name="Preset Modified",
         description="True if current settings differ from saved preset",
-        default=False
+        default=False,
     )
 
     mesh_export_preset_is_builtin: BoolProperty(
         name="Is Built-in Preset",
         description="True if current preset is a built-in factory preset",
-        default=False
+        default=False,
     )
 
     mesh_export_preset_selector: EnumProperty(
         name="Preset",
         description="Select and load a preset",
         items=get_preset_items,
-        update=load_preset_on_change
+        update=load_preset_on_change,
     )
 
 
@@ -541,8 +586,7 @@ def register_properties():
     """
     try:
         bpy.utils.register_class(MeshExporterSettings)
-        bpy.types.Scene.mesh_exporter = PointerProperty(
-            type=MeshExporterSettings)
+        bpy.types.Scene.mesh_exporter = PointerProperty(type=MeshExporterSettings)
         # Verification
         test = bpy.types.Scene.bl_rna.properties.get("mesh_exporter")
         if test:

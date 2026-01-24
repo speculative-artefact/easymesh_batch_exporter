@@ -15,6 +15,7 @@ from typing import List, Optional
 
 # --- Addon Management Fixtures ---
 
+
 @pytest.fixture(scope="session", autouse=True)
 def enable_addon():
     """Enable the mesh exporter addon for all tests.
@@ -42,7 +43,7 @@ def enable_addon():
             break
 
     # Also check if mesh_exporter property exists (addon registered)
-    if not addon_enabled and hasattr(bpy.context.scene, 'mesh_exporter'):
+    if not addon_enabled and hasattr(bpy.context.scene, "mesh_exporter"):
         addon_enabled = True
         print("Addon detected via mesh_exporter property")
 
@@ -59,7 +60,7 @@ def enable_addon():
                 continue
 
     # Final verification - check if the mesh_exporter property is available
-    if not hasattr(bpy.context.scene, 'mesh_exporter'):
+    if not hasattr(bpy.context.scene, "mesh_exporter"):
         pytest.fail("Addon mesh_exporter properties not found. Is the addon enabled?")
 
     yield
@@ -72,6 +73,7 @@ def enable_addon():
 
 # --- Scene Management Fixtures ---
 
+
 @pytest.fixture(autouse=True)
 def clean_scene():
     """Clean the scene before each test.
@@ -80,11 +82,11 @@ def clean_scene():
     Runs automatically before every test.
     """
     # Switch to object mode
-    if bpy.context.object and bpy.context.object.mode != 'OBJECT':
-        bpy.ops.object.mode_set(mode='OBJECT')
+    if bpy.context.object and bpy.context.object.mode != "OBJECT":
+        bpy.ops.object.mode_set(mode="OBJECT")
 
     # Select and delete all objects
-    bpy.ops.object.select_all(action='SELECT')
+    bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete()
 
     # Remove all collections except the default Scene Collection
@@ -102,9 +104,9 @@ def clean_scene():
     yield
 
     # Cleanup after test (same as before)
-    if bpy.context.object and bpy.context.object.mode != 'OBJECT':
-        bpy.ops.object.mode_set(mode='OBJECT')
-    bpy.ops.object.select_all(action='SELECT')
+    if bpy.context.object and bpy.context.object.mode != "OBJECT":
+        bpy.ops.object.mode_set(mode="OBJECT")
+    bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete()
 
 
@@ -128,6 +130,7 @@ def temp_export_dir():
 
 
 # --- Test Object Creation Fixtures ---
+
 
 @pytest.fixture
 def create_cube():
@@ -183,7 +186,7 @@ def create_large_mesh():
     obj.name = "TestLargeMesh"
 
     # Add subdivision modifier to increase polygon count
-    mod = obj.modifiers.new(name="Subsurf", type='SUBSURF')
+    mod = obj.modifiers.new(name="Subsurf", type="SUBSURF")
     mod.levels = 6  # This creates ~500K+ polygons
     mod.render_levels = 6
 
@@ -205,7 +208,7 @@ def create_very_large_mesh():
     obj.name = "TestVeryLargeMesh"
 
     # Add subdivision modifier to increase polygon count significantly
-    mod = obj.modifiers.new(name="Subsurf", type='SUBSURF')
+    mod = obj.modifiers.new(name="Subsurf", type="SUBSURF")
     mod.levels = 7  # This creates ~2M+ polygons
     mod.render_levels = 7
 
@@ -213,6 +216,7 @@ def create_very_large_mesh():
 
 
 # --- Utility Functions ---
+
 
 def verify_file_exists(file_path: Path, file_format: str = None) -> bool:
     """Verify that an exported file exists.
@@ -233,9 +237,9 @@ def verify_file_exists(file_path: Path, file_format: str = None) -> bool:
     return True
 
 
-def verify_exported_files(export_dir: Path,
-                         expected_files: List[str],
-                         file_format: str) -> bool:
+def verify_exported_files(
+    export_dir: Path, expected_files: List[str], file_format: str
+) -> bool:
     """Verify that expected files were exported.
 
     Args:
@@ -277,8 +281,10 @@ def get_scene_props():
     Raises:
         AttributeError: If the addon is not properly enabled
     """
-    if not hasattr(bpy.context.scene, 'mesh_exporter'):
-        raise AttributeError("mesh_exporter properties not found. Is the addon enabled?")
+    if not hasattr(bpy.context.scene, "mesh_exporter"):
+        raise AttributeError(
+            "mesh_exporter properties not found. Is the addon enabled?"
+        )
     return bpy.context.scene.mesh_exporter
 
 
@@ -333,6 +339,7 @@ def reset_settings():
 
 # --- Collection Fixtures ---
 
+
 @pytest.fixture
 def create_collection():
     """Create a test collection with multiple objects.
@@ -359,6 +366,7 @@ def create_collection():
 
 # --- Attachment Points Fixtures ---
 
+
 @pytest.fixture
 def create_mesh_with_empty_children():
     """Create a mesh with empty children (attachment points).
@@ -380,7 +388,7 @@ def create_mesh_with_empty_children():
     ]
     for name, loc in empties_data:
         empty = bpy.data.objects.new(name, None)
-        empty.empty_display_type = 'PLAIN_AXES'
+        empty.empty_display_type = "PLAIN_AXES"
         empty.location = loc
         empty.parent = parent
         bpy.context.collection.objects.link(empty)
@@ -404,14 +412,14 @@ def create_mesh_with_mixed_empties():
 
     # Create empty children with and without prefix
     empties_data = [
-        ("attach_socket1", (0, 0, 1)),   # Prefixed
-        ("attach_socket2", (1, 0, 0)),   # Prefixed
-        ("other_empty", (0, 1, 0)),      # Not prefixed
-        ("helper_point", (-1, 0, 0)),    # Not prefixed
+        ("attach_socket1", (0, 0, 1)),  # Prefixed
+        ("attach_socket2", (1, 0, 0)),  # Prefixed
+        ("other_empty", (0, 1, 0)),  # Not prefixed
+        ("helper_point", (-1, 0, 0)),  # Not prefixed
     ]
     for name, loc in empties_data:
         empty = bpy.data.objects.new(name, None)
-        empty.empty_display_type = 'PLAIN_AXES'
+        empty.empty_display_type = "PLAIN_AXES"
         empty.location = loc
         empty.parent = parent
         bpy.context.collection.objects.link(empty)

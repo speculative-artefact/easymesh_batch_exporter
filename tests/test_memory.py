@@ -8,11 +8,7 @@ import bpy
 import pytest
 import gc
 from pathlib import Path
-from conftest import (
-    verify_file_exists,
-    get_scene_props,
-    reset_export_settings
-)
+from conftest import verify_file_exists, get_scene_props, reset_export_settings
 
 
 pytestmark = [pytest.mark.slow, pytest.mark.memory]
@@ -22,7 +18,9 @@ class TestLargeMeshHandling:
     """Tests for large mesh memory optimisation (500K+ polygons)."""
 
     @pytest.mark.slow
-    def test_large_mesh_export(self, create_large_mesh, temp_export_dir, reset_settings):
+    def test_large_mesh_export(
+        self, create_large_mesh, temp_export_dir, reset_settings
+    ):
         """Test exporting a large mesh (500K+ polygons).
 
         Should trigger basic memory optimisation.
@@ -33,14 +31,15 @@ class TestLargeMeshHandling:
 
         create_large_mesh.select_set(True)
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, "Large mesh export should succeed"
+        assert result == {"FINISHED"}, "Large mesh export should succeed"
 
         expected_file = temp_export_dir / "TestLargeMesh.fbx"
-        assert verify_file_exists(expected_file, "fbx"), \
-            "Large mesh file should exist"
+        assert verify_file_exists(expected_file, "fbx"), "Large mesh file should exist"
 
     @pytest.mark.slow
-    def test_very_large_mesh_export(self, create_very_large_mesh, temp_export_dir, reset_settings):
+    def test_very_large_mesh_export(
+        self, create_very_large_mesh, temp_export_dir, reset_settings
+    ):
         """Test exporting a very large mesh (2M+ polygons).
 
         Should trigger aggressive memory optimisation.
@@ -51,14 +50,17 @@ class TestLargeMeshHandling:
 
         create_very_large_mesh.select_set(True)
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, "Very large mesh export should succeed"
+        assert result == {"FINISHED"}, "Very large mesh export should succeed"
 
         expected_file = temp_export_dir / "TestVeryLargeMesh.fbx"
-        assert verify_file_exists(expected_file, "fbx"), \
+        assert verify_file_exists(expected_file, "fbx"), (
             "Very large mesh file should exist"
+        )
 
     @pytest.mark.slow
-    def test_large_mesh_with_triangulation(self, create_large_mesh, temp_export_dir, reset_settings):
+    def test_large_mesh_with_triangulation(
+        self, create_large_mesh, temp_export_dir, reset_settings
+    ):
         """Test large mesh export with triangulation.
 
         Triangulation on large meshes should still complete without memory errors.
@@ -71,11 +73,12 @@ class TestLargeMeshHandling:
 
         create_large_mesh.select_set(True)
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, \
-            "Large mesh with triangulation should succeed"
+        assert result == {"FINISHED"}, "Large mesh with triangulation should succeed"
 
     @pytest.mark.slow
-    def test_large_mesh_with_modifiers(self, create_large_mesh, temp_export_dir, reset_settings):
+    def test_large_mesh_with_modifiers(
+        self, create_large_mesh, temp_export_dir, reset_settings
+    ):
         """Test large mesh with modifier application.
 
         Applying modifiers to large meshes should use memory optimisation.
@@ -88,15 +91,16 @@ class TestLargeMeshHandling:
 
         create_large_mesh.select_set(True)
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, \
-            "Large mesh with modifiers should succeed"
+        assert result == {"FINISHED"}, "Large mesh with modifiers should succeed"
 
 
 class TestLargeMeshWithLOD:
     """Tests for LOD generation on large meshes."""
 
     @pytest.mark.slow
-    def test_large_mesh_lod_generation(self, create_large_mesh, temp_export_dir, reset_settings):
+    def test_large_mesh_lod_generation(
+        self, create_large_mesh, temp_export_dir, reset_settings
+    ):
         """Test LOD generation on a large mesh.
 
         Should use progressive LOD building for memory efficiency.
@@ -110,8 +114,7 @@ class TestLargeMeshWithLOD:
 
         create_large_mesh.select_set(True)
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, \
-            "Large mesh LOD generation should succeed"
+        assert result == {"FINISHED"}, "Large mesh LOD generation should succeed"
 
         # Verify LOD files were created
         base_file = temp_export_dir / "TestLargeMesh.fbx"
@@ -121,7 +124,9 @@ class TestLargeMeshWithLOD:
         assert verify_file_exists(lod1_file, "fbx"), "LOD1 file should exist"
 
     @pytest.mark.slow
-    def test_very_large_mesh_lod_generation(self, create_very_large_mesh, temp_export_dir, reset_settings):
+    def test_very_large_mesh_lod_generation(
+        self, create_very_large_mesh, temp_export_dir, reset_settings
+    ):
         """Test LOD generation on a very large mesh.
 
         Should use aggressive GC (2-3 second intervals) for memory management.
@@ -135,14 +140,15 @@ class TestLargeMeshWithLOD:
 
         create_very_large_mesh.select_set(True)
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, \
-            "Very large mesh LOD generation should succeed"
+        assert result == {"FINISHED"}, "Very large mesh LOD generation should succeed"
 
 
 class TestMemoryCleanup:
     """Tests for memory cleanup and garbage collection."""
 
-    def test_multiple_exports_memory_cleanup(self, create_sphere, temp_export_dir, reset_settings):
+    def test_multiple_exports_memory_cleanup(
+        self, create_sphere, temp_export_dir, reset_settings
+    ):
         """Test that multiple exports don't accumulate memory.
 
         Export the same mesh multiple times and verify memory is cleaned up.
@@ -158,7 +164,7 @@ class TestMemoryCleanup:
             props.mesh_export_suffix = f"_{i}"
 
             result = bpy.ops.mesh.batch_export_selected()
-            assert result == {'FINISHED'}, f"Export {i} should succeed"
+            assert result == {"FINISHED"}, f"Export {i} should succeed"
 
             # Explicit GC to verify no memory leaks
             gc.collect()
@@ -166,11 +172,14 @@ class TestMemoryCleanup:
         # Verify all files were created
         for i in range(5):
             expected_file = temp_export_dir / f"TestSphere_{i}.fbx"
-            assert verify_file_exists(expected_file, "fbx"), \
+            assert verify_file_exists(expected_file, "fbx"), (
                 f"Export {i} file should exist"
+            )
 
     @pytest.mark.slow
-    def test_large_mesh_repeated_exports(self, create_large_mesh, temp_export_dir, reset_settings):
+    def test_large_mesh_repeated_exports(
+        self, create_large_mesh, temp_export_dir, reset_settings
+    ):
         """Test repeated large mesh exports for memory leaks.
 
         Exporting the same large mesh multiple times should not leak memory.
@@ -186,8 +195,7 @@ class TestMemoryCleanup:
             props.mesh_export_suffix = f"_export{i}"
 
             result = bpy.ops.mesh.batch_export_selected()
-            assert result == {'FINISHED'}, \
-                f"Large mesh export {i} should succeed"
+            assert result == {"FINISHED"}, f"Large mesh export {i} should succeed"
 
             # Force GC between exports
             gc.collect()
@@ -215,14 +223,14 @@ class TestBatchExportMemory:
         props.mesh_export_format = "FBX"
 
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, \
+        assert result == {"FINISHED"}, (
             "Batch export of many small meshes should succeed"
+        )
 
         # Verify a reasonable number of files were created
         # (at least half, accounting for possible skips)
         fbx_files = list(temp_export_dir.glob("*.fbx"))
-        assert len(fbx_files) >= 10, \
-            "Should export majority of objects"
+        assert len(fbx_files) >= 10, "Should export majority of objects"
 
     def test_batch_gltf_combine_memory(self, temp_export_dir, reset_settings):
         """Test glTF batch combine mode with many objects.
@@ -243,20 +251,20 @@ class TestBatchExportMemory:
         props.mesh_export_gltf_batch_mode = "COMBINE"
 
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, \
-            "Batch glTF combine should succeed"
+        assert result == {"FINISHED"}, "Batch glTF combine should succeed"
 
         # Should create one combined file
         glb_files = list(temp_export_dir.glob("*.glb"))
-        assert len(glb_files) == 1, \
-            "Should create one combined GLB file"
+        assert len(glb_files) == 1, "Should create one combined GLB file"
 
 
 class TestMemoryWithDifferentFormats:
     """Tests for memory management across different export formats."""
 
     @pytest.mark.slow
-    def test_large_mesh_all_formats(self, create_large_mesh, temp_export_dir, reset_settings):
+    def test_large_mesh_all_formats(
+        self, create_large_mesh, temp_export_dir, reset_settings
+    ):
         """Test exporting large mesh in all formats.
 
         All formats should handle large meshes with memory optimisation.
@@ -271,7 +279,7 @@ class TestMemoryWithDifferentFormats:
             ("OBJ", "obj"),
             ("GLTF", "glb"),
             ("USD", "usd"),
-            ("STL", "stl")
+            ("STL", "stl"),
         ]
 
         for format_name, extension in formats:
@@ -282,12 +290,16 @@ class TestMemoryWithDifferentFormats:
             props.mesh_export_suffix = f"_{format_name.lower()}"
 
             result = bpy.ops.mesh.batch_export_selected()
-            assert result == {'FINISHED'}, \
+            assert result == {"FINISHED"}, (
                 f"Large mesh export to {format_name} should succeed"
+            )
 
             # Force GC between format exports
             gc.collect()
 
-            expected_file = temp_export_dir / f"TestLargeMesh_{format_name.lower()}.{extension}"
-            assert verify_file_exists(expected_file, extension), \
+            expected_file = (
+                temp_export_dir / f"TestLargeMesh_{format_name.lower()}.{extension}"
+            )
+            assert verify_file_exists(expected_file, extension), (
                 f"{format_name} file should exist"
+            )

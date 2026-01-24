@@ -7,11 +7,7 @@ Blender object types: meshes, curves, and metaballs.
 import bpy
 import pytest
 from pathlib import Path
-from conftest import (
-    verify_file_exists,
-    get_scene_props,
-    reset_export_settings
-)
+from conftest import verify_file_exists, get_scene_props, reset_export_settings
 
 
 class TestMeshObjects:
@@ -25,7 +21,7 @@ class TestMeshObjects:
 
         create_cube.select_set(True)
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, "Cube export should succeed"
+        assert result == {"FINISHED"}, "Cube export should succeed"
 
         expected_file = temp_export_dir / "TestCube.fbx"
         assert verify_file_exists(expected_file, "fbx"), "Cube FBX should exist"
@@ -38,7 +34,7 @@ class TestMeshObjects:
 
         create_sphere.select_set(True)
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, "Sphere export should succeed"
+        assert result == {"FINISHED"}, "Sphere export should succeed"
 
         expected_file = temp_export_dir / "TestSphere.fbx"
         assert verify_file_exists(expected_file, "fbx"), "Sphere FBX should exist"
@@ -55,7 +51,7 @@ class TestMeshObjects:
 
         obj.select_set(True)
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, "Cylinder export should succeed"
+        assert result == {"FINISHED"}, "Cylinder export should succeed"
 
         expected_file = temp_export_dir / "TestCylinder.fbx"
         assert verify_file_exists(expected_file, "fbx"), "Cylinder FBX should exist"
@@ -72,7 +68,7 @@ class TestMeshObjects:
 
         obj.select_set(True)
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, "Torus export should succeed"
+        assert result == {"FINISHED"}, "Torus export should succeed"
 
         expected_file = temp_export_dir / "TestTorus.fbx"
         assert verify_file_exists(expected_file, "fbx"), "Torus FBX should exist"
@@ -89,10 +85,12 @@ class TestCurveObjects:
 
         create_curve.select_set(True)
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, "Bezier curve export should succeed"
+        assert result == {"FINISHED"}, "Bezier curve export should succeed"
 
         expected_file = temp_export_dir / "TestCurve.fbx"
-        assert verify_file_exists(expected_file, "fbx"), "Converted curve FBX should exist"
+        assert verify_file_exists(expected_file, "fbx"), (
+            "Converted curve FBX should exist"
+        )
 
     def test_nurbs_curve_export(self, temp_export_dir, reset_settings):
         """Test exporting a NURBS curve (should convert to mesh)."""
@@ -106,10 +104,12 @@ class TestCurveObjects:
 
         obj.select_set(True)
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, "NURBS curve export should succeed"
+        assert result == {"FINISHED"}, "NURBS curve export should succeed"
 
         expected_file = temp_export_dir / "TestNURBSCurve.fbx"
-        assert verify_file_exists(expected_file, "fbx"), "Converted NURBS curve FBX should exist"
+        assert verify_file_exists(expected_file, "fbx"), (
+            "Converted NURBS curve FBX should exist"
+        )
 
     def test_curve_with_bevel(self, temp_export_dir, reset_settings):
         """Test exporting a curve with bevel depth (creates 3D geometry)."""
@@ -126,10 +126,12 @@ class TestCurveObjects:
 
         obj.select_set(True)
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, "Beveled curve export should succeed"
+        assert result == {"FINISHED"}, "Beveled curve export should succeed"
 
         expected_file = temp_export_dir / "TestBeveledCurve.fbx"
-        assert verify_file_exists(expected_file, "fbx"), "Beveled curve FBX should exist"
+        assert verify_file_exists(expected_file, "fbx"), (
+            "Beveled curve FBX should exist"
+        )
 
 
 class TestMetaballObjects:
@@ -137,7 +139,7 @@ class TestMetaballObjects:
 
     def test_single_metaball_export(self, temp_export_dir, reset_settings):
         """Test exporting a single metaball (should convert to mesh)."""
-        bpy.ops.object.metaball_add(type='BALL', location=(0, 0, 0))
+        bpy.ops.object.metaball_add(type="BALL", location=(0, 0, 0))
         obj = bpy.context.active_object
         obj.name = "TestMetaBall"
 
@@ -147,14 +149,16 @@ class TestMetaballObjects:
 
         obj.select_set(True)
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, "Metaball export should succeed"
+        assert result == {"FINISHED"}, "Metaball export should succeed"
 
         expected_file = temp_export_dir / "TestMetaBall.fbx"
-        assert verify_file_exists(expected_file, "fbx"), "Converted metaball FBX should exist"
+        assert verify_file_exists(expected_file, "fbx"), (
+            "Converted metaball FBX should exist"
+        )
 
     def test_metaball_capsule_export(self, temp_export_dir, reset_settings):
         """Test exporting a capsule metaball."""
-        bpy.ops.object.metaball_add(type='CAPSULE', location=(0, 0, 0))
+        bpy.ops.object.metaball_add(type="CAPSULE", location=(0, 0, 0))
         obj = bpy.context.active_object
         obj.name = "TestMetaCapsule"
 
@@ -164,10 +168,12 @@ class TestMetaballObjects:
 
         obj.select_set(True)
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, "Metaball capsule export should succeed"
+        assert result == {"FINISHED"}, "Metaball capsule export should succeed"
 
         expected_file = temp_export_dir / "TestMetaCapsule.fbx"
-        assert verify_file_exists(expected_file, "fbx"), "Metaball capsule FBX should exist"
+        assert verify_file_exists(expected_file, "fbx"), (
+            "Metaball capsule FBX should exist"
+        )
 
     def test_metaball_with_smoothing(self, temp_export_dir, reset_settings):
         """Test that metaballs get proper smooth shading applied.
@@ -175,7 +181,7 @@ class TestMetaballObjects:
         Metaballs are inherently smooth objects and should receive
         proper smoothing during export.
         """
-        bpy.ops.object.metaball_add(type='BALL', location=(0, 0, 0))
+        bpy.ops.object.metaball_add(type="BALL", location=(0, 0, 0))
         obj = bpy.context.active_object
         obj.name = "TestSmoothMetaBall"
 
@@ -186,16 +192,20 @@ class TestMetaballObjects:
 
         obj.select_set(True)
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, "Smooth metaball export should succeed"
+        assert result == {"FINISHED"}, "Smooth metaball export should succeed"
 
         expected_file = temp_export_dir / "TestSmoothMetaBall.fbx"
-        assert verify_file_exists(expected_file, "fbx"), "Smooth metaball FBX should exist"
+        assert verify_file_exists(expected_file, "fbx"), (
+            "Smooth metaball FBX should exist"
+        )
 
 
 class TestMixedObjectTypes:
     """Tests for exporting mixed object type selections."""
 
-    def test_mesh_and_curve_export(self, create_cube, create_curve, temp_export_dir, reset_settings):
+    def test_mesh_and_curve_export(
+        self, create_cube, create_curve, temp_export_dir, reset_settings
+    ):
         """Test exporting both meshes and curves together."""
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
@@ -206,7 +216,7 @@ class TestMixedObjectTypes:
         create_curve.select_set(True)
 
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, "Mixed mesh/curve export should succeed"
+        assert result == {"FINISHED"}, "Mixed mesh/curve export should succeed"
 
         # Verify both were exported
         cube_file = temp_export_dir / "TestCube.fbx"
@@ -214,10 +224,12 @@ class TestMixedObjectTypes:
         assert verify_file_exists(cube_file, "fbx"), "Cube FBX should exist"
         assert verify_file_exists(curve_file, "fbx"), "Curve FBX should exist"
 
-    def test_all_object_types_export(self, create_cube, create_curve, temp_export_dir, reset_settings):
+    def test_all_object_types_export(
+        self, create_cube, create_curve, temp_export_dir, reset_settings
+    ):
         """Test exporting meshes, curves, and metaballs together."""
         # Add a metaball
-        bpy.ops.object.metaball_add(type='BALL', location=(3, 0, 0))
+        bpy.ops.object.metaball_add(type="BALL", location=(3, 0, 0))
         metaball = bpy.context.active_object
         metaball.name = "TestMetaBall"
 
@@ -231,7 +243,7 @@ class TestMixedObjectTypes:
         metaball.select_set(True)
 
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, "Mixed object types export should succeed"
+        assert result == {"FINISHED"}, "Mixed object types export should succeed"
 
         # Verify all were exported
         cube_file = temp_export_dir / "TestCube.fbx"
@@ -258,7 +270,7 @@ class TestObjectTransforms:
 
         create_cube.select_set(True)
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, "Export with zero location should succeed"
+        assert result == {"FINISHED"}, "Export with zero location should succeed"
 
         expected_file = temp_export_dir / "TestCube.fbx"
         assert verify_file_exists(expected_file, "fbx"), "Zeroed cube FBX should exist"
@@ -275,16 +287,23 @@ class TestObjectTransforms:
 
         create_cube.select_set(True)
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, "Export without zero location should succeed"
+        assert result == {"FINISHED"}, "Export without zero location should succeed"
 
         expected_file = temp_export_dir / "TestCube.fbx"
-        assert verify_file_exists(expected_file, "fbx"), "Non-zeroed cube FBX should exist"
+        assert verify_file_exists(expected_file, "fbx"), (
+            "Non-zeroed cube FBX should exist"
+        )
 
     def test_rotated_object_export(self, create_cube, temp_export_dir, reset_settings):
         """Test exporting a rotated object."""
         import math
+
         # Rotate the cube
-        create_cube.rotation_euler = (math.radians(45), math.radians(30), math.radians(60))
+        create_cube.rotation_euler = (
+            math.radians(45),
+            math.radians(30),
+            math.radians(60),
+        )
 
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
@@ -292,7 +311,7 @@ class TestObjectTransforms:
 
         create_cube.select_set(True)
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, "Rotated object export should succeed"
+        assert result == {"FINISHED"}, "Rotated object export should succeed"
 
         expected_file = temp_export_dir / "TestCube.fbx"
         assert verify_file_exists(expected_file, "fbx"), "Rotated cube FBX should exist"
@@ -308,7 +327,7 @@ class TestObjectTransforms:
 
         create_cube.select_set(True)
         result = bpy.ops.mesh.batch_export_selected()
-        assert result == {'FINISHED'}, "Scaled object export should succeed"
+        assert result == {"FINISHED"}, "Scaled object export should succeed"
 
         expected_file = temp_export_dir / "TestCube.fbx"
         assert verify_file_exists(expected_file, "fbx"), "Scaled cube FBX should exist"

@@ -12,7 +12,7 @@ from conftest import (
     verify_file_exists,
     count_exported_files,
     get_scene_props,
-    reset_export_settings
+    reset_export_settings,
 )
 
 
@@ -33,7 +33,7 @@ class TestAttachmentEmptiesBasic:
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "FBX export with empties should succeed"
+        assert result == {"FINISHED"}, "FBX export with empties should succeed"
 
         # Verify file was created
         expected_file = temp_export_dir / "TestParent.fbx"
@@ -55,7 +55,7 @@ class TestAttachmentEmptiesBasic:
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "glTF export with empties should succeed"
+        assert result == {"FINISHED"}, "glTF export with empties should succeed"
 
         # Verify file was created
         expected_file = temp_export_dir / "TestParent.glb"
@@ -74,7 +74,7 @@ class TestAttachmentEmptiesBasic:
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "Export without empties should succeed"
+        assert result == {"FINISHED"}, "Export without empties should succeed"
 
         # Verify file was created (empties excluded but mesh exported)
         expected_file = temp_export_dir / "TestParent.fbx"
@@ -100,7 +100,7 @@ class TestAttachmentEmptiesBasic:
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "Export with zero location should succeed"
+        assert result == {"FINISHED"}, "Export with zero location should succeed"
 
         expected_file = temp_export_dir / "TestParent.fbx"
         assert verify_file_exists(expected_file, "fbx"), "FBX file should exist"
@@ -123,7 +123,7 @@ class TestEmptyFilter:
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "Export with ALL filter should succeed"
+        assert result == {"FINISHED"}, "Export with ALL filter should succeed"
 
         expected_file = temp_export_dir / "TestParentMixed.fbx"
         assert verify_file_exists(expected_file, "fbx"), "FBX file should exist"
@@ -143,14 +143,12 @@ class TestEmptyFilter:
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "Export with PREFIXED filter should succeed"
+        assert result == {"FINISHED"}, "Export with PREFIXED filter should succeed"
 
         expected_file = temp_export_dir / "TestParentMixed.fbx"
         assert verify_file_exists(expected_file, "fbx"), "FBX file should exist"
 
-    def test_custom_prefix(
-        self, temp_export_dir, reset_settings
-    ):
+    def test_custom_prefix(self, temp_export_dir, reset_settings):
         """Test that custom prefix filtering works correctly."""
         # Create mesh with custom prefixed empties
         bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0))
@@ -161,11 +159,11 @@ class TestEmptyFilter:
         empties_data = [
             ("socket_weapon", (0, 0, 1)),  # Custom prefix
             ("socket_shield", (1, 0, 0)),  # Custom prefix
-            ("attach_other", (0, 1, 0)),   # Wrong prefix
+            ("attach_other", (0, 1, 0)),  # Wrong prefix
         ]
         for name, loc in empties_data:
             empty = bpy.data.objects.new(name, None)
-            empty.empty_display_type = 'PLAIN_AXES'
+            empty.empty_display_type = "PLAIN_AXES"
             empty.location = loc
             empty.parent = parent
             bpy.context.collection.objects.link(empty)
@@ -180,7 +178,7 @@ class TestEmptyFilter:
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "Export with custom prefix should succeed"
+        assert result == {"FINISHED"}, "Export with custom prefix should succeed"
 
         expected_file = temp_export_dir / "CustomPrefixTest.fbx"
         assert verify_file_exists(expected_file, "fbx"), "FBX file should exist"
@@ -204,7 +202,7 @@ class TestSlotEmpties:
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "Export with slot empties should succeed"
+        assert result == {"FINISHED"}, "Export with slot empties should succeed"
 
         expected_file = temp_export_dir / "TestParentWithMeshChildren.fbx"
         assert verify_file_exists(expected_file, "fbx"), "FBX file should exist"
@@ -225,12 +223,15 @@ class TestSlotEmpties:
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "Export with slot naming convention should succeed"
+        assert result == {"FINISHED"}, (
+            "Export with slot naming convention should succeed"
+        )
 
         # File should use Godot naming convention
         expected_file = temp_export_dir / "test_parent_with_mesh_children.fbx"
-        assert verify_file_exists(expected_file, "fbx"), \
+        assert verify_file_exists(expected_file, "fbx"), (
             "FBX file should use Godot naming convention"
+        )
 
     def test_slot_empties_disabled_by_default(
         self, create_mesh_with_mesh_children, temp_export_dir, reset_settings
@@ -246,7 +247,7 @@ class TestSlotEmpties:
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "Export without slot empties should succeed"
+        assert result == {"FINISHED"}, "Export without slot empties should succeed"
 
         expected_file = temp_export_dir / "TestParentWithMeshChildren.fbx"
         assert verify_file_exists(expected_file, "fbx"), "FBX file should exist"
@@ -266,7 +267,7 @@ class TestSlotEmpties:
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "Export with custom slot prefix should succeed"
+        assert result == {"FINISHED"}, "Export with custom slot prefix should succeed"
 
         expected_file = temp_export_dir / "TestParentWithMeshChildren.fbx"
         assert verify_file_exists(expected_file, "fbx"), "FBX file should exist"
@@ -292,11 +293,15 @@ class TestEmptiesWithLOD:
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "LOD hierarchy export with empties should succeed"
+        assert result == {"FINISHED"}, (
+            "LOD hierarchy export with empties should succeed"
+        )
 
         # Should create LOD group file
         expected_file = temp_export_dir / "TestParent_LODGroup.fbx"
-        assert verify_file_exists(expected_file, "fbx"), "LOD group FBX file should exist"
+        assert verify_file_exists(expected_file, "fbx"), (
+            "LOD group FBX file should exist"
+        )
 
     def test_slots_with_lod_hierarchy(
         self, create_mesh_with_mesh_children, temp_export_dir, reset_settings
@@ -316,10 +321,12 @@ class TestEmptiesWithLOD:
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "LOD hierarchy export with slots should succeed"
+        assert result == {"FINISHED"}, "LOD hierarchy export with slots should succeed"
 
         expected_file = temp_export_dir / "TestParentWithMeshChildren_LODGroup.fbx"
-        assert verify_file_exists(expected_file, "fbx"), "LOD group FBX file should exist"
+        assert verify_file_exists(expected_file, "fbx"), (
+            "LOD group FBX file should exist"
+        )
 
     def test_empties_with_lod_individual_files(
         self, create_mesh_with_empty_children, temp_export_dir, reset_settings
@@ -338,7 +345,9 @@ class TestEmptiesWithLOD:
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "Individual LOD export with empties should succeed"
+        assert result == {"FINISHED"}, (
+            "Individual LOD export with empties should succeed"
+        )
 
         # Should create base + LOD files
         fbx_count = count_exported_files(temp_export_dir, "fbx")
@@ -348,9 +357,7 @@ class TestEmptiesWithLOD:
 class TestEmptiesWithBatchMode:
     """Tests for empties with glTF batch mode."""
 
-    def test_empties_in_gltf_batch_combine(
-        self, temp_export_dir, reset_settings
-    ):
+    def test_empties_in_gltf_batch_combine(self, temp_export_dir, reset_settings):
         """Test that empties are included per-object in batch combine mode."""
         # Create two meshes with empties
         bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0))
@@ -358,7 +365,7 @@ class TestEmptiesWithBatchMode:
         mesh1.name = "BatchMesh1"
 
         empty1 = bpy.data.objects.new("attach_point1", None)
-        empty1.empty_display_type = 'PLAIN_AXES'
+        empty1.empty_display_type = "PLAIN_AXES"
         empty1.location = (0, 0, 1)
         empty1.parent = mesh1
         bpy.context.collection.objects.link(empty1)
@@ -368,7 +375,7 @@ class TestEmptiesWithBatchMode:
         mesh2.name = "BatchMesh2"
 
         empty2 = bpy.data.objects.new("attach_point2", None)
-        empty2.empty_display_type = 'PLAIN_AXES'
+        empty2.empty_display_type = "PLAIN_AXES"
         empty2.location = (3, 0, 1)
         empty2.parent = mesh2
         bpy.context.collection.objects.link(empty2)
@@ -382,22 +389,20 @@ class TestEmptiesWithBatchMode:
         props.mesh_export_empty_filter = "ALL"
 
         # Deselect all then select the meshes
-        bpy.ops.object.select_all(action='DESELECT')
+        bpy.ops.object.select_all(action="DESELECT")
         mesh1.select_set(True)
         mesh2.select_set(True)
         bpy.context.view_layer.objects.active = mesh1
 
         # Batch COMBINE mode requires batch_name parameter
         result = bpy.ops.mesh.batch_export(batch_name="CombinedBatchTest")
-        assert result == {'FINISHED'}, "Batch combine with empties should succeed"
+        assert result == {"FINISHED"}, "Batch combine with empties should succeed"
 
         # Should create single combined file
         glb_count = count_exported_files(temp_export_dir, "glb")
         assert glb_count == 1, "Should create one combined GLB file"
 
-    def test_empties_in_gltf_batch_individual(
-        self, temp_export_dir, reset_settings
-    ):
+    def test_empties_in_gltf_batch_individual(self, temp_export_dir, reset_settings):
         """Test that empties are included with individual batch mode."""
         # Create two meshes with empties
         bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0))
@@ -405,7 +410,7 @@ class TestEmptiesWithBatchMode:
         mesh1.name = "IndividualMesh1"
 
         empty1 = bpy.data.objects.new("attach_ind1", None)
-        empty1.empty_display_type = 'PLAIN_AXES'
+        empty1.empty_display_type = "PLAIN_AXES"
         empty1.location = (0, 0, 1)
         empty1.parent = mesh1
         bpy.context.collection.objects.link(empty1)
@@ -415,7 +420,7 @@ class TestEmptiesWithBatchMode:
         mesh2.name = "IndividualMesh2"
 
         empty2 = bpy.data.objects.new("attach_ind2", None)
-        empty2.empty_display_type = 'PLAIN_AXES'
+        empty2.empty_display_type = "PLAIN_AXES"
         empty2.location = (3, 0, 1)
         empty2.parent = mesh2
         bpy.context.collection.objects.link(empty2)
@@ -429,20 +434,18 @@ class TestEmptiesWithBatchMode:
         props.mesh_export_empty_filter = "ALL"
 
         # Deselect all then select the meshes
-        bpy.ops.object.select_all(action='DESELECT')
+        bpy.ops.object.select_all(action="DESELECT")
         mesh1.select_set(True)
         mesh2.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "Batch individual with empties should succeed"
+        assert result == {"FINISHED"}, "Batch individual with empties should succeed"
 
         # Should create individual files
         glb_count = count_exported_files(temp_export_dir, "glb")
         assert glb_count == 2, "Should create individual GLB files"
 
-    def test_slots_in_gltf_batch_combine(
-        self, temp_export_dir, reset_settings
-    ):
+    def test_slots_in_gltf_batch_combine(self, temp_export_dir, reset_settings):
         """Test that slot empties work per-object in batch combine mode."""
         # Create parent mesh with mesh children
         bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0))
@@ -464,12 +467,12 @@ class TestEmptiesWithBatchMode:
         props.mesh_export_slot_prefix = "slot_"
 
         # Deselect all then select the parent mesh
-        bpy.ops.object.select_all(action='DESELECT')
+        bpy.ops.object.select_all(action="DESELECT")
         parent.select_set(True)
         bpy.context.view_layer.objects.active = parent
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "Batch combine with slots should succeed"
+        assert result == {"FINISHED"}, "Batch combine with slots should succeed"
 
         glb_count = count_exported_files(temp_export_dir, "glb")
         assert glb_count == 1, "Should create one combined GLB file"
@@ -484,11 +487,11 @@ class TestEmptiesFormatSupport:
         props.mesh_export_format = "FBX"
 
         # Verify properties are accessible
-        assert hasattr(props, 'mesh_export_include_empties')
-        assert hasattr(props, 'mesh_export_empty_filter')
-        assert hasattr(props, 'mesh_export_empty_prefix')
-        assert hasattr(props, 'mesh_export_create_slots')
-        assert hasattr(props, 'mesh_export_slot_prefix')
+        assert hasattr(props, "mesh_export_include_empties")
+        assert hasattr(props, "mesh_export_empty_filter")
+        assert hasattr(props, "mesh_export_empty_prefix")
+        assert hasattr(props, "mesh_export_create_slots")
+        assert hasattr(props, "mesh_export_slot_prefix")
 
         # Set values to verify they work
         props.mesh_export_include_empties = True
@@ -531,7 +534,7 @@ class TestEmptiesFormatSupport:
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "OBJ export should succeed (empties ignored)"
+        assert result == {"FINISHED"}, "OBJ export should succeed (empties ignored)"
 
         expected_file = temp_export_dir / "TestParent.obj"
         assert verify_file_exists(expected_file, "obj"), "OBJ file should exist"
@@ -553,7 +556,7 @@ class TestEmptiesFormatSupport:
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "STL export should succeed (empties ignored)"
+        assert result == {"FINISHED"}, "STL export should succeed (empties ignored)"
 
         expected_file = temp_export_dir / "TestParent.stl"
         assert verify_file_exists(expected_file, "stl"), "STL file should exist"
@@ -575,7 +578,7 @@ class TestEmptiesEdgeCases:
         create_cube.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "Export without empty children should succeed"
+        assert result == {"FINISHED"}, "Export without empty children should succeed"
 
         expected_file = temp_export_dir / "TestCube.fbx"
         assert verify_file_exists(expected_file, "fbx"), "FBX file should exist"
@@ -595,14 +598,12 @@ class TestEmptiesEdgeCases:
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "Export with no matching empties should succeed"
+        assert result == {"FINISHED"}, "Export with no matching empties should succeed"
 
         expected_file = temp_export_dir / "TestParent.fbx"
         assert verify_file_exists(expected_file, "fbx"), "FBX file should exist"
 
-    def test_deeply_nested_empties(
-        self, temp_export_dir, reset_settings
-    ):
+    def test_deeply_nested_empties(self, temp_export_dir, reset_settings):
         """Test that only direct empty children are exported, not nested ones."""
         bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0))
         parent = bpy.context.active_object
@@ -610,14 +611,14 @@ class TestEmptiesEdgeCases:
 
         # Direct empty child
         direct_empty = bpy.data.objects.new("attach_direct", None)
-        direct_empty.empty_display_type = 'PLAIN_AXES'
+        direct_empty.empty_display_type = "PLAIN_AXES"
         direct_empty.location = (0, 0, 1)
         direct_empty.parent = parent
         bpy.context.collection.objects.link(direct_empty)
 
         # Nested empty (child of empty)
         nested_empty = bpy.data.objects.new("attach_nested", None)
-        nested_empty.empty_display_type = 'PLAIN_AXES'
+        nested_empty.empty_display_type = "PLAIN_AXES"
         nested_empty.location = (0, 0, 2)
         nested_empty.parent = direct_empty
         bpy.context.collection.objects.link(nested_empty)
@@ -631,7 +632,7 @@ class TestEmptiesEdgeCases:
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "Export with nested empties should succeed"
+        assert result == {"FINISHED"}, "Export with nested empties should succeed"
 
         expected_file = temp_export_dir / "NestedTestParent.fbx"
         assert verify_file_exists(expected_file, "fbx"), "FBX file should exist"
@@ -650,14 +651,14 @@ class TestEmptiesEdgeCases:
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "Export should succeed with no mesh children for slots"
+        assert result == {"FINISHED"}, (
+            "Export should succeed with no mesh children for slots"
+        )
 
         expected_file = temp_export_dir / "TestParent.fbx"
         assert verify_file_exists(expected_file, "fbx"), "FBX file should exist"
 
-    def test_combined_empties_and_slots(
-        self, temp_export_dir, reset_settings
-    ):
+    def test_combined_empties_and_slots(self, temp_export_dir, reset_settings):
         """Test export with both attachment empties and slot empties."""
         bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0))
         parent = bpy.context.active_object
@@ -665,7 +666,7 @@ class TestEmptiesEdgeCases:
 
         # Add attachment empty
         attach_empty = bpy.data.objects.new("attach_weapon", None)
-        attach_empty.empty_display_type = 'PLAIN_AXES'
+        attach_empty.empty_display_type = "PLAIN_AXES"
         attach_empty.location = (0, 0, 1)
         attach_empty.parent = parent
         bpy.context.collection.objects.link(attach_empty)
@@ -687,7 +688,7 @@ class TestEmptiesEdgeCases:
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {'FINISHED'}, "Export with empties and slots should succeed"
+        assert result == {"FINISHED"}, "Export with empties and slots should succeed"
 
         expected_file = temp_export_dir / "CombinedTest.fbx"
         assert verify_file_exists(expected_file, "fbx"), "FBX file should exist"

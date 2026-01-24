@@ -21,35 +21,27 @@ BUILTIN_PRESETS = {
             "mesh_export_gltf_type": "GLB",
             "mesh_export_gltf_materials": "EXPORT",
             "mesh_export_use_draco_compression": False,
-
             # Coordinate system (Godot uses Y-up, Z-forward)
             "mesh_export_coord_up": "Y",
             "mesh_export_coord_forward": "Z",
-
             # Scale and units
             "mesh_export_scale": 1.0,
             "mesh_export_units": "METERS",
-
             # Transform
             "mesh_export_zero_location": True,
             "mesh_export_smoothing": "FACE",
-
             # Triangulation
             "mesh_export_tri": True,
             "mesh_export_tri_method": "BEAUTY",
             "mesh_export_keep_normals": True,
-
             # Modifiers
             "mesh_export_apply_modifiers": "VISIBLE",
-
             # Naming (Godot uses snake_case)
             "mesh_export_prefix": "",
             "mesh_export_suffix": "",
             "mesh_export_naming_convention": "GODOT",
-
             # Export indicators
             "mesh_export_show_indicators": True,
-
             # LOD settings
             "mesh_export_lod": False,
             "mesh_export_lod_count": 4,
@@ -57,7 +49,6 @@ BUILTIN_PRESETS = {
             "mesh_export_lod_symmetry_axis": "X",
             "mesh_export_lod_type": "COLLAPSE",
             "mesh_export_lod_hierarchy": True,
-
             # Texture settings
             "mesh_export_resize_textures": True,
             "mesh_export_texture_quality": 85,
@@ -67,15 +58,13 @@ BUILTIN_PRESETS = {
             "mesh_export_lod4_texture_size": "256",
             "mesh_export_preserve_normal_maps": True,
             "mesh_export_embed_textures": True,
-
             # LOD ratios
             "mesh_export_lod_ratio_01": 0.75,
             "mesh_export_lod_ratio_02": 0.50,
             "mesh_export_lod_ratio_03": 0.25,
             "mesh_export_lod_ratio_04": 0.10,
-        }
+        },
     },
-
     "Unity": {
         "metadata": {
             "description": "Optimised for Unity (Y-up, -Z-forward, meters, Capitalised_Words)",
@@ -88,35 +77,27 @@ BUILTIN_PRESETS = {
             "mesh_export_gltf_type": "GLB",
             "mesh_export_gltf_materials": "EXPORT",
             "mesh_export_use_draco_compression": False,
-
             # Coordinate system (Unity uses Y-up, -Z-forward)
             "mesh_export_coord_up": "Y",
             "mesh_export_coord_forward": "-Z",
-
             # Scale and units
             "mesh_export_scale": 1.0,
             "mesh_export_units": "METERS",
-
             # Transform
             "mesh_export_zero_location": True,
             "mesh_export_smoothing": "FACE",
-
             # Triangulation
             "mesh_export_tri": True,
             "mesh_export_tri_method": "BEAUTY",
             "mesh_export_keep_normals": True,
-
             # Modifiers
             "mesh_export_apply_modifiers": "VISIBLE",
-
             # Naming (Unity uses Capitalised_Words)
             "mesh_export_prefix": "",
             "mesh_export_suffix": "",
             "mesh_export_naming_convention": "UNITY",
-
             # Export indicators
             "mesh_export_show_indicators": True,
-
             # LOD settings
             "mesh_export_lod": False,
             "mesh_export_lod_count": 4,
@@ -124,7 +105,6 @@ BUILTIN_PRESETS = {
             "mesh_export_lod_symmetry_axis": "X",
             "mesh_export_lod_type": "COLLAPSE",
             "mesh_export_lod_hierarchy": True,
-
             # Texture settings
             "mesh_export_resize_textures": True,
             "mesh_export_texture_quality": 85,
@@ -134,15 +114,13 @@ BUILTIN_PRESETS = {
             "mesh_export_lod4_texture_size": "256",
             "mesh_export_preserve_normal_maps": True,
             "mesh_export_embed_textures": True,
-
             # LOD ratios
             "mesh_export_lod_ratio_01": 0.75,
             "mesh_export_lod_ratio_02": 0.50,
             "mesh_export_lod_ratio_03": 0.25,
             "mesh_export_lod_ratio_04": 0.10,
-        }
+        },
     },
-
     "Unreal": {
         "metadata": {
             "description": "Optimised for Unreal Engine (Z-up, X-forward, centimeters, PascalCase)",
@@ -155,35 +133,27 @@ BUILTIN_PRESETS = {
             "mesh_export_gltf_type": "GLB",
             "mesh_export_gltf_materials": "EXPORT",
             "mesh_export_use_draco_compression": False,
-
             # Coordinate system (Unreal uses Z-up, X-forward)
             "mesh_export_coord_up": "Z",
             "mesh_export_coord_forward": "X",
-
             # Scale and units (Unreal uses centimeters)
             "mesh_export_scale": 1.0,
             "mesh_export_units": "CENTIMETERS",
-
             # Transform
             "mesh_export_zero_location": True,
             "mesh_export_smoothing": "FACE",
-
             # Triangulation
             "mesh_export_tri": True,
             "mesh_export_tri_method": "BEAUTY",
             "mesh_export_keep_normals": True,
-
             # Modifiers
             "mesh_export_apply_modifiers": "VISIBLE",
-
             # Naming (Unreal uses PascalCase)
             "mesh_export_prefix": "",
             "mesh_export_suffix": "",
             "mesh_export_naming_convention": "UNREAL",
-
             # Export indicators
             "mesh_export_show_indicators": True,
-
             # LOD settings
             "mesh_export_lod": False,
             "mesh_export_lod_count": 4,
@@ -191,7 +161,6 @@ BUILTIN_PRESETS = {
             "mesh_export_lod_symmetry_axis": "X",
             "mesh_export_lod_type": "COLLAPSE",
             "mesh_export_lod_hierarchy": True,
-
             # Texture settings
             "mesh_export_resize_textures": True,
             "mesh_export_texture_quality": 85,
@@ -201,13 +170,12 @@ BUILTIN_PRESETS = {
             "mesh_export_lod4_texture_size": "256",
             "mesh_export_preserve_normal_maps": True,
             "mesh_export_embed_textures": True,
-
             # LOD ratios
             "mesh_export_lod_ratio_01": 0.75,
             "mesh_export_lod_ratio_02": 0.50,
             "mesh_export_lod_ratio_03": 0.25,
             "mesh_export_lod_ratio_04": 0.10,
-        }
+        },
     },
 }
 
@@ -277,8 +245,8 @@ def get_builtin_preset_icon(preset_name: str) -> str:
         'COMMUNITY'
     """
     if preset_name in BUILTIN_PRESETS:
-        return BUILTIN_PRESETS[preset_name]['metadata']['icon']
-    return 'FILE_3D'  # Default icon for unknown presets
+        return BUILTIN_PRESETS[preset_name]["metadata"]["icon"]
+    return "FILE_3D"  # Default icon for unknown presets
 
 
 def get_builtin_preset_description(preset_name: str) -> str:
@@ -295,5 +263,5 @@ def get_builtin_preset_description(preset_name: str) -> str:
         'Optimised for Unity (Y-up, -Z-forward, meters, Capitalised_Words)'
     """
     if preset_name in BUILTIN_PRESETS:
-        return BUILTIN_PRESETS[preset_name]['metadata']['description']
+        return BUILTIN_PRESETS[preset_name]["metadata"]["description"]
     return ""

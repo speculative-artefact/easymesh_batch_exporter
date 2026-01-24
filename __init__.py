@@ -18,7 +18,7 @@ import logging
 from . import properties
 from . import operators
 from . import panels
-from . import export_indicators # Still needed for timer and recent list
+from . import export_indicators  # Still needed for timer and recent list
 
 # --- Setup Logger ---
 logger = logging.getLogger(__name__)
