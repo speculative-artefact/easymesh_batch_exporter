@@ -1,0 +1,9 @@
+# Testing dependencies for EasyMesh Batch Exporter
+# Install into Blender's Python using:
+#   blender_python="$(pytest-blender)"
+#   $blender_python -m ensurepip
+#   $blender_python -m pip install -r test-requirements.txt
+
+pytest>=6.0.0
+pytest-blender>=0.3.0
+pytest-cov>=3.0.0

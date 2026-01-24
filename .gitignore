@@ -185,3 +185,11 @@ NOTE.md
 
 # release notes
 releases/*
+
+# Test outputs and temporary files
+tests/fixtures/*.blend
+tests/fixtures/*.blend1
+exported_meshes/
+**/exported_meshes/
+test_exports/
+**/test_exports/
