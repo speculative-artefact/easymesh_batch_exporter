@@ -372,6 +372,155 @@ def optimise_for_large_mesh(obj: Optional[Object]) -> bool:
     return False
 
 
+# --- Attachment Points & Slot Empties Functions ---
+
+def get_attachment_empties(obj: Object, scene_props) -> List[Object]:
+    """
+    Get empty children of an object that should be included as attachment points.
+
+    Args:
+        obj: The parent object to get empty children from
+        scene_props: Scene properties containing filter settings
+
+    Returns:
+        List of empty objects matching the filter criteria
+
+    Examples:
+        >>> empties = get_attachment_empties(mesh_obj, scene_props)
+        >>> # Returns all empties if filter is "ALL"
+        >>> # Returns only "attach_*" empties if filter is "PREFIXED"
+    """
+    if not obj or not scene_props.mesh_export_include_empties:
+        return []
+
+    empties = []
+    for child in obj.children:
+        if child.type != "EMPTY":
+            continue
+
+        # Apply filter
+        if scene_props.mesh_export_empty_filter == "ALL":
+            empties.append(child)
+        elif scene_props.mesh_export_empty_filter == "PREFIXED":
+            prefix = scene_props.mesh_export_empty_prefix
+            if child.name.startswith(prefix):
+                empties.append(child)
+
+    if empties:
+        logger.info(f"Found {len(empties)} attachment empties for {obj.name}")
+
+    return empties
+
+
+def create_slot_empties(obj: Object, scene_props, context: Context) -> List[Object]:
+    """
+    Create slot empties at the position of each mesh child object.
+
+    These empties mark where child meshes attach to the parent, useful for
+    game engines that need to know attachment positions without including
+    the child meshes in the export.
+
+    Args:
+        obj: The parent object to create slot empties for
+        scene_props: Scene properties containing slot settings
+        context: Blender context
+
+    Returns:
+        List of newly created slot empty objects
+
+    Examples:
+        >>> slots = create_slot_empties(parent_mesh, scene_props, context)
+        >>> # Creates slot_ChildMesh empty at ChildMesh's position
+    """
+    if not obj or not scene_props.mesh_export_create_slots:
+        return []
+
+    slot_empties = []
+    slot_prefix = scene_props.mesh_export_slot_prefix
+    convention = scene_props.mesh_export_naming_convention
+
+    for child in obj.children:
+        # Only create slots for mesh children (not empties or other types)
+        if child.type not in ("MESH", "CURVE", "META"):
+            continue
+
+        # Apply naming convention to child name for the slot
+        child_name_converted = apply_naming_convention(child.name, convention)
+        slot_name = f"{slot_prefix}{child_name_converted}"
+
+        # Create empty at child's location
+        empty = bpy.data.objects.new(slot_name, None)
+        empty.empty_display_type = 'PLAIN_AXES'
+        empty.empty_display_size = 0.5
+
+        # Link to collection
+        context.collection.objects.link(empty)
+
+        # Copy the child's world transform relative to parent
+        # This preserves the local offset from parent
+        empty.matrix_world = child.matrix_world.copy()
+
+        slot_empties.append(empty)
+        logger.info(f"Created slot empty: {slot_name}")
+
+    if slot_empties:
+        logger.info(f"Created {len(slot_empties)} slot empties for {obj.name}")
+
+    return slot_empties
+
+
+def copy_empty_for_export(empty_obj: Object, parent_obj: Optional[Object],
+                          context: Context, convention: str = "DEFAULT") -> Object:
+    """
+    Create a copy of an empty object for export with optional parent relationship.
+
+    The copy preserves the local transform relative to the parent.
+
+    Args:
+        empty_obj: The empty object to copy
+        parent_obj: The parent object to set (or None for no parent)
+        context: Blender context
+        convention: Naming convention to apply to the empty name
+
+    Returns:
+        The newly created empty copy
+
+    Examples:
+        >>> empty_copy = copy_empty_for_export(attach_point, export_mesh, context, "GODOT")
+        >>> # Creates "attach_point" copy parented to export_mesh
+    """
+    # Apply naming convention to empty name
+    new_name = apply_naming_convention(empty_obj.name, convention)
+
+    # Create new empty with same display settings
+    empty_copy = bpy.data.objects.new(new_name, None)
+    empty_copy.empty_display_type = empty_obj.empty_display_type
+    empty_copy.empty_display_size = empty_obj.empty_display_size
+
+    # Link to collection
+    context.collection.objects.link(empty_copy)
+
+    # Set parent and preserve local transform
+    if parent_obj:
+        # Store the world matrix before parenting
+        world_matrix = empty_obj.matrix_world.copy()
+
+        # Set parent
+        empty_copy.parent = parent_obj
+
+        # Calculate local matrix relative to new parent
+        # local = parent_world_inverse @ child_world
+        parent_matrix_inv = parent_obj.matrix_world.inverted()
+        empty_copy.matrix_local = parent_matrix_inv @ world_matrix
+    else:
+        # No parent - just copy world transform
+        empty_copy.matrix_world = empty_obj.matrix_world.copy()
+
+    logger.debug(f"Created empty copy: {new_name} (parent: {parent_obj.name if parent_obj else 'None'})")
+
+    return empty_copy
+
+
 @contextlib.contextmanager
 def safe_large_mesh_operation(obj, operation_name):
     """
@@ -2150,7 +2299,8 @@ def restore_material_references(original_references):
             logger.warning(f"Error restoring material reference: {e}")
 
 
-def export_object(obj, file_path, scene_props, export_scale=1.0, use_existing_selection=False):
+def export_object(obj, file_path, scene_props, export_scale=1.0, use_existing_selection=False,
+                  include_empties=False):
     """
     Exports a single object or current selection using scene properties.
 
@@ -2161,6 +2311,8 @@ def export_object(obj, file_path, scene_props, export_scale=1.0, use_existing_se
         export_scale (float): Scale factor to apply during export.
         use_existing_selection (bool): If True, uses current scene selection instead of
             creating temp context. Used for batch exports. Defaults to False.
+        include_empties (bool): If True, includes EMPTY objects in FBX/glTF exports.
+            Used for attachment points. Defaults to False.
 
     Returns:
         bool: True if export was successful, False otherwise.
@@ -2239,6 +2391,8 @@ def export_object(obj, file_path, scene_props, export_scale=1.0, use_existing_se
     with selection_context:
         try:
             if fmt == "FBX":
+                # Determine object types to export
+                fbx_object_types = {"MESH", "EMPTY"} if include_empties else {"MESH"}
                 bpy.ops.export_scene.fbx(
                     filepath=export_filepath,
                     use_selection=True,
@@ -2247,7 +2401,7 @@ def export_object(obj, file_path, scene_props, export_scale=1.0, use_existing_se
                     axis_up=scene_props.mesh_export_coord_up,
                     apply_unit_scale=False,
                     apply_scale_options="FBX_SCALE_ALL",
-                    object_types={"MESH"},
+                    object_types=fbx_object_types,
                     path_mode="STRIP" if not scene_props.mesh_export_embed_textures else "COPY",
                     embed_textures=scene_props.mesh_export_embed_textures,
                     mesh_smooth_type=scene_props.mesh_export_smoothing,
@@ -3127,7 +3281,7 @@ class MESH_OT_batch_export(Operator):
 
     def _process_object_hierarchy_export(self, obj, context, scene_props, export_base_path):
         """Process individual object hierarchy export with LODs.
-        
+
         Returns:
             tuple: (success_count, failed_list)
         """
@@ -3135,7 +3289,10 @@ class MESH_OT_batch_export(Operator):
         successful_exports = 0
         failed_exports = []
         temp_metaball_mesh = None
-        
+        temp_empties = []  # Track temporary empties for cleanup
+        lod_objects = []
+        parent_empty = None
+
         try:
             # Get LOD ratios
             lod_ratios_prop = [
@@ -3145,79 +3302,99 @@ class MESH_OT_batch_export(Operator):
                 scene_props.mesh_export_lod_ratio_04,
             ]
             ratios = [1.0] + lod_ratios_prop[:scene_props.mesh_export_lod_count]
-            
+
             # Create all LOD objects
-            lod_objects = []
             base_lod_obj = None
             previous_ratio = 1.0
-            
+
             for lod_level, target_ratio in enumerate(ratios):
                 if lod_level == 0:
                     # LOD0: Create base copy with all processing
                     logger.info("Creating base LOD0...")
                     lod_obj, temp_metaball_mesh = create_export_copy(obj, context)
-                    
+
                     # Setup object (naming, location, scale)
                     (lod_obj_name, base_name, export_scale) = setup_export_object(
                         lod_obj, obj.name, scene_props, lod_level
                     )
-                    
+
                     # Apply modifiers if needed
                     apply_mesh_modifiers(lod_obj, scene_props.mesh_export_apply_modifiers)
-                    
+
                     # Triangulate if needed
                     if scene_props.mesh_export_tri:
                         method = scene_props.mesh_export_tri_method
                         k_nrms = scene_props.mesh_export_keep_normals
                         triangulate_mesh(lod_obj, method, k_nrms)
-                    
+
                     base_lod_obj = lod_obj
                 else:
                     # LOD1+: Create copy and apply progressive decimation
                     logger.info(f"Creating LOD{lod_level} with ratio {target_ratio}...")
-                    
+
                     # Create a copy of the base LOD
                     lod_obj = base_lod_obj.copy()
                     lod_obj.data = base_lod_obj.data.copy()
                     context.collection.objects.link(lod_obj)
-                    
+
                     # Only rename for LOD level (scale/location already handled in LOD0)
                     # Note: We pass the original object name, not the LOD0's modified name
                     (lod_obj_name, _, _) = setup_export_object(
                         lod_obj, obj.name, scene_props, lod_level
                     )
-                    
+
                     # Apply decimation
                     decimate_modifier = lod_obj.modifiers.new(name=f"Decimate_LOD{lod_level}", type="DECIMATE")
                     decimate_modifier.decimate_type = scene_props.mesh_export_lod_type
                     decimate_modifier.ratio = target_ratio
-                    
+
                     if scene_props.mesh_export_lod_symmetry:
                         decimate_modifier.use_symmetry = True
                         decimate_modifier.symmetry_axis = scene_props.mesh_export_lod_symmetry_axis
-                    
+
                     # Apply modifier
                     context.view_layer.objects.active = lod_obj
                     MeshOperations.safe_mode_set(lod_obj, "OBJECT")
                     bpy.ops.object.modifier_apply(modifier=decimate_modifier.name)
-                
+
                 lod_objects.append(lod_obj)
                 previous_ratio = target_ratio
-            
+
             # Create hierarchy structure (base_lod_obj is LOD0, first in list)
             parent_empty = create_lod_hierarchy(lod_objects[0], lod_objects[1:], obj.name, context)
-            
+
+            # Handle attachment empties - parent to LOD0
+            convention = scene_props.mesh_export_naming_convention
+            attachment_empties = get_attachment_empties(obj, scene_props)
+            for empty in attachment_empties:
+                empty_copy = copy_empty_for_export(empty, lod_objects[0], context, convention)
+                temp_empties.append(empty_copy)
+
+            # Create slot empties if enabled - parent to LOD0
+            slot_empties = create_slot_empties(obj, scene_props, context)
+            for slot_empty in slot_empties:
+                slot_empty.parent = lod_objects[0]
+                # Recalculate local matrix after parenting
+                slot_world = slot_empty.matrix_world.copy()
+                slot_empty.matrix_local = lod_objects[0].matrix_world.inverted() @ slot_world
+                temp_empties.append(slot_empty)
+
             # Export the hierarchy as FBX
             # Use base_name which includes prefix/suffix but not LOD suffix
             export_path = os.path.join(export_base_path, f"{base_name}_LODGroup.fbx")
-            
-            # Select all LOD objects and parent for export
+
+            # Select all LOD objects, parent, and empties for export
             bpy.ops.object.select_all(action='DESELECT')
             parent_empty.select_set(True)
             for lod_obj in lod_objects:
                 lod_obj.select_set(True)
+            for temp_empty in temp_empties:
+                temp_empty.select_set(True)
             context.view_layer.objects.active = parent_empty
-            
+
+            # Determine object types based on whether we have empties
+            fbx_object_types = {"MESH", "EMPTY"} if temp_empties else {"MESH", "EMPTY"}
+
             # Export FBX with hierarchy
             try:
                 bpy.ops.export_scene.fbx(
@@ -3227,6 +3404,7 @@ class MESH_OT_batch_export(Operator):
                     apply_scale_options='FBX_SCALE_ALL',
                     axis_forward=scene_props.mesh_export_coord_forward,
                     axis_up=scene_props.mesh_export_coord_up,
+                    object_types=fbx_object_types,
                     use_mesh_modifiers=False,  # Already applied
                     mesh_smooth_type=scene_props.mesh_export_smoothing,
                     use_tspace=True,
@@ -3238,24 +3416,40 @@ class MESH_OT_batch_export(Operator):
             except Exception as e:
                 failed_exports.append(f"{obj.name} (Export failed: {e})")
                 logger.error(f"Failed to export hierarchy: {e}")
-            
-            # Clean up temporary objects
-            bpy.data.objects.remove(parent_empty, do_unlink=True)
-            for lod_obj in lod_objects:
-                bpy.data.objects.remove(lod_obj, do_unlink=True)
-            
-            # Clean up temporary metaball mesh if it exists
-            if temp_metaball_mesh:
-                # temp_metaball_mesh is an Object, we need to remove both object and mesh data
-                mesh_data = temp_metaball_mesh.data
-                bpy.data.objects.remove(temp_metaball_mesh, do_unlink=True)
-                if mesh_data:
-                    bpy.data.meshes.remove(mesh_data, do_unlink=True)
-            
+
         except Exception as e:
             logger.error(f"Failed to process object hierarchy: {e}")
             failed_exports.append(f"{obj.name} (Processing failed: {e})")
-        
+
+        finally:
+            # Clean up temporary empties
+            for temp_empty in temp_empties:
+                cleanup_object(temp_empty, temp_empty.name if temp_empty else "temp_empty")
+
+            # Clean up temporary objects
+            if parent_empty:
+                try:
+                    bpy.data.objects.remove(parent_empty, do_unlink=True)
+                except (ReferenceError, Exception) as e:
+                    logger.warning(f"Issue cleaning up parent_empty: {e}")
+
+            for lod_obj in lod_objects:
+                try:
+                    bpy.data.objects.remove(lod_obj, do_unlink=True)
+                except (ReferenceError, Exception) as e:
+                    logger.warning(f"Issue cleaning up lod_obj: {e}")
+
+            # Clean up temporary metaball mesh if it exists
+            if temp_metaball_mesh:
+                try:
+                    # temp_metaball_mesh is an Object, we need to remove both object and mesh data
+                    mesh_data = temp_metaball_mesh.data
+                    bpy.data.objects.remove(temp_metaball_mesh, do_unlink=True)
+                    if mesh_data:
+                        bpy.data.meshes.remove(mesh_data, do_unlink=True)
+                except (ReferenceError, Exception) as e:
+                    logger.warning(f"Issue cleaning up temp_metaball_mesh: {e}")
+
         return successful_exports, failed_exports
     
     def _process_lod_export(self, original_obj, context, scene_props, export_base_path):
@@ -3374,45 +3568,81 @@ class MESH_OT_batch_export(Operator):
 
     def _process_single_export(self, original_obj, context, scene_props, export_base_path):
         """Process non-LOD export for a single object.
-        
+
         Returns:
             tuple: (success_count, failed_list)
         """
         export_obj = None
         export_obj_name = None
         temp_metaball_mesh = None
-        
+        temp_empties = []  # Track temporary empties for cleanup
+
         try:
             logger.info("Processing single export (no LODs)..")
             export_obj, temp_metaball_mesh = create_export_copy(
                 original_obj, context
             )
-            
+
             # Use context manager for the export object
             with temporary_object(export_obj, export_obj_name) as obj:
                 (export_obj_name, base_name, export_scale) = setup_export_object(
                     obj, original_obj.name, scene_props
                 )
                 apply_mesh_modifiers(obj, scene_props.mesh_export_apply_modifiers)
-                
+
                 if scene_props.mesh_export_tri:
                     triangulate_mesh(
                         obj,
                         scene_props.mesh_export_tri_method,
                         scene_props.mesh_export_keep_normals
                     )
-                
+
+                # Handle attachment empties (only for FBX and glTF)
+                include_empties = False
+                if scene_props.mesh_export_format in ("FBX", "GLTF"):
+                    # Get attachment empties from original object
+                    attachment_empties = get_attachment_empties(original_obj, scene_props)
+                    convention = scene_props.mesh_export_naming_convention
+
+                    # Copy each attachment empty and parent to export object
+                    for empty in attachment_empties:
+                        empty_copy = copy_empty_for_export(empty, obj, context, convention)
+                        temp_empties.append(empty_copy)
+
+                    # Create slot empties if enabled
+                    slot_empties = create_slot_empties(original_obj, scene_props, context)
+                    for slot_empty in slot_empties:
+                        # Parent slot empties to export object
+                        slot_empty.parent = obj
+                        # Recalculate local matrix after parenting
+                        slot_world = slot_empty.matrix_world.copy()
+                        slot_empty.matrix_local = obj.matrix_world.inverted() @ slot_world
+                        temp_empties.append(slot_empty)
+
+                    include_empties = len(temp_empties) > 0
+
+                    # Select empties along with the mesh for export
+                    if include_empties:
+                        for temp_empty in temp_empties:
+                            temp_empty.select_set(True)
+                        obj.select_set(True)
+                        context.view_layer.objects.active = obj
+
                 file_path = os.path.join(export_base_path, base_name)
-                if export_object(obj, file_path, scene_props, export_scale):
+                if export_object(obj, file_path, scene_props, export_scale,
+                               include_empties=include_empties):
                     return 1, []
                 else:
                     return 0, [original_obj.name]
-                
+
         except Exception as e:
             log_name = export_obj_name if export_obj_name else original_obj.name
             logger.error(f"Failed processing {log_name}: {e}")
             return 0, [f"{original_obj.name} (Processing Error)"]
         finally:
+            # Cleanup temporary empties
+            for temp_empty in temp_empties:
+                cleanup_object(temp_empty, temp_empty.name if temp_empty else "temp_empty")
             # Cleanup temp metaball mesh if exists
             if temp_metaball_mesh:
                 cleanup_object(temp_metaball_mesh, "temp_metaball_mesh")
@@ -3438,11 +3668,14 @@ class MESH_OT_batch_export(Operator):
         processed_objects = []  # Objects to include in final export
         temp_objects = []  # All temporary objects for cleanup
         temp_metaball_meshes = []  # Temporary metaball meshes
+        temp_empties = []  # Temporary empties for cleanup
         failed_objects = []
         batch_export_scale = 1.0  # Track scale from first object (all use same scene_props)
+        has_empties = False  # Track whether we have any empties to export
 
         try:
             logger.info(f"Processing batch glTF export for {len(objects_to_export)} objects...")
+            convention = scene_props.mesh_export_naming_convention
 
             # Process each object
             for idx, original_obj in enumerate(objects_to_export):
@@ -3478,6 +3711,25 @@ class MESH_OT_batch_export(Operator):
                     # Add to processed list and track for cleanup
                     processed_objects.append(export_obj)
                     temp_objects.append(export_obj)
+
+                    # Handle attachment empties - copy and parent to export object
+                    attachment_empties = get_attachment_empties(original_obj, scene_props)
+                    for empty in attachment_empties:
+                        empty_copy = copy_empty_for_export(empty, export_obj, context, convention)
+                        temp_empties.append(empty_copy)
+                        processed_objects.append(empty_copy)  # Include in export selection
+                        has_empties = True
+
+                    # Create slot empties if enabled - parent to export object
+                    slot_empties = create_slot_empties(original_obj, scene_props, context)
+                    for slot_empty in slot_empties:
+                        slot_empty.parent = export_obj
+                        # Recalculate local matrix after parenting
+                        slot_world = slot_empty.matrix_world.copy()
+                        slot_empty.matrix_local = export_obj.matrix_world.inverted() @ slot_world
+                        temp_empties.append(slot_empty)
+                        processed_objects.append(slot_empty)  # Include in export selection
+                        has_empties = True
 
                     # Handle LOD generation if enabled
                     if scene_props.mesh_export_lod:
@@ -3559,19 +3811,26 @@ class MESH_OT_batch_export(Operator):
             for obj in context.scene.objects:
                 obj.select_set(False)
 
-            # Select all processed objects
+            # Select all processed objects (meshes and empties)
             for obj in processed_objects:
                 obj.select_set(True)
 
-            # Set one as active (required for export)
-            if processed_objects:
+            # Set one as active (required for export) - use first mesh object
+            mesh_objects = [obj for obj in processed_objects if obj.type == "MESH"]
+            if mesh_objects:
+                context.view_layer.objects.active = mesh_objects[0]
+            elif processed_objects:
                 context.view_layer.objects.active = processed_objects[0]
 
             # Export all selected objects as single file
             # For glTF/USD, scale is already applied to obj.scale (batch_export_scale will be 1.0)
             # For other formats, batch_export_scale contains the actual scale to pass to exporter
             # use_existing_selection=True tells export_object to use the selection we set up above
-            if export_object(processed_objects[0], file_path, scene_props, export_scale=batch_export_scale, use_existing_selection=True):
+            if export_object(mesh_objects[0] if mesh_objects else processed_objects[0],
+                           file_path, scene_props,
+                           export_scale=batch_export_scale,
+                           use_existing_selection=True,
+                           include_empties=has_empties):
                 logger.info(f"Batch export successful: {batch_filename}")
                 # Count as 1 successful export (the batch file)
                 return 1, failed_objects
@@ -3584,10 +3843,14 @@ class MESH_OT_batch_export(Operator):
             return 0, [obj.name for obj in objects_to_export]
 
         finally:
-            # Cleanup all temporary objects
+            # Cleanup all temporary objects (includes mesh copies)
             logger.info(f"Cleaning up {len(temp_objects)} temporary objects...")
             for temp_obj in temp_objects:
                 cleanup_object(temp_obj, temp_obj.name if temp_obj else "temp_object")
+
+            # Cleanup temporary empties
+            for temp_empty in temp_empties:
+                cleanup_object(temp_empty, temp_empty.name if temp_empty else "temp_empty")
 
             # Cleanup temp metaball meshes
             for temp_mesh in temp_metaball_meshes:

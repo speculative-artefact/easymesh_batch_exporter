@@ -224,6 +224,7 @@ class MeshExporterSettings(PropertyGroup):
             "of writing edge or face smoothing data"),
             ("FACE", "Face", "Write face smoothing"),
             ("EDGE", "Edge", "Write edge smoothing"),
+            ("SMOOTH_GROUP", "Smoothing Groups", "Write smoothing groups"),
         ],
         default="FACE"
     )
@@ -465,6 +466,41 @@ class MeshExporterSettings(PropertyGroup):
         name="LOD4 Ratio",
         description="Decimate factor for LOD 4",
         default=0.10, min=0.0, max=1.0, subtype="FACTOR"
+    )
+
+    # --- Attachment Points & Slot Empties ---
+    mesh_export_include_empties: BoolProperty(
+        name="Include Attachment Points",
+        description="Include empty children of exported objects as attachment points",
+        default=True
+    )
+
+    mesh_export_empty_filter: EnumProperty(
+        name="Empty Filter",
+        description="Which empty children to include",
+        items=[
+            ("ALL", "All Empties", "Include all empty children"),
+            ("PREFIXED", "Prefixed Only", "Only empties with specific prefix"),
+        ],
+        default="ALL"
+    )
+
+    mesh_export_empty_prefix: StringProperty(
+        name="Empty Prefix",
+        description="Only include empties starting with this prefix",
+        default="attach_"
+    )
+
+    mesh_export_create_slots: BoolProperty(
+        name="Create Slot Empties",
+        description="Create slot empties marking where child meshes attach",
+        default=False
+    )
+
+    mesh_export_slot_prefix: StringProperty(
+        name="Slot Prefix",
+        description="Prefix for generated slot empties",
+        default="slot_"
     )
 
     # Preset system properties

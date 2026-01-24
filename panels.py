@@ -119,7 +119,7 @@ class MESH_PT_exporter_panel(Panel):
             # Only show if the format supports smoothing
             col = layout.column(heading="Smoothing", align=True)
             row = col.row(align=True)
-            row.prop(settings, "mesh_export_smoothing", expand=True)
+            row.prop(settings, "mesh_export_smoothing")
 
         # Zero location settings
         col = layout.column(heading="Transform", align=True)
@@ -402,6 +402,62 @@ class MESH_PT_exporter_panel_lod(Panel):
             if settings.mesh_export_lod_count < 4:
                 row.enabled = False # Disable if LOD4 not used
 
+# Attachment Points Panel
+class MESH_PT_exporter_panel_empties(Panel):
+    bl_label = "Attachment Points"
+    bl_idname = "MESH_PT_exporter_panel_empties"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Exporter"
+    bl_parent_id = "MESH_PT_exporter_panel"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    @classmethod
+    def poll(cls, context):
+        # Only show for FBX and glTF formats (formats that support empties)
+        settings = context.scene.mesh_exporter
+        return (settings
+                and settings.mesh_export_path
+                and settings.mesh_export_path != ""
+                and settings.mesh_export_format in {"FBX", "GLTF"})
+
+    def draw_header(self, context):
+        layout = self.layout
+        settings = context.scene.mesh_exporter
+        layout.prop(settings, "mesh_export_include_empties", text="")
+
+    def draw(self, context):
+        layout = self.layout
+        settings = context.scene.mesh_exporter
+
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+
+        # Enable/disable based on the header checkbox
+        layout.enabled = settings.mesh_export_include_empties
+
+        # Empty filter settings
+        col = layout.column(heading="Filter", align=True)
+        row = col.row(align=True)
+        row.prop(settings, "mesh_export_empty_filter", expand=True)
+
+        # Only show prefix field when "Prefixed Only" is selected
+        if settings.mesh_export_empty_filter == "PREFIXED":
+            col.prop(settings, "mesh_export_empty_prefix")
+
+        # Slot empty generation
+        col = layout.column(heading="Auto-create Slots", align=True)
+        col.prop(settings, "mesh_export_create_slots", text="Create Slot Empties")
+
+        # Only show slot prefix when slot creation is enabled
+        if settings.mesh_export_create_slots:
+            col.prop(settings, "mesh_export_slot_prefix")
+            # Info about slot empties
+            info_col = layout.column()
+            info_col.scale_y = 0.8
+            info_col.label(text="Creates empties at child mesh positions", icon='INFO')
+
+
 # Recent Exports Panel
 class MESH_EXPORT_PT_recent_exports(Panel):
     bl_label = "Recent Exports"
@@ -627,6 +683,7 @@ classes = (
     MESH_PT_exporter_panel,
     MESH_PT_exporter_panel_presets,
     MESH_PT_exporter_panel_lod,
+    MESH_PT_exporter_panel_empties,
     MESH_EXPORT_PT_texture_info,
     MESH_EXPORT_PT_recent_exports,
 )
