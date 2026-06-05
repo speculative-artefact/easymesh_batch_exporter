@@ -66,10 +66,10 @@ A streamlined Blender add-on designed for game development workflows. Batch expo
 * **Symmetry Preservation:** Maintain model symmetry during decimation
 * **Quality Control:** Individual ratio settings for each LOD level
 * **Hierarchy Export Mode:** Export LODs as structured FBX hierarchies for game engines:
-  * Creates `{ObjectName}_LODGroup.fbx` with parent empty containing all LOD levels
-  * LOD objects named as `{basename}_LOD00`, `{basename}_LOD01`, etc.
+  * Creates `{ObjectName}_LODGroup.fbx` with a parent empty tagged as an FBX `LodGroup` node containing all LOD levels
+  * LOD objects named as `{basename}_LOD0`, `{basename}_LOD1`, etc.
   * Each selected object processed individually (preserves separate LOD groups)
-  * Compatible with Unity and Unreal Engine LOD systems
+  * Imports into Unreal Engine as a **single Static Mesh with LODs** (enable "Import LODs" in the UE import dialog), and into Unity as a LOD group
 * **Advanced Texture Optimisation:**
   * Automatic texture downscaling with customisable sizes per LOD
   * Aspect ratio preservation to prevent distortion

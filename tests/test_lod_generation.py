@@ -201,6 +201,66 @@ class TestLODHierarchy:
             "Sphere LOD hierarchy should exist"
         )
 
+    def test_lod_hierarchy_writes_lodgroup_node(
+        self, create_sphere, temp_export_dir, reset_settings
+    ):
+        """The exported FBX must contain an FBX LodGroup node (issue #12).
+
+        Unreal only imports the LODs as a single Static Mesh when the parent
+        empty is written as a ``LodGroup`` node, which Blender does only when
+        the empty carries ``fbx_type = "LodGroup"``. Verify by (a) scanning the
+        binary FBX for the LodGroup marker and (b) re-importing and checking the
+        round-tripped empty/hierarchy.
+        """
+        props = get_scene_props()
+        props.mesh_export_path = str(temp_export_dir) + "/"
+        props.mesh_export_format = "FBX"
+        props.mesh_export_lod = True
+        props.mesh_export_lod_count = 2  # LOD0 + LOD1 + LOD2 = 3 meshes
+        props.mesh_export_lod_hierarchy = True
+
+        create_sphere.select_set(True)
+        result = bpy.ops.mesh.batch_export()
+        assert result == {"FINISHED"}, "LOD hierarchy export should succeed"
+
+        hierarchy_file = temp_export_dir / "TestSphere_LODGroup.fbx"
+        assert verify_file_exists(hierarchy_file, "fbx"), (
+            "LOD hierarchy file should exist"
+        )
+
+        # (a) The LodGroup node attribute must be present in the binary FBX.
+        raw = hierarchy_file.read_bytes()
+        assert b"LodGroup" in raw, (
+            "Exported FBX must contain a LodGroup node so Unreal imports the "
+            "LODs as one mesh"
+        )
+
+        # (b) Re-import and confirm the hierarchy is intact: a single root empty
+        # parenting all LOD meshes. (Blender's importer collapses the LodGroup
+        # node back to a plain empty and does not restore the fbx_type custom
+        # property, so we check structure rather than the marker here.)
+        existing = set(bpy.data.objects.keys())
+        bpy.ops.import_scene.fbx(filepath=str(hierarchy_file))
+        imported = [o for o in bpy.data.objects if o.name not in existing]
+
+        root_empties = [
+            o for o in imported if o.type == "EMPTY" and o.parent is None
+        ]
+        assert len(root_empties) == 1, (
+            "Re-imported FBX should contain exactly one root empty (the LOD "
+            f"group), found {len(root_empties)}"
+        )
+
+        mesh_children = [
+            o
+            for o in imported
+            if o.type == "MESH" and o.parent is root_empties[0]
+        ]
+        assert len(mesh_children) == 3, (
+            "LOD group should parent LOD0 + 2 LODs (3 meshes), "
+            f"found {len(mesh_children)}"
+        )
+
 
 class TestLODSymmetry:
     """Tests for LOD symmetry settings."""

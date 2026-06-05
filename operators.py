@@ -828,36 +828,47 @@ def convert_curve_to_mesh_object(curve_obj, context):
         raise RuntimeError(f"Failed to convert {curve_obj.type} to mesh: {e}") from e
 
 
-def create_lod_hierarchy(base_obj, lod_objects, collection_name, context):
+def create_lod_hierarchy(base_obj, lod_objects, group_name, context):
     """
     Creates a parent/child hierarchy for LODs suitable for game engines.
+
+    The parent empty is tagged with the ``fbx_type = "LodGroup"`` custom
+    property. Blender's binary FBX exporter reads this and writes the empty as
+    an FBX ``LodGroup`` node (rather than a plain ``Null``), which Unreal Engine
+    recognises so the LODs import as a single Static Mesh with LOD0..LODn
+    instead of separate meshes (issue #12).
 
     Args:
         base_obj (bpy.types.Object): The base LOD0 object.
         lod_objects (list): List of LOD objects (LOD1, LOD2, etc.).
-        collection_name (str): Name of the original collection.
+        group_name (str): Name for the LodGroup node. This becomes the imported
+            asset name in the engine, so pass the prefixed/converted base name
+            (e.g. "SM_MyMesh") without a "_LODGroup" suffix.
         context (bpy.context): The current Blender context.
 
     Returns:
         bpy.types.Object: The parent empty object with LODs as children.
     """
-    # Create an empty parent object
-    parent_empty = bpy.data.objects.new(
-        name=f"{collection_name}_LODGroup", object_data=None
-    )
+    # Create an empty parent object. Name it cleanly (no "_LODGroup" suffix) so
+    # the engine names the imported asset after group_name directly.
+    parent_empty = bpy.data.objects.new(name=group_name, object_data=None)
     parent_empty.empty_display_type = "PLAIN_AXES"
     parent_empty.empty_display_size = 1.0
+
+    # Tag as an FBX LodGroup so Unreal imports the children as a single mesh's
+    # LODs. Only honoured by Blender's binary FBX exporter (the one used here).
+    parent_empty["fbx_type"] = "LodGroup"
 
     # Link to scene
     context.collection.objects.link(parent_empty)
 
     # Set parent for base object and LODs
     base_obj.parent = parent_empty
-    base_obj.name = f"{collection_name}_LOD0"
+    base_obj.name = f"{group_name}_LOD0"
 
     for i, lod_obj in enumerate(lod_objects, start=1):
         lod_obj.parent = parent_empty
-        lod_obj.name = f"{collection_name}_LOD{i}"
+        lod_obj.name = f"{group_name}_LOD{i}"
 
     logger.info(f"Created LOD hierarchy with {len(lod_objects) + 1} levels")
     return parent_empty
@@ -3670,9 +3681,11 @@ class MESH_OT_batch_export(Operator):
                 lod_objects.append(lod_obj)
                 previous_ratio = target_ratio
 
-            # Create hierarchy structure (base_lod_obj is LOD0, first in list)
+            # Create hierarchy structure (base_lod_obj is LOD0, first in list).
+            # Use base_name (prefix/convention applied) so the LodGroup node -
+            # and therefore the imported engine asset - carries the prefix.
             parent_empty = create_lod_hierarchy(
-                lod_objects[0], lod_objects[1:], obj.name, context
+                lod_objects[0], lod_objects[1:], base_name, context
             )
 
             # Handle attachment empties - parent to LOD0
