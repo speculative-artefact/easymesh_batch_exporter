@@ -19,6 +19,32 @@ from conftest import (
 pytestmark = pytest.mark.export_format
 
 
+def reimport_fbx_dimensions(fbx_path):
+    """Import an FBX file and return the bounding-box dimensions of its mesh.
+
+    Imported objects are removed afterwards so the scene is left untouched.
+
+    Args:
+        fbx_path (Path): Path to the FBX file to import.
+
+    Returns:
+        tuple[float, float, float]: The (x, y, z) dimensions of the first
+        imported mesh object.
+    """
+    before = set(bpy.data.objects)
+    bpy.ops.import_scene.fbx(filepath=str(fbx_path))
+    new_objects = [obj for obj in bpy.data.objects if obj not in before]
+    meshes = [obj for obj in new_objects if obj.type == "MESH"]
+    assert meshes, f"No mesh object imported from {fbx_path}"
+    dimensions = tuple(meshes[0].dimensions)
+
+    # Clean up everything the importer created
+    for obj in new_objects:
+        bpy.data.objects.remove(obj, do_unlink=True)
+
+    return dimensions
+
+
 class TestFBXExport:
     """Tests for FBX export format."""
 
@@ -361,4 +387,72 @@ class TestUnitsAndScale:
             expected_file = temp_export_dir / f"TestCube_scale{int(scale * 10)}.fbx"
             assert verify_file_exists(expected_file, "fbx"), (
                 f"Export with scale={scale} should create file"
+            )
+
+    def test_centimeters_geometry_is_100x_meters(
+        self, create_cube, temp_export_dir, reset_settings
+    ):
+        """Centimetre exports should bake 100x the geometry of metre exports.
+
+        Regression test for issue #9: scale must be baked into the FBX geometry
+        (not just the file's UnitScaleFactor header, which Unreal ignores).
+        Comparing two exports re-imported with identical settings isolates the
+        baked-geometry difference from any importer-side unit handling.
+        """
+        props = get_scene_props()
+        props.mesh_export_path = str(temp_export_dir) + "/"
+        props.mesh_export_format = "FBX"
+        props.mesh_export_scale = 1.0
+
+        props.mesh_export_units = "METERS"
+        props.mesh_export_suffix = "_m"
+        create_cube.select_set(True)
+        bpy.context.view_layer.objects.active = create_cube
+        assert bpy.ops.mesh.batch_export() == {"FINISHED"}
+
+        props.mesh_export_units = "CENTIMETERS"
+        props.mesh_export_suffix = "_cm"
+        create_cube.select_set(True)
+        bpy.context.view_layer.objects.active = create_cube
+        assert bpy.ops.mesh.batch_export() == {"FINISHED"}
+
+        m_dims = reimport_fbx_dimensions(temp_export_dir / "TestCube_m.fbx")
+        cm_dims = reimport_fbx_dimensions(temp_export_dir / "TestCube_cm.fbx")
+
+        for axis, (m_val, cm_val) in enumerate(zip(m_dims, cm_dims)):
+            assert m_val > 0, f"Metre dimension on axis {axis} should be non-zero"
+            assert cm_val == pytest.approx(m_val * 100.0, rel=1e-3), (
+                f"Centimetre geometry on axis {axis} should be 100x metres "
+                f"(got {cm_val} vs {m_val})"
+            )
+
+    def test_scale_factor_bakes_into_geometry(
+        self, create_cube, temp_export_dir, reset_settings
+    ):
+        """A 2x scale factor should produce 2x the re-imported dimensions."""
+        props = get_scene_props()
+        props.mesh_export_path = str(temp_export_dir) + "/"
+        props.mesh_export_format = "FBX"
+        props.mesh_export_units = "METERS"
+
+        props.mesh_export_scale = 1.0
+        props.mesh_export_suffix = "_s1"
+        create_cube.select_set(True)
+        bpy.context.view_layer.objects.active = create_cube
+        assert bpy.ops.mesh.batch_export() == {"FINISHED"}
+
+        props.mesh_export_scale = 2.0
+        props.mesh_export_suffix = "_s2"
+        create_cube.select_set(True)
+        bpy.context.view_layer.objects.active = create_cube
+        assert bpy.ops.mesh.batch_export() == {"FINISHED"}
+
+        s1_dims = reimport_fbx_dimensions(temp_export_dir / "TestCube_s1.fbx")
+        s2_dims = reimport_fbx_dimensions(temp_export_dir / "TestCube_s2.fbx")
+
+        for axis, (s1_val, s2_val) in enumerate(zip(s1_dims, s2_dims)):
+            assert s1_val > 0, f"Scale-1 dimension on axis {axis} should be non-zero"
+            assert s2_val == pytest.approx(s1_val * 2.0, rel=1e-3), (
+                f"Scale 2.0 geometry on axis {axis} should be 2x scale 1.0 "
+                f"(got {s2_val} vs {s1_val})"
             )

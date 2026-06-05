@@ -2632,7 +2632,15 @@ def export_object(
                 bpy.ops.export_scene.fbx(
                     filepath=export_filepath,
                     use_selection=True,
-                    global_scale=export_scale,  # Pass scale to exporter instead of applying to mesh
+                    # Blender's FBX exporter, with apply_unit_scale=False +
+                    # FBX_SCALE_NONE, always bakes a fixed metres->centimetres
+                    # (x100) factor into the geometry and writes
+                    # UnitScaleFactor=1.0. Divide export_scale by that factor so
+                    # the *net* baked scale equals export_scale (matching OBJ/STL
+                    # geometry). FBX_SCALE_NONE keeps all scaling in the geometry
+                    # instead of the file header, which Unreal ignores - fixes the
+                    # 1/100 import scale (issue #9).
+                    global_scale=export_scale / METERS_TO_CENTIMETERS,
                     axis_forward=scene_props.mesh_export_coord_forward,
                     axis_up=scene_props.mesh_export_coord_up,
                     # Bake the axis conversion into the geometry so the chosen
@@ -2642,7 +2650,7 @@ def export_object(
                     # Forward Axis control a silent no-op.
                     bake_space_transform=True,
                     apply_unit_scale=False,
-                    apply_scale_options="FBX_SCALE_ALL",
+                    apply_scale_options="FBX_SCALE_NONE",
                     object_types=fbx_object_types,
                     path_mode="STRIP"
                     if not scene_props.mesh_export_embed_textures
@@ -3708,8 +3716,14 @@ class MESH_OT_batch_export(Operator):
                 bpy.ops.export_scene.fbx(
                     filepath=export_path,
                     use_selection=True,
-                    global_scale=scene_props.mesh_export_scale,
-                    apply_scale_options="FBX_SCALE_ALL",
+                    # Match the per-object FBX export: bake scaling into the
+                    # geometry (UnitScaleFactor=1.0) so Unreal imports at the
+                    # correct scale (issue #9). export_scale already carries the
+                    # units conversion from setup_export_object; divide by
+                    # METERS_TO_CENTIMETERS to cancel the exporter's forced x100.
+                    global_scale=export_scale / METERS_TO_CENTIMETERS,
+                    apply_unit_scale=False,
+                    apply_scale_options="FBX_SCALE_NONE",
                     axis_forward=scene_props.mesh_export_coord_forward,
                     axis_up=scene_props.mesh_export_coord_up,
                     # Bake axis conversion into geometry so it survives re-import
