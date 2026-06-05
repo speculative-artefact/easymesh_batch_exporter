@@ -2635,6 +2635,12 @@ def export_object(
                     global_scale=export_scale,  # Pass scale to exporter instead of applying to mesh
                     axis_forward=scene_props.mesh_export_coord_forward,
                     axis_up=scene_props.mesh_export_coord_up,
+                    # Bake the axis conversion into the geometry so the chosen
+                    # forward/up axes actually survive re-import (Blender T95408).
+                    # Without this, the axes only land in the FBX header metadata
+                    # and importers (Blender/UE5) reverse them, making the
+                    # Forward Axis control a silent no-op.
+                    bake_space_transform=True,
                     apply_unit_scale=False,
                     apply_scale_options="FBX_SCALE_ALL",
                     object_types=fbx_object_types,
@@ -3706,6 +3712,9 @@ class MESH_OT_batch_export(Operator):
                     apply_scale_options="FBX_SCALE_ALL",
                     axis_forward=scene_props.mesh_export_coord_forward,
                     axis_up=scene_props.mesh_export_coord_up,
+                    # Bake axis conversion into geometry so it survives re-import
+                    # (Blender T95408) - matches the per-object FBX export above.
+                    bake_space_transform=True,
                     object_types=fbx_object_types,
                     use_mesh_modifiers=False,  # Already applied
                     mesh_smooth_type=scene_props.mesh_export_smoothing,
