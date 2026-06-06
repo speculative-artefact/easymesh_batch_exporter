@@ -756,6 +756,12 @@ words = re.findall(r'[A-Z]*[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)|[A-Z]|[0-9]+', temp_na
 | UNITY      | Capitalised_Words  | `my mesh name` → `My_Mesh_Name` |
 | UNREAL     | PascalCase         | `my_mesh_name` → `MyMeshName`   |
 
+`DEFAULT` is no longer a user-facing enum item. The naming feature is gated by the
+`mesh_export_naming_enabled` toggle (the **Naming Convention** sub-panel header
+checkbox). When the toggle is off, `resolve_naming()` returns empty prefix/suffix and
+the `"DEFAULT"` convention, so names are only sanitised. When on, the user-selected
+convention (`GODOT`/`UNITY`/`UNREAL`) plus prefix/suffix are applied.
+
 ### Unreal Prefix Preservation
 
 **Known Prefixes** (preserved during conversion):

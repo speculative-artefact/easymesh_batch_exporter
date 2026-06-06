@@ -92,6 +92,8 @@ class TestFBXExport:
         """Test FBX export with different smoothing modes."""
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
+        props.mesh_export_naming_enabled = True
+        props.mesh_export_naming_convention = "UNREAL"
         props.mesh_export_format = "FBX"
         create_sphere.select_set(True)
 
@@ -203,6 +205,8 @@ class TestGLTFExport:
         """Test different glTF material export modes."""
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
+        props.mesh_export_naming_enabled = True
+        props.mesh_export_naming_convention = "UNREAL"
         props.mesh_export_format = "GLTF"
         props.mesh_export_gltf_type = "GLB"
         create_cube.select_set(True)
@@ -303,6 +307,8 @@ class TestCoordinateSystem:
         """Test exporting with different up axis configurations."""
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
+        props.mesh_export_naming_enabled = True
+        props.mesh_export_naming_convention = "UNREAL"
         props.mesh_export_format = "FBX"
         create_cube.select_set(True)
 
@@ -323,6 +329,8 @@ class TestCoordinateSystem:
         """Test exporting with different forward axis configurations."""
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
+        props.mesh_export_naming_enabled = True
+        props.mesh_export_naming_convention = "UNREAL"
         props.mesh_export_format = "FBX"
         create_cube.select_set(True)
 
@@ -371,6 +379,8 @@ class TestUnitsAndScale:
         """Test exporting with custom scale factors."""
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
+        props.mesh_export_naming_enabled = True
+        props.mesh_export_naming_convention = "UNREAL"
         props.mesh_export_format = "FBX"
         create_cube.select_set(True)
 
@@ -398,6 +408,8 @@ class TestUnitsAndScale:
         """
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
+        props.mesh_export_naming_enabled = True
+        props.mesh_export_naming_convention = "UNREAL"
         props.mesh_export_format = "FBX"
         props.mesh_export_scale = 1.0
 
@@ -429,6 +441,8 @@ class TestUnitsAndScale:
         """A 2x scale factor should produce 2x the re-imported dimensions."""
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
+        props.mesh_export_naming_enabled = True
+        props.mesh_export_naming_convention = "UNREAL"
         props.mesh_export_format = "FBX"
         props.mesh_export_units = "METERS"
 

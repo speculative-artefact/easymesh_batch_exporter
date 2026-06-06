@@ -214,6 +214,7 @@ class TestSlotEmpties:
         props.mesh_export_include_empties = True
         props.mesh_export_create_slots = True
         props.mesh_export_slot_prefix = "slot_"
+        props.mesh_export_naming_enabled = True
         props.mesh_export_naming_convention = "GODOT"
 
         parent = create_mesh_with_mesh_children

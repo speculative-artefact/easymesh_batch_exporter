@@ -280,6 +280,7 @@ class TestBatchModeWithNamingConventions:
         props.mesh_export_format = "GLTF"
         props.mesh_export_gltf_type = "GLB"
         props.mesh_export_gltf_batch_mode = "COMBINE"
+        props.mesh_export_naming_enabled = True
         props.mesh_export_naming_convention = "GODOT"
 
         create_cube.select_set(True)
@@ -304,6 +305,8 @@ class TestBatchModeWithNamingConventions:
         props.mesh_export_format = "GLTF"
         props.mesh_export_gltf_type = "GLB"
         props.mesh_export_gltf_batch_mode = "COMBINE"
+        props.mesh_export_naming_enabled = True
+        props.mesh_export_naming_convention = "GODOT"
         props.mesh_export_prefix = "mesh_"
         props.mesh_export_suffix = "_export"
 
@@ -313,9 +316,9 @@ class TestBatchModeWithNamingConventions:
         result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Batch export with prefix/suffix should succeed"
 
-        # Should apply prefix and suffix to combined filename
-        # First object is TestCube -> mesh_TestCube_export
-        expected_file = temp_export_dir / "mesh_TestCube_export.glb"
+        # Batch path applies the convention to the whole prefix+name+suffix:
+        # "mesh_" + "TestCube" + "_export" -> GODOT -> mesh_test_cube_export
+        expected_file = temp_export_dir / "mesh_test_cube_export.glb"
         assert verify_file_exists(expected_file, "glb"), (
             "Combined file should have prefix and suffix applied"
         )

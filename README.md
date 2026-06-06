@@ -37,10 +37,10 @@ A streamlined Blender add-on designed for game development workflows. Batch expo
 ### 🎮 **Game Engine Integration**
 
 * **Naming Conventions:** Built-in support for game engine naming standards:
+  * Enable the **Naming Convention** sub-panel (header checkbox) to apply prefix, suffix and an engine convention; when disabled, names are only sanitised
   * **Godot:** snake_case naming (my_mesh_name)
   * **Unity:** Capitalised_Words_With_Underscores
   * **Unreal Engine:** PascalCase naming (MyMeshName) with prefix preservation
-  * **Default:** Keep original naming with basic sanitisation
 * **LOD Hierarchy Export:** Export objects with LOD levels as structured hierarchies for Unity/Unreal workflows (FBX format only)
 * **Custom Collision Meshes:** Parent collision meshes to your render mesh and export them in the same file, renamed for your engine (FBX/glTF):
   * **Unreal:** `UCX_`/`UBX_`/`USP_`/`UCP_` prefixes (convex/box/sphere/capsule)
@@ -147,11 +147,10 @@ You can also find the add-on directly on [Blender Extensions](https://extensions
    **File Naming & Game Engine Support**
 
    * **Prefix/Suffix:** Add custom text to exported filenames for organisation
-   * **Naming Conventions:** Choose game engine specific naming:
+   * **Naming Convention:** Enable the sub-panel (header checkbox) to apply prefix, suffix and a game engine specific naming convention. When disabled, filenames are only sanitised (no prefix/suffix or convention applied):
      * **Godot:** snake_case (my_mesh_name)
      * **Unity:** Capitalised_Words_With_Underscores
      * **Unreal Engine:** PascalCase (MyMeshName)
-     * **Default:** Basic sanitisation only
 
    **LOD Generation (Optional)**
 

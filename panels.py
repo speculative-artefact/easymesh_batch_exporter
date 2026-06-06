@@ -222,12 +222,6 @@ class MESH_PT_exporter_panel(Panel):
         )
         row.prop(settings, "mesh_export_keep_normals")
 
-        # Rename file settings
-        col = layout.column(heading="Rename file", align=True)
-        col.prop(settings, "mesh_export_prefix")
-        col.prop(settings, "mesh_export_suffix")
-        col.prop(settings, "mesh_export_naming_convention", text="Convention")
-
         # Texture embedding option (for formats that support it)
         if settings.mesh_export_format in {"FBX", "USD"}:
             col = layout.column(heading="Textures", align=True)
@@ -273,6 +267,47 @@ class MESH_PT_exporter_panel(Panel):
 
         # Pass the generated text to the "text" parameter
         row.operator("mesh.batch_export", text=button_text, icon="EXPORT")
+
+
+# Naming Convention Panel
+class MESH_PT_exporter_panel_naming(Panel):
+    bl_label = "Naming Convention"
+    bl_idname = "MESH_PT_exporter_panel_naming"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Exporter"
+    bl_parent_id = "MESH_PT_exporter_panel"
+    bl_options = {"DEFAULT_CLOSED"}  # Optional: Start closed
+
+    @classmethod
+    def poll(cls, context):
+        # Show only if the main panel exists and path is set
+        settings = context.scene.mesh_exporter
+        return (
+            settings
+            and settings.mesh_export_path is not None
+            and settings.mesh_export_path != ""
+        )
+
+    def draw_header(self, context):
+        layout = self.layout
+        settings = context.scene.mesh_exporter
+        layout.prop(settings, "mesh_export_naming_enabled", text="")  # Header checkbox
+
+    def draw(self, context):
+        layout = self.layout
+        settings = context.scene.mesh_exporter
+
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+
+        # Enable/disable based on the header checkbox
+        layout.enabled = settings.mesh_export_naming_enabled
+
+        col = layout.column(align=True)
+        col.prop(settings, "mesh_export_prefix")
+        col.prop(settings, "mesh_export_suffix")
+        col.prop(settings, "mesh_export_naming_convention", text="Convention")
 
 
 # LOD Panel
@@ -734,6 +769,7 @@ class MESH_EXPORT_PT_texture_info(Panel):
 # Registration
 classes = (
     MESH_PT_exporter_panel,
+    MESH_PT_exporter_panel_naming,
     MESH_PT_exporter_panel_lod,
     MESH_PT_exporter_panel_empties,
     MESH_PT_exporter_panel_collisions,

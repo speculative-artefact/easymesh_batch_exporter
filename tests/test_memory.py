@@ -154,6 +154,8 @@ class TestMemoryCleanup:
         """
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
+        props.mesh_export_naming_enabled = True
+        props.mesh_export_naming_convention = "UNREAL"
         props.mesh_export_format = "FBX"
 
         create_sphere.select_set(True)
@@ -275,6 +277,8 @@ class TestMemoryWithDifferentFormats:
         """
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
+        props.mesh_export_naming_enabled = True
+        props.mesh_export_naming_convention = "UNREAL"
 
         create_large_mesh.select_set(True)
 

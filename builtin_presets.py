@@ -40,6 +40,7 @@ BUILTIN_PRESETS = {
             # Modifiers
             "mesh_export_apply_modifiers": "VISIBLE",
             # Naming (Godot uses snake_case)
+            "mesh_export_naming_enabled": True,
             "mesh_export_prefix": "",
             "mesh_export_suffix": "",
             "mesh_export_naming_convention": "GODOT",
@@ -100,6 +101,7 @@ BUILTIN_PRESETS = {
             # Modifiers
             "mesh_export_apply_modifiers": "VISIBLE",
             # Naming (Unity uses Capitalised_Words)
+            "mesh_export_naming_enabled": True,
             "mesh_export_prefix": "",
             "mesh_export_suffix": "",
             "mesh_export_naming_convention": "UNITY",
@@ -160,6 +162,7 @@ BUILTIN_PRESETS = {
             # Modifiers
             "mesh_export_apply_modifiers": "VISIBLE",
             # Naming (Unreal uses PascalCase)
+            "mesh_export_naming_enabled": True,
             "mesh_export_prefix": "",
             "mesh_export_suffix": "",
             "mesh_export_naming_convention": "UNREAL",

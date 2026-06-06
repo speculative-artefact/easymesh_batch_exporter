@@ -12,11 +12,11 @@ class TestNamingConventions:
     """Tests for different engine-specific naming conventions."""
 
     def test_default_naming(self, create_cube, temp_export_dir, reset_settings):
-        """Test default naming convention (keeps original name)."""
+        """Test naming disabled keeps the original name (sanitise-only)."""
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
         props.mesh_export_format = "FBX"
-        props.mesh_export_naming_convention = "DEFAULT"
+        props.mesh_export_naming_enabled = False
 
         create_cube.select_set(True)
         result = bpy.ops.mesh.batch_export()
@@ -32,6 +32,7 @@ class TestNamingConventions:
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
         props.mesh_export_format = "FBX"
+        props.mesh_export_naming_enabled = True
         props.mesh_export_naming_convention = "GODOT"
 
         create_cube.select_set(True)
@@ -49,6 +50,7 @@ class TestNamingConventions:
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
         props.mesh_export_format = "FBX"
+        props.mesh_export_naming_enabled = True
         props.mesh_export_naming_convention = "UNITY"
 
         create_cube.select_set(True)
@@ -66,6 +68,7 @@ class TestNamingConventions:
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
         props.mesh_export_format = "FBX"
+        props.mesh_export_naming_enabled = True
         props.mesh_export_naming_convention = "UNREAL"
 
         create_cube.select_set(True)
@@ -91,6 +94,7 @@ class TestUnrealPrefixPreservation:
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
         props.mesh_export_format = "FBX"
+        props.mesh_export_naming_enabled = True
         props.mesh_export_naming_convention = "UNREAL"
 
         obj.select_set(True)
@@ -112,6 +116,7 @@ class TestUnrealPrefixPreservation:
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
         props.mesh_export_format = "FBX"
+        props.mesh_export_naming_enabled = True
         props.mesh_export_naming_convention = "UNREAL"
 
         obj.select_set(True)
@@ -132,6 +137,10 @@ class TestPrefixSuffix:
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
         props.mesh_export_format = "FBX"
+        props.mesh_export_naming_enabled = True
+        # UNREAL is a no-op on the already-PascalCase "TestCube", isolating
+        # the prefix from any convention transform.
+        props.mesh_export_naming_convention = "UNREAL"
         props.mesh_export_prefix = "mesh_"
 
         create_cube.select_set(True)
@@ -148,6 +157,10 @@ class TestPrefixSuffix:
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
         props.mesh_export_format = "FBX"
+        props.mesh_export_naming_enabled = True
+        # UNREAL is a no-op on the already-PascalCase "TestCube", isolating
+        # the suffix from any convention transform.
+        props.mesh_export_naming_convention = "UNREAL"
         props.mesh_export_suffix = "_export"
 
         create_cube.select_set(True)
@@ -164,6 +177,10 @@ class TestPrefixSuffix:
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
         props.mesh_export_format = "FBX"
+        props.mesh_export_naming_enabled = True
+        # UNREAL is a no-op on the already-PascalCase "TestCube", isolating
+        # the prefix/suffix from any convention transform.
+        props.mesh_export_naming_convention = "UNREAL"
         props.mesh_export_prefix = "mesh_"
         props.mesh_export_suffix = "_final"
 
@@ -183,6 +200,7 @@ class TestPrefixSuffix:
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
         props.mesh_export_format = "FBX"
+        props.mesh_export_naming_enabled = True
         props.mesh_export_naming_convention = "GODOT"
         props.mesh_export_prefix = "mesh_"
         props.mesh_export_suffix = "_final"
@@ -274,6 +292,7 @@ class TestNamingWithLOD:
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
         props.mesh_export_format = "FBX"
+        props.mesh_export_naming_enabled = True
         props.mesh_export_naming_convention = "GODOT"
         props.mesh_export_lod = True
         props.mesh_export_lod_count = 2

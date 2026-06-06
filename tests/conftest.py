@@ -305,9 +305,12 @@ def reset_export_settings():
     props.mesh_export_tri_method = "BEAUTY"
     props.mesh_export_keep_normals = True
     props.mesh_export_apply_modifiers = "VISIBLE"
+    # Baseline with naming disabled so the broad suite expects original
+    # (sanitised) filenames; convention tests opt in explicitly.
+    props.mesh_export_naming_enabled = False
     props.mesh_export_prefix = ""
     props.mesh_export_suffix = ""
-    props.mesh_export_naming_convention = "DEFAULT"
+    props.mesh_export_naming_convention = "GODOT"
     props.mesh_export_lod = False
     props.mesh_export_lod_count = 4
     props.mesh_export_lod_hierarchy = True

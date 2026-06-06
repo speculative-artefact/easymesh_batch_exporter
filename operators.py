@@ -525,7 +525,7 @@ def create_slot_empties(obj: Object, scene_props, context: Context) -> List[Obje
 
     slot_empties = []
     slot_prefix = scene_props.mesh_export_slot_prefix
-    convention = scene_props.mesh_export_naming_convention
+    convention = resolve_naming(scene_props)[2]
 
     for child in obj.children:
         # Only create slots for mesh children (not empties or other types)
@@ -679,6 +679,28 @@ def resolve_collision_profile(scene_props) -> str:
         One of "NONE", "UNREAL", "GODOT", "CUSTOM".
     """
     return scene_props.mesh_export_collision_profile
+
+
+def resolve_naming(scene_props) -> tuple[str, str, str]:
+    """
+    Return (prefix, suffix, convention), honouring the naming-enabled toggle.
+
+    When the feature is disabled, behaves like the old "None" convention:
+    no prefix/suffix and convention "DEFAULT" (sanitise-only).
+
+    Args:
+        scene_props: Scene properties containing naming settings
+
+    Returns:
+        Tuple of (prefix, suffix, convention) ready for use during export.
+    """
+    if not scene_props.mesh_export_naming_enabled:
+        return "", "", "DEFAULT"
+    return (
+        scene_props.mesh_export_prefix,
+        scene_props.mesh_export_suffix,
+        scene_props.mesh_export_naming_convention,
+    )
 
 
 def apply_collision_naming(
@@ -1680,9 +1702,8 @@ def get_batch_export_filename(
         base_name = detect_batch_default_name(objects)
         logger.info(f"Auto-detected batch export name: '{base_name}'")
 
-    # Apply prefix and suffix
-    prefix = scene_props.mesh_export_prefix
-    suffix = scene_props.mesh_export_suffix
+    # Apply prefix and suffix (gated by the naming-enabled toggle)
+    prefix, suffix, convention = resolve_naming(scene_props)
 
     if prefix:
         base_name = f"{prefix}{base_name}"
@@ -1690,7 +1711,6 @@ def get_batch_export_filename(
         base_name = f"{base_name}{suffix}"
 
     # Apply naming convention
-    convention = scene_props.mesh_export_naming_convention
     final_name = apply_naming_convention(base_name, convention)
 
     # Ensure name doesn't exceed maximum length
@@ -1736,17 +1756,14 @@ def setup_export_object(
         if "_LOD" in original_obj_name:
             original_obj_name = original_obj_name.split("_LOD")[0]
 
+        # Resolve naming settings (gated by the naming-enabled toggle)
+        prefix, suffix, convention = resolve_naming(scene_props)
+
         # Apply naming convention (this handles sanitisation internally)
-        original_obj_name = apply_naming_convention(
-            original_obj_name, scene_props.mesh_export_naming_convention
-        )
+        original_obj_name = apply_naming_convention(original_obj_name, convention)
 
         # Apply prefix and suffix
-        base_name = (
-            scene_props.mesh_export_prefix
-            + original_obj_name
-            + scene_props.mesh_export_suffix
-        )
+        base_name = prefix + original_obj_name + suffix
 
         # Truncate if name too long to avoid filesystem issues
         if len(base_name) > MAX_FILENAME_LENGTH:
@@ -3546,9 +3563,10 @@ def initialise_builtin_presets() -> None:
                     # Modifiers
                     "mesh_export_apply_modifiers": "VISIBLE",
                     # Naming
+                    "mesh_export_naming_enabled": False,
                     "mesh_export_prefix": "",
                     "mesh_export_suffix": "",
-                    "mesh_export_naming_convention": "DEFAULT",
+                    "mesh_export_naming_convention": "GODOT",
                     # Export indicators
                     "mesh_export_show_indicators": True,
                     # LOD settings
@@ -3849,12 +3867,10 @@ class MESH_OT_batch_export(Operator):
         if self.batch_name.strip():
             layout.separator()
             preview_box = layout.box()
-            preview_name = apply_naming_convention(
-                self.batch_name, scene_props.mesh_export_naming_convention
-            )
+            # Resolve naming settings (gated by the naming-enabled toggle)
+            prefix, suffix, convention = resolve_naming(scene_props)
+            preview_name = apply_naming_convention(self.batch_name, convention)
             # Add prefix/suffix preview
-            prefix = scene_props.mesh_export_prefix
-            suffix = scene_props.mesh_export_suffix
             if prefix:
                 preview_name = f"{prefix}{preview_name}"
             if suffix:
@@ -4047,7 +4063,7 @@ class MESH_OT_batch_export(Operator):
             )
 
             # Handle attachment empties - parent to LOD0
-            convention = scene_props.mesh_export_naming_convention
+            convention = resolve_naming(scene_props)[2]
             attachment_empties = get_attachment_empties(obj, scene_props)
             for empty in attachment_empties:
                 empty_copy = copy_empty_for_export(
@@ -4332,7 +4348,7 @@ class MESH_OT_batch_export(Operator):
                     attachment_empties = get_attachment_empties(
                         original_obj, scene_props
                     )
-                    convention = scene_props.mesh_export_naming_convention
+                    convention = resolve_naming(scene_props)[2]
 
                     # Copy each attachment empty and parent to export object
                     for empty in attachment_empties:
@@ -4446,7 +4462,7 @@ class MESH_OT_batch_export(Operator):
             logger.info(
                 f"Processing batch glTF export for {len(objects_to_export)} objects..."
             )
-            convention = scene_props.mesh_export_naming_convention
+            convention = resolve_naming(scene_props)[2]
 
             # Process each object
             for idx, original_obj in enumerate(objects_to_export):

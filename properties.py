@@ -348,16 +348,26 @@ class MeshExporterSettings(PropertyGroup):
         name="Suffix", description="Suffix for exported file names", default=""
     )
 
+    # Enable/disable the naming feature as a whole (prefix, suffix and
+    # convention). When off, names are only sanitised - this replaces the
+    # former "None" item of mesh_export_naming_convention.
+    mesh_export_naming_enabled: BoolProperty(
+        name="Naming Convention",
+        description=(
+            "Apply prefix, suffix and engine naming convention to exported files"
+        ),
+        default=True,
+    )
+
     mesh_export_naming_convention: EnumProperty(
         name="Naming Convention",
         description="Apply specific naming conventions to exported files",
         items=[
-            ("DEFAULT", "None", "No naming convention (keep original)"),
             ("GODOT", "Godot", "snake_case naming (my_mesh_name)"),
             ("UNITY", "Unity", "Capitalised words with underscores (My_Mesh_Name)"),
             ("UNREAL", "Unreal Engine", "PascalCase naming (MyMeshName)"),
         ],
-        default="DEFAULT",
+        default="GODOT",
     )
 
     # Export indicators property

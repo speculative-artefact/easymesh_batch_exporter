@@ -228,6 +228,8 @@ class TestTriangulationWithModifiers:
 
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
+        props.mesh_export_naming_enabled = True
+        props.mesh_export_naming_convention = "UNREAL"
         props.mesh_export_format = "FBX"
         props.mesh_export_apply_modifiers = "VISIBLE"
         props.mesh_export_tri = True
