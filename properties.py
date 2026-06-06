@@ -300,6 +300,14 @@ class MeshExporterSettings(PropertyGroup):
                 "Shortest Diagonal",
                 "Split the quad along the shortest diagonal",
             ),
+            (
+                "FAST",
+                "Fast",
+                "Let the format exporter triangulate during export instead of a "
+                "separate pass. Much faster on dense meshes, but may slightly alter "
+                "shading on non-planar quads (normals are recomputed rather than "
+                "preserved). Ideal for high-poly/organic meshes",
+            ),
         ],
         default="BEAUTY",
     )

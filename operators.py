@@ -17,6 +17,7 @@ import weakref
 import json
 from datetime import datetime
 from mathutils import Matrix
+from bpy_extras.io_utils import axis_conversion
 from typing import Optional, Tuple, List, Iterator, Any, Dict
 from bpy.types import Operator, Object, Mesh, Context, Collection
 from bpy.props import StringProperty, BoolProperty, EnumProperty
@@ -1496,7 +1497,12 @@ def get_batch_export_filename(
 
 
 def setup_export_object(
-    obj, original_obj_name, scene_props, lod_level=None, skip_zero_location=False
+    obj,
+    original_obj_name,
+    scene_props,
+    lod_level=None,
+    skip_zero_location=False,
+    prebake_fbx_space=True,
 ):
     """
     Renames object, applies prefix/suffix/LOD naming, zeros location.
@@ -1508,6 +1514,11 @@ def setup_export_object(
         lod_level (int, optional): LOD level for naming. Defaults to None.
         skip_zero_location (bool): Skip zero location even if enabled in settings.
             Used for batch exports to preserve spatial relationships. Defaults to False.
+        prebake_fbx_space (bool): For FBX, pre-bake the axis conversion + export
+            scale into geometry so the exporter can skip its slow per-vertex bake
+            (see bake_fbx_export_space). Set False for the LOD-hierarchy path, where
+            geometry baking would desync the parent empty's node transform from its
+            children. Defaults to True.
 
     Returns:
         tuple: The final name, base name, and export scale of the object.
@@ -1593,6 +1604,21 @@ def setup_export_object(
 
         # Only apply rotation transform - scale will be passed to exporters
         apply_transforms(obj, apply_rotation=True, apply_scale=False)
+
+        # For FBX, bake the axis conversion + export scale into the geometry now
+        # (fast C-level mesh.transform) so the exporter can run with neutral settings
+        # and skip its slow per-vertex bake_space_transform loop. Mirrors the GLTF/USD
+        # branch above: scale is now in the geometry, so don't pass it to the exporter.
+        # Skipped for the LOD-hierarchy path (prebake_fbx_space=False), which must keep
+        # the exporter's bake to preserve the parent-empty/child relationship.
+        if scene_props.mesh_export_format == "FBX" and prebake_fbx_space:
+            bake_fbx_export_space(
+                obj,
+                scene_props.mesh_export_coord_forward,
+                scene_props.mesh_export_coord_up,
+                final_scale_factor,
+            )
+            final_scale_factor = 1.0
 
         return obj.name, base_name, final_scale_factor
     except Exception as e:
@@ -1686,6 +1712,58 @@ def apply_transforms(
     except Exception as e:
         logger.error(f"Failed to apply transforms for {obj.name}: {e}")
         raise RuntimeError(f"Transform application failed for {obj.name}") from e
+
+
+def bake_fbx_export_space(obj, axis_forward, axis_up, export_scale):
+    """Pre-bake the FBX axis conversion and export scale into mesh geometry.
+
+    Blender's built-in FBX exporter, when run with ``bake_space_transform=True``,
+    bakes the global matrix (axis conversion + scale) into every vertex and normal
+    using a slow per-vertex Python loop (Blender T39251/T95408). For dense meshes
+    this dominates export time. By baking the identical matrix ourselves via the
+    fast C-level ``mesh.transform()`` (the same primitive ``apply_transforms`` uses),
+    we can then call the exporter with neutral settings (``bake_space_transform=False``,
+    native axes) so it writes the already-baked geometry directly and skips that loop.
+
+    The baked matrix reproduces exactly what the exporter would have baked, so both
+    the axis fix (issue #14) and the Unreal scale fix (issue #9) are preserved. The
+    scale is uniform, so it commutes with the axis rotation and ``mesh.transform()``
+    orients normals correctly without any manual recalculation.
+
+    Args:
+        obj (bpy.types.Object): The mesh object to bake into. No-op for non-meshes.
+        axis_forward (str): Target FBX forward axis (e.g. ``mesh_export_coord_forward``).
+        axis_up (str): Target FBX up axis (e.g. ``mesh_export_coord_up``).
+        export_scale (float): Uniform export scale factor to bake into the geometry.
+
+    Returns:
+        None
+
+    Example:
+        >>> bake_fbx_export_space(obj, "-Z", "Y", 100.0)  # metres -> centimetres
+    """
+    if not obj or obj.type != "MESH" or not obj.data:
+        return
+
+    # If forward and up land on the same axis (a degenerate combo the FBX export
+    # operator silently auto-corrects via orientation_helper), apply Blender's own
+    # resolution rule - bump the up axis to the next one - so axis_conversion doesn't
+    # raise and we match what the exporter would have done (bpy_extras.axis_conversion_ensure).
+    if axis_forward[-1] == axis_up[-1]:
+        axis_up = axis_up[:-1] + "XYZ"[("XYZ".index(axis_up[-1]) + 1) % 3]
+
+    # axis_conversion maps Blender's native space (Y forward, Z up) to the chosen
+    # FBX axes; combine with the uniform export scale into a single bake matrix.
+    m_axis = axis_conversion(
+        from_forward="Y",
+        from_up="Z",
+        to_forward=axis_forward,
+        to_up=axis_up,
+    ).to_4x4()
+    m_bake = m_axis @ Matrix.Scale(export_scale, 4)
+
+    obj.data.transform(m_bake)
+    obj.data.update()
 
 
 def apply_mesh_modifiers(obj, modifier_mode="VISIBLE"):
@@ -2160,6 +2238,13 @@ def triangulate_mesh(obj, method="BEAUTY", keep_normals=True):
     if not obj or obj.type != "MESH":
         return
 
+    # "FAST" defers triangulation to the format exporter (use_triangles etc.), so the
+    # separate modifier pass is skipped entirely - see export_object / the LOD-hierarchy
+    # FBX call, which set the exporter's triangulate flag when this method is selected.
+    if method == "FAST":
+        logger.info(f"Skipping separate triangulation for {obj.name} (Fast method)")
+        return
+
     poly_count = len(obj.data.polygons)
     logger.info(f"Triangulating {obj.name} with {poly_count:,} polygons...")
 
@@ -2560,6 +2645,12 @@ def export_object(
     # base_file_path = os.path.splitext(file_path)[0] # Ensure no extension yet
     base_file_path = file_path
 
+    # "Fast" triangulation defers to the format exporter (use_triangles etc.) instead
+    # of the separate triangulate_mesh pass, which is skipped for this method.
+    exporter_triangulate = (
+        scene_props.mesh_export_tri and scene_props.mesh_export_tri_method == "FAST"
+    )
+
     # Handle GLTF format extensions
     if fmt == "GLTF":
         if scene_props.mesh_export_gltf_type == "GLB":
@@ -2643,23 +2734,19 @@ def export_object(
                 bpy.ops.export_scene.fbx(
                     filepath=export_filepath,
                     use_selection=True,
-                    # Blender's FBX exporter, with apply_unit_scale=False +
-                    # FBX_SCALE_NONE, always bakes a fixed metres->centimetres
-                    # (x100) factor into the geometry and writes
-                    # UnitScaleFactor=1.0. Divide export_scale by that factor so
-                    # the *net* baked scale equals export_scale (matching OBJ/STL
-                    # geometry). FBX_SCALE_NONE keeps all scaling in the geometry
-                    # instead of the file header, which Unreal ignores - fixes the
-                    # 1/100 import scale (issue #9).
-                    global_scale=export_scale / METERS_TO_CENTIMETERS,
-                    axis_forward=scene_props.mesh_export_coord_forward,
-                    axis_up=scene_props.mesh_export_coord_up,
-                    # Bake the axis conversion into the geometry so the chosen
-                    # forward/up axes actually survive re-import (Blender T95408).
-                    # Without this, the axes only land in the FBX header metadata
-                    # and importers (Blender/UE5) reverse them, making the
-                    # Forward Axis control a silent no-op.
-                    bake_space_transform=True,
+                    # Axis conversion and export scale are already baked into the
+                    # geometry by bake_fbx_export_space (setup_export_object), so run
+                    # the exporter with NEUTRAL settings: bake_space_transform=False
+                    # makes it write the baked geometry raw (fast - skips the slow
+                    # per-vertex bake loop, Blender T39251), native axes add no further
+                    # rotation, and global_scale=1/100 with apply_unit_scale=False +
+                    # FBX_SCALE_NONE cancels the exporter's forced x100 on the node
+                    # while keeping UnitScaleFactor=1.0 in the header (Unreal-correct,
+                    # issue #9). Net output matches the old bake_space_transform path.
+                    global_scale=1.0 / METERS_TO_CENTIMETERS,
+                    axis_forward="Y",
+                    axis_up="Z",
+                    bake_space_transform=False,
                     apply_unit_scale=False,
                     apply_scale_options="FBX_SCALE_NONE",
                     object_types=fbx_object_types,
@@ -2669,7 +2756,9 @@ def export_object(
                     embed_textures=scene_props.mesh_export_embed_textures,
                     mesh_smooth_type=scene_props.mesh_export_smoothing,
                     use_mesh_modifiers=False,  # Handled by apply_mesh_modifiers
-                    use_triangles=False,  # Handled by triangulate_mesh
+                    # Off unless "Fast" method: then the exporter triangulates here
+                    # instead of the separate triangulate_mesh pass.
+                    use_triangles=exporter_triangulate,
                 )
             elif fmt == "OBJ":
                 bpy.ops.wm.obj_export(
@@ -2685,7 +2774,8 @@ def export_object(
                     export_normals=True,
                     export_smooth_groups=True,
                     apply_modifiers=False,  # Handled by apply_mesh_modifiers
-                    export_triangulated_mesh=False,  # Handled triangulate_mesh
+                    # Off unless "Fast" method (exporter-side triangulation).
+                    export_triangulated_mesh=exporter_triangulate,
                 )
             elif fmt == "GLTF":
                 # GLTF doesn't support global scale - warn if scale is not 1.0
@@ -2747,7 +2837,8 @@ def export_object(
                     generate_preview_surface=False,
                     use_instancing=False,
                     evaluation_mode="RENDER",
-                    triangulate_meshes=False,  # Handled by triangulate_mesh
+                    # Off unless "Fast" method (exporter-side triangulation).
+                    triangulate_meshes=exporter_triangulate,
                     # Need to add a prop to track material quality
                     usdz_downscale_size=downscale_size,
                     export_textures=True,
@@ -3628,9 +3719,13 @@ class MESH_OT_batch_export(Operator):
                     logger.info("Creating base LOD0...")
                     lod_obj, temp_metaball_mesh = create_export_copy(obj, context)
 
-                    # Setup object (naming, location, scale)
+                    # Setup object (naming, location, scale). Keep the exporter's own
+                    # bake (prebake_fbx_space=False): this hierarchy is exported as a
+                    # LodGroup empty with parented children, so geometry-only pre-baking
+                    # would desync the empty's node transform from its children.
                     (lod_obj_name, base_name, export_scale) = setup_export_object(
-                        lod_obj, obj.name, scene_props, lod_level
+                        lod_obj, obj.name, scene_props, lod_level,
+                        prebake_fbx_space=False,
                     )
 
                     # Apply modifiers if needed
@@ -3656,8 +3751,10 @@ class MESH_OT_batch_export(Operator):
 
                     # Only rename for LOD level (scale/location already handled in LOD0)
                     # Note: We pass the original object name, not the LOD0's modified name
+                    # prebake_fbx_space=False: LodGroup hierarchy keeps the exporter bake.
                     (lod_obj_name, _, _) = setup_export_object(
-                        lod_obj, obj.name, scene_props, lod_level
+                        lod_obj, obj.name, scene_props, lod_level,
+                        prebake_fbx_space=False,
                     )
 
                     # Apply decimation
@@ -3744,6 +3841,12 @@ class MESH_OT_batch_export(Operator):
                     bake_space_transform=True,
                     object_types=fbx_object_types,
                     use_mesh_modifiers=False,  # Already applied
+                    # "Fast" method skips the separate triangulate pass, so let the
+                    # exporter triangulate the LOD meshes here instead.
+                    use_triangles=(
+                        scene_props.mesh_export_tri
+                        and scene_props.mesh_export_tri_method == "FAST"
+                    ),
                     mesh_smooth_type=scene_props.mesh_export_smoothing,
                     use_tspace=True,
                     path_mode="COPY"

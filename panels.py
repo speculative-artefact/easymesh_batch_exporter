@@ -155,7 +155,11 @@ class MESH_PT_exporter_panel(Panel):
         sub.enabled = settings.mesh_export_tri  # Enable/disable sub-option
         sub.prop(settings, "mesh_export_tri_method", text="")
         row = col.row(align=True)
-        row.enabled = settings.mesh_export_tri  # Enable/disable sub-option
+        # Keep-normals only applies to the separate triangulate pass; the "Fast"
+        # method defers to the exporter, which recomputes normals itself.
+        row.enabled = (
+            settings.mesh_export_tri and settings.mesh_export_tri_method != "FAST"
+        )
         row.prop(settings, "mesh_export_keep_normals")
 
         # Rename file settings
