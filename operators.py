@@ -3757,23 +3757,19 @@ class MESH_OT_batch_export(Operator):
                         prebake_fbx_space=False,
                     )
 
-                    # Apply decimation
-                    decimate_modifier = lod_obj.modifiers.new(
-                        name=f"Decimate_LOD{lod_level}", type="DECIMATE"
+                    # Apply decimation via the shared helper so the
+                    # COLLAPSE-only ratio guard and symmetry handling stay
+                    # consistent with the other LOD paths. Pass the absolute
+                    # target_ratio: each hierarchy LOD is decimated from the
+                    # full-density base copy, not progressively from the
+                    # previous LOD.
+                    apply_decimate_modifier(
+                        lod_obj,
+                        target_ratio,
+                        scene_props.mesh_export_lod_type,
+                        scene_props.mesh_export_lod_symmetry_axis,
+                        scene_props.mesh_export_lod_symmetry,
                     )
-                    decimate_modifier.decimate_type = scene_props.mesh_export_lod_type
-                    decimate_modifier.ratio = target_ratio
-
-                    if scene_props.mesh_export_lod_symmetry:
-                        decimate_modifier.use_symmetry = True
-                        decimate_modifier.symmetry_axis = (
-                            scene_props.mesh_export_lod_symmetry_axis
-                        )
-
-                    # Apply modifier
-                    context.view_layer.objects.active = lod_obj
-                    MeshOperations.safe_mode_set(lod_obj, "OBJECT")
-                    bpy.ops.object.modifier_apply(modifier=decimate_modifier.name)
 
                 lod_objects.append(lod_obj)
                 previous_ratio = target_ratio
