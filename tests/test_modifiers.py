@@ -275,8 +275,8 @@ class TestModifiersWithLOD:
         result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with modifiers + LOD should succeed"
 
-        # Verify base and LOD files were created
-        base_file = temp_export_dir / "TestCube.fbx"
+        # Verify base and LOD files were created (base LOD0 is suffixed _LOD00).
+        base_file = temp_export_dir / "TestCube_LOD00.fbx"
         lod1_file = temp_export_dir / "TestCube_LOD01.fbx"
 
         assert verify_file_exists(base_file, "fbx"), "Base file should exist"

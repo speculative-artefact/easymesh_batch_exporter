@@ -115,8 +115,8 @@ class TestLargeMeshWithLOD:
         result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Large mesh LOD generation should succeed"
 
-        # Verify LOD files were created
-        base_file = temp_export_dir / "TestLargeMesh.fbx"
+        # Verify LOD files were created (base LOD0 is suffixed _LOD00).
+        base_file = temp_export_dir / "TestLargeMesh_LOD00.fbx"
         lod1_file = temp_export_dir / "TestLargeMesh_LOD01.fbx"
 
         assert verify_file_exists(base_file, "fbx"), "Base file should exist"
@@ -214,8 +214,13 @@ class TestBatchExportMemory:
             bpy.ops.mesh.primitive_cube_add(location=(i * 2, 0, 0))
             obj = bpy.context.active_object
             obj.name = f"Cube_{i:02d}"
-            obj.select_set(True)
             objects.append(obj)
+
+        # Select all of them *after* creation: primitive_cube_add deselects
+        # everything and selects only the new object, so selecting inside the
+        # loop above would leave just the final cube selected.
+        for obj in objects:
+            obj.select_set(True)
 
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"

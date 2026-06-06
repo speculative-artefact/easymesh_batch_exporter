@@ -1361,19 +1361,23 @@ def apply_naming_convention(name: str, convention: str) -> str:
             return sanitise_filename(name)
 
     elif convention == "UNITY":
-        # Unity: More flexible, capitalise words, keep underscores
+        # Unity: Capitalised_Words_With_Underscores (e.g. "TestCube" -> "Test_Cube")
         try:
-            # First sanitise illegal chars and replace spaces with underscores
-            temp_name = re.sub(r'[\\/:*?"<>|.]', "_", name)
-            temp_name = temp_name.replace(" ", "_")
-            # Replace multiple underscores with single
-            temp_name = re.sub(r"_+", "_", temp_name)
-            # Remove leading/trailing underscores
-            temp_name = temp_name.strip("_")
-            # Split, capitalise, rejoin
-            parts = temp_name.split("_")
-            parts = [p.capitalize() if p else "" for p in parts]
-            result = "_".join(filter(None, parts))  # Filter out empty strings
+            # Replace illegal chars and existing separators with spaces so that
+            # both delimited and camelCase names split into discrete words.
+            temp_name = re.sub(r'[\\/:*?"<>|.\-]', " ", name)
+            temp_name = temp_name.replace("_", " ")
+
+            # Split into words, including on case changes (same pattern as GODOT)
+            # so "TestCube" -> ["Test", "Cube"] and "my mesh" -> ["my", "mesh"].
+            words = re.findall(
+                r"[A-Z]*[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)|[A-Z]|[0-9]+", temp_name
+            )
+
+            # Capitalise each word and join with underscores.
+            words = [word.capitalize() for word in words if word and word.strip()]
+            result = "_".join(words)
+
             return result if result else sanitise_filename(name)
         except Exception:
             return sanitise_filename(name)
@@ -1421,6 +1425,39 @@ def apply_naming_convention(name: str, convention: str) -> str:
     return sanitise_filename(name)  # Fallback to standard sanitisation
 
 
+def detect_batch_default_name(objects: List[Object]) -> str:
+    """Detect the default filename for a combined batch export.
+
+    Prefers a real (user-created) collection shared by every object, ignoring
+    the scene's master collection since it isn't a meaningful asset grouping.
+    Falls back to the first object's name when there's no shared collection.
+
+    Args:
+        objects: List of objects being exported.
+
+    Returns:
+        The detected default name (shared collection name or first object name).
+    """
+    if not objects:
+        return "batch_export"
+
+    # Find a collection common to every object.
+    common = set(objects[0].users_collection)
+    for obj in objects[1:]:
+        common.intersection_update(obj.users_collection)
+        if not common:
+            break
+
+    # Master scene collections aren't asset groupings - exclude them so that
+    # objects merely sharing the scene root fall back to the object name.
+    master_collections = {scene.collection for scene in bpy.data.scenes}
+    common -= master_collections
+
+    if common:
+        return next(iter(common)).name
+    return objects[0].name
+
+
 def get_batch_export_filename(
     objects: List[Object], scene_props, override_name: Optional[str] = None
 ) -> str:
@@ -1456,37 +1493,9 @@ def get_batch_export_filename(
     if override_name:
         base_name = override_name
         logger.info(f"Using user-specified batch export name: '{base_name}'")
-    elif not objects:
-        base_name = "batch_export"
     else:
-        # Try to find a common collection
-        common_collection = None
-
-        # Get all collections for the first object
-        first_obj_collections = set(objects[0].users_collection)
-
-        # Find intersection of collections across all objects
-        if len(objects) > 1:
-            for obj in objects[1:]:
-                obj_collections = set(obj.users_collection)
-                first_obj_collections = first_obj_collections.intersection(
-                    obj_collections
-                )
-                if not first_obj_collections:
-                    break
-
-        # If we found a common collection, use its name
-        if first_obj_collections:
-            # Use the first common collection (usually there's only one)
-            common_collection = next(iter(first_obj_collections))
-            base_name = common_collection.name
-            logger.info(f"Using collection name for batch export: '{base_name}'")
-        else:
-            # Fallback to first object's name
-            base_name = objects[0].name
-            logger.info(
-                f"No common collection found, using first object name: '{base_name}'"
-            )
+        base_name = detect_batch_default_name(objects)
+        logger.info(f"Auto-detected batch export name: '{base_name}'")
 
     # Apply prefix and suffix
     prefix = scene_props.mesh_export_prefix
@@ -2877,7 +2886,9 @@ def export_object(
                     triangulate_meshes=exporter_triangulate,
                     # Need to add a prop to track material quality
                     usdz_downscale_size=downscale_size,
-                    export_textures=True,
+                    # Blender 4.4+ replaced the boolean `export_textures` with
+                    # the `export_textures_mode` enum; "NEW" copies textures
+                    # alongside the export (the old True behaviour).
                     export_textures_mode="NEW",
                     overwrite_textures=True,
                 )
@@ -3610,25 +3621,8 @@ class MESH_OT_batch_export(Operator):
         )
 
         if is_batch_mode:
-            # Detect best default filename for batch
-            default_name = ""
-            # Check for common collection
-            first_obj_collections = set(objects_to_export[0].users_collection)
-            for obj in objects_to_export[1:]:
-                first_obj_collections = first_obj_collections.intersection(
-                    set(obj.users_collection)
-                )
-
-            # Prefer collection name if found
-            if first_obj_collections:
-                collection = next(iter(first_obj_collections))
-                default_name = collection.name
-            else:
-                # Otherwise use first object name
-                default_name = objects_to_export[0].name
-
             # Pre-fill batch name with detected default
-            self.batch_name = default_name
+            self.batch_name = detect_batch_default_name(objects_to_export)
 
             # Show dialog
             return context.window_manager.invoke_props_dialog(self, width=400)
@@ -4496,11 +4490,11 @@ class MESH_OT_batch_export(Operator):
         )  # Batch mode incompatible with hierarchy export
 
         if is_batch_gltf:
-            # Get user-specified batch name from dialog
+            # Use the user-specified batch name from the dialog when present.
+            # When execute() is called directly (tests, scripting, headless)
+            # invoke() never ran, so batch_name is empty - pass None so
+            # get_batch_export_filename() auto-detects the default name.
             override_name = self.batch_name.strip() if self.batch_name else None
-            if not override_name:
-                self.report({"WARNING"}, "Batch export name cannot be empty")
-                return {"CANCELLED"}
 
             logger.info(
                 f"Starting batch glTF export for {total_items} objects "

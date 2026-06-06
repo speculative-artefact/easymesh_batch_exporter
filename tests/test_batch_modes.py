@@ -135,7 +135,7 @@ class TestBatchModeWithCollections:
         collection1.objects.link(obj1)
 
         # Create object in collection2
-        bpy.ops.mesh.primitive_sphere_add(location=(2, 0, 0))
+        bpy.ops.mesh.primitive_uv_sphere_add(location=(2, 0, 0))
         obj2 = bpy.context.active_object
         obj2.name = "SecondSphere"
         bpy.context.scene.collection.objects.unlink(obj2)

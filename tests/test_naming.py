@@ -284,8 +284,8 @@ class TestNamingWithLOD:
         assert result == {"FINISHED"}, "Export with Godot naming and LOD should succeed"
 
         # TestSphere -> test_sphere (Godot)
-        # LODs should also use convention: test_sphere_LOD01.fbx, etc.
-        base_file = temp_export_dir / "test_sphere.fbx"
+        # LODs should also use convention; base LOD0 is suffixed _LOD00.
+        base_file = temp_export_dir / "test_sphere_LOD00.fbx"
         lod1_file = temp_export_dir / "test_sphere_LOD01.fbx"
         lod2_file = temp_export_dir / "test_sphere_LOD02.fbx"
 

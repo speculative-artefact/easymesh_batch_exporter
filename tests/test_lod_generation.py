@@ -34,8 +34,8 @@ class TestBasicLODGeneration:
         result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "LOD generation should succeed"
 
-        # Should have: TestSphere.fbx, TestSphere_LOD01.fbx, TestSphere_LOD02.fbx
-        base_file = temp_export_dir / "TestSphere.fbx"
+        # Should have: TestSphere_LOD00.fbx, _LOD01.fbx, _LOD02.fbx
+        base_file = temp_export_dir / "TestSphere_LOD00.fbx"
         lod1_file = temp_export_dir / "TestSphere_LOD01.fbx"
         lod2_file = temp_export_dir / "TestSphere_LOD02.fbx"
 
@@ -110,8 +110,8 @@ class TestLODRatios:
         result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "Export with custom LOD ratios should succeed"
 
-        # Verify all LOD files were created
-        base_file = temp_export_dir / "TestSphere.fbx"
+        # Verify all LOD files were created (base LOD0 is suffixed _LOD00).
+        base_file = temp_export_dir / "TestSphere_LOD00.fbx"
         lod1_file = temp_export_dir / "TestSphere_LOD01.fbx"
         lod2_file = temp_export_dir / "TestSphere_LOD02.fbx"
         lod3_file = temp_export_dir / "TestSphere_LOD03.fbx"
@@ -377,8 +377,8 @@ class TestLODWithFormats:
         result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "LOD generation with glTF should succeed"
 
-        # Verify LOD files with glb extension
-        base_file = temp_export_dir / "TestSphere.glb"
+        # Verify LOD files with glb extension (base LOD0 is suffixed _LOD00).
+        base_file = temp_export_dir / "TestSphere_LOD00.glb"
         lod1_file = temp_export_dir / "TestSphere_LOD01.glb"
         lod2_file = temp_export_dir / "TestSphere_LOD02.glb"
 
@@ -432,6 +432,6 @@ class TestLODWithLargeMeshes:
         result = bpy.ops.mesh.batch_export()
         assert result == {"FINISHED"}, "LOD generation on large mesh should succeed"
 
-        # Verify files were created
-        base_file = temp_export_dir / "TestLargeMesh.fbx"
+        # Verify files were created (base LOD0 is suffixed _LOD00).
+        base_file = temp_export_dir / "TestLargeMesh_LOD00.fbx"
         assert verify_file_exists(base_file, "fbx"), "Large mesh base file should exist"
