@@ -19,10 +19,10 @@ This document provides a comprehensive technical overview of the EasyMesh Batch 
 ## System Overview
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│                      Blender API                            │
+┌────────────────────────────────────────────────────────────┐
+│                      Blender API                           │
 │  (bpy.types, bpy.ops, bpy.data, bpy.context, bpy.props)    │
-└──────────────────────┬──────────────────────────────────────┘
+└──────────────────────┬─────────────────────────────────────┘
                        │
        ┌───────────────┴───────────────┐
        │       __init__.py             │  Registration & Lifecycle
@@ -313,7 +313,8 @@ elif poly_count > LARGE_MESH_THRESHOLD:      # 500K+
     effective_interval = max(3.0, gc_interval * 0.75)
 ```
 
-**Rationale**: Very large meshes benefit from more aggressive GC to prevent OOM errors, while normal meshes use longer intervals to avoid performance hits.
+**Rationale**: Very large meshes benefit from more aggressive GC to prevent 
+OOM errors, while normal meshes use longer intervals to avoid performance hits.
 
 ---
 
@@ -328,7 +329,8 @@ elif poly_count > LARGE_MESH_THRESHOLD:      # 500K+
 Updates mesh and optionally triggers GC for large meshes
 
 - Calls `obj.data.update()`
-- If cleanup enabled and poly_count > threshold: calls `MemoryManager.request_cleanup(poly_count)`
+- If cleanup enabled and poly_count > threshold: 
+calls `MemoryManager.request_cleanup(poly_count)`
 
 #### `update_view_layer() -> None`
 
@@ -378,11 +380,11 @@ Changes object mode with error handling
 
 ### Threshold-Based Strategy
 
-| Polygon Count | Strategy | GC Interval | Actions |
-| ------------ | -------- | ----------- | ------- |
-| < 500K | Normal | 5.0s (default) | Standard processing |
-| 500K - 1M | Optimised | 3.75s (adaptive) | Pre-cleanup, throttled GC |
-| 1M+ | Aggressive | 2.5s (adaptive) | Frequent GC, memory warnings |
+| Poly Count | Strategy   | GC Interval      | Actions                      |
+| ---------- | ---------- | ---------------- | ---------------------------- |
+| < 500K     | Normal     | 5.0s (default)   | Standard processing          |
+| 500K - 1M  | Optimised  | 3.75s (adaptive) | Pre-cleanup, throttled GC    |
+| 1M+        | Aggressive | 2.5s (adaptive)  | Frequent GC, memory warnings |
 
 ### Memory Optimisation Flow
 
@@ -448,7 +450,8 @@ with temporary_object(duplicate_obj) as temp:
 
 ### to_mesh() / to_mesh_clear() Pattern
 
-**Critical Pattern**: Always pair `to_mesh()` with `to_mesh_clear()` in try/finally
+**Critical Pattern**: 
+Always pair `to_mesh()` with `to_mesh_clear()` in try/finally
 
 **Correct Implementation:**
 
@@ -463,7 +466,8 @@ finally:
     obj_eval.to_mesh_clear()
 ```
 
-**Rationale**: Failure to call `to_mesh_clear()` causes memory leaks that accumulate with repeated exports.
+**Rationale**: Failure to call `to_mesh_clear()` causes memory leaks 
+that accumulate with repeated exports.
 
 ### BMesh Cleanup Pattern
 
@@ -505,9 +509,12 @@ Try Block
 
 **Best Practices:**
 
-1. **Be Specific**: "Collection 'Trees' contains no valid mesh objects. Skipped 3 unsupported object(s)."
-2. **Include Context**: "Failed to duplicate object 'Cube.001': No valid context available"
-3. **Suggest Action**: "Cannot create export directory '/invalid/path': Permission denied"
+1. **Be Specific**: "Collection 'Trees' contains no valid mesh objects. 
+    Skipped 3 unsupported object(s)."
+2. **Include Context**: "Failed to duplicate object 'Cube.001': 
+    No valid context available"
+3. **Suggest Action**: "Cannot create export directory '/invalid/path': 
+    Permission denied"
 4. **Track Skipped Items**: Maintain list of skipped objects with reasons
 
 **Example:**
@@ -519,7 +526,8 @@ for obj in collection.objects:
         skipped_objects.append((obj.name, reason))
 
 if skipped_objects:
-    summary = ", ".join([f"'{name}' ({reason})" for name, reason in skipped_objects])
+    summary = ", ".join([f"'{name}' ({reason})" for name, 
+    reason in skipped_objects])
     logger.warning(f"Skipped {len(skipped_objects)} object(s): {summary}")
 ```
 
@@ -532,7 +540,7 @@ if skipped_objects:
 **Export Indicators Cache:**
 
 ```python
-_exported_objects_cache = []           # Cached object list
+_exported_objects_cache = []          # Cached object list
 _cache_last_update = 0                # Last refresh timestamp
 _cache_update_interval = 10.0         # Refresh every 10 seconds
 ```
@@ -569,7 +577,8 @@ LOD0 ──► LOD1 ──► LOD2 ──► LOD3 ──► LOD4
 
 ### 3. Operator Context Validation
 
-**Problem**: Operators crash when called without valid context (CLI mode, background)
+**Problem**: Operators crash when called without valid context 
+(CLI mode, background)
 
 **Solution**: Validate context before every operator call
 
@@ -667,7 +676,8 @@ def apply_naming_convention(name: str, convention: str) -> str:
 
     Args:
         name: The name to convert
-        convention: The convention to apply ("DEFAULT", "GODOT", "UNITY", "UNREAL")
+        convention: The convention to apply 
+        ("DEFAULT", "GODOT", "UNITY", "UNREAL")
 
     Returns:
         The converted name
@@ -684,10 +694,10 @@ def apply_naming_convention(name: str, convention: str) -> str:
 
 ```python
 # Complex regex pattern breaks down as follows:
-#   [A-Z]*[a-z]+        - Matches camelCase words (e.g., "camel" in "camelCase")
+#   [A-Z]*[a-z]+      - Matches camelCase words (e.g., "camel" in "camelCase")
 #   [A-Z]+(?=[A-Z][a-z]|\b) - Matches acronyms (e.g., "FBX" in "FBXLoader")
-#   [A-Z]               - Matches single uppercase letters
-#   [0-9]+              - Matches numeric sequences (e.g., "123" in "mesh123")
+#   [A-Z]             - Matches single uppercase letters
+#   [0-9]+            - Matches numeric sequences (e.g., "123" in "mesh123")
 # Example: "FBXLoaderV2" -> ["FBX", "Loader", "V", "2"]
 words = re.findall(r'[A-Z]*[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)|[A-Z]|[0-9]+', temp_name)
 ```
@@ -698,12 +708,12 @@ words = re.findall(r'[A-Z]*[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)|[A-Z]|[0-9]+', temp_na
 
 ### Supported Conventions
 
-| Convention | Output Style | Example Transform |
-| ---------- | ------------ | ----------------- |
-| DEFAULT | Basic sanitisation | `My/Mesh*Name` → `My_Mesh_Name` |
-| GODOT | snake_case | `MyMeshName` → `my_mesh_name` |
-| UNITY | Capitalised_Words | `my mesh name` → `My_Mesh_Name` |
-| UNREAL | PascalCase | `my_mesh_name` → `MyMeshName` |
+| Convention | Output Style       | Example Transform               |
+| ---------- | ------------------ | ------------------------------- |
+| DEFAULT    | Basic sanitisation | `My/Mesh*Name` → `My_Mesh_Name` |
+| GODOT      | snake_case         | `MyMeshName` → `my_mesh_name`   |
+| UNITY      | Capitalised_Words  | `my mesh name` → `My_Mesh_Name` |
+| UNREAL     | PascalCase         | `my_mesh_name` → `MyMeshName`   |
 
 ### Unreal Prefix Preservation
 
