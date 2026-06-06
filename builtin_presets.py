@@ -43,6 +43,7 @@ BUILTIN_PRESETS = {
             "mesh_export_prefix": "",
             "mesh_export_suffix": "",
             "mesh_export_naming_convention": "GODOT",
+            "mesh_export_collision_profile": "GODOT",
             # Export indicators
             "mesh_export_show_indicators": True,
             # LOD settings
@@ -102,6 +103,7 @@ BUILTIN_PRESETS = {
             "mesh_export_prefix": "",
             "mesh_export_suffix": "",
             "mesh_export_naming_convention": "UNITY",
+            "mesh_export_collision_profile": "NONE",
             # Export indicators
             "mesh_export_show_indicators": True,
             # LOD settings
@@ -161,6 +163,7 @@ BUILTIN_PRESETS = {
             "mesh_export_prefix": "",
             "mesh_export_suffix": "",
             "mesh_export_naming_convention": "UNREAL",
+            "mesh_export_collision_profile": "UNREAL",
             # Export indicators
             "mesh_export_show_indicators": True,
             # LOD settings

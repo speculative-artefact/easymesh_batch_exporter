@@ -212,29 +212,33 @@ class TestCollisionNaming:
             f"Expected custom-named node, got {names}"
         )
 
-    def test_auto_profile_follows_convention(
+    def test_none_profile_keeps_original_name(
         self, create_mesh_with_unreal_collisions, temp_export_dir, reset_settings
     ):
-        """AUTO profile maps the Godot naming convention to Godot collisions."""
+        """None convention keeps the collision's original authored name."""
         props = get_scene_props()
         props.mesh_export_path = str(temp_export_dir) + "/"
         props.mesh_export_format = "GLTF"
         props.mesh_export_gltf_type = "GLTF_SEPARATE"
         props.mesh_export_gltf_batch_mode = "INDIVIDUAL"
         props.mesh_export_include_collisions = True
-        props.mesh_export_collision_profile = "AUTO"
-        props.mesh_export_naming_convention = "GODOT"
+        props.mesh_export_collision_filter = "PREFIXED"
+        props.mesh_export_collision_profile = "NONE"
 
         parent = create_mesh_with_unreal_collisions
         parent.select_set(True)
 
         result = bpy.ops.mesh.batch_export()
-        assert result == {"FINISHED"}, "AUTO/Godot collision export should succeed"
+        assert result == {"FINISHED"}, "None collision export should succeed"
 
-        # File name follows Godot (snake_case) convention.
-        names = _gltf_node_names(temp_export_dir / "collision_parent.gltf")
-        assert any(n.endswith("-convcolonly") for n in names), (
-            f"AUTO should resolve to Godot suffix, got {names}"
+        # The authored names survive untouched; Blender may .NNN-suffix the
+        # in-scene copy, so match by prefix.
+        names = _gltf_node_names(temp_export_dir / "CollisionParent.gltf")
+        assert any(n.startswith("UCX_CollisionParent") for n in names), (
+            f"Expected the original UCX_ name, got {names}"
+        )
+        assert any(n.startswith("UBX_CollisionParent") for n in names), (
+            f"Expected the original UBX_ name, got {names}"
         )
 
 

@@ -352,7 +352,7 @@ class MeshExporterSettings(PropertyGroup):
         name="Naming Convention",
         description="Apply specific naming conventions to exported files",
         items=[
-            ("DEFAULT", "Default", "Keep original naming"),
+            ("DEFAULT", "None", "No naming convention (keep original)"),
             ("GODOT", "Godot", "snake_case naming (my_mesh_name)"),
             ("UNITY", "Unity", "Capitalised words with underscores (My_Mesh_Name)"),
             ("UNREAL", "Unreal Engine", "PascalCase naming (MyMeshName)"),
@@ -608,15 +608,15 @@ class MeshExporterSettings(PropertyGroup):
     )
 
     mesh_export_collision_profile: EnumProperty(
-        name="Engine Profile",
+        name="Convention",
         description="How collision meshes are named for the target engine",
         items=[
-            ("AUTO", "Auto", "Follow the file naming convention above"),
+            ("NONE", "None", "Keep the original collision name"),
             ("UNREAL", "Unreal Engine", "UCX_/UBX_/USP_/UCP_ prefix (UCX_Mesh_00)"),
             ("GODOT", "Godot", "Convex collision suffix (Mesh-convcolonly)"),
             ("CUSTOM", "Custom", "User-defined prefix and suffix"),
         ],
-        default="AUTO",
+        default="NONE",
     )
 
     mesh_export_collision_godot_visual: BoolProperty(

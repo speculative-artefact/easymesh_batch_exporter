@@ -324,7 +324,7 @@ def reset_export_settings():
     # Collision meshes (disabled by default so other tests are unaffected)
     props.mesh_export_include_collisions = False
     props.mesh_export_collision_filter = "PREFIXED"
-    props.mesh_export_collision_profile = "AUTO"
+    props.mesh_export_collision_profile = "NONE"
     props.mesh_export_collision_godot_visual = False
     props.mesh_export_collision_custom_prefix = "UCX_"
     props.mesh_export_collision_custom_suffix = ""

@@ -667,34 +667,25 @@ def get_collision_meshes(
 
 def resolve_collision_profile(scene_props) -> str:
     """
-    Resolve the active collision profile, mapping AUTO to a concrete engine.
+    Return the active collision convention.
 
-    AUTO follows the file naming convention: UNREAL/GODOT convention map to the
-    matching engine, everything else falls back to CUSTOM.
+    The convention is now chosen explicitly (typically via the active preset),
+    so this is a direct passthrough kept as the single resolution point.
 
     Args:
         scene_props: Scene properties containing collision settings
 
     Returns:
-        One of "UNREAL", "GODOT", "CUSTOM".
+        One of "NONE", "UNREAL", "GODOT", "CUSTOM".
     """
-    profile = scene_props.mesh_export_collision_profile
-    if profile != "AUTO":
-        return profile
-
-    convention = scene_props.mesh_export_naming_convention
-    if convention == "UNREAL":
-        return "UNREAL"
-    if convention == "GODOT":
-        return "GODOT"
-    return "CUSTOM"
+    return scene_props.mesh_export_collision_profile
 
 
 def apply_collision_naming(
-    render_name: str, shape: str, index: int, scene_props
+    render_name: str, shape: str, index: int, scene_props, original_name: str
 ) -> str:
     """
-    Build the exported name for a collision mesh per the active engine profile.
+    Build the exported name for a collision mesh per the active convention.
 
     Args:
         render_name: The render mesh's already-converted export base name, so the
@@ -703,16 +694,23 @@ def apply_collision_naming(
         index: Zero-based index among this render mesh's collisions (Unreal
             disambiguates multiples with a _NN suffix).
         scene_props: Scene properties containing collision settings
+        original_name: The collision object's own authored name, kept (sanitised)
+            when no engine convention is applied.
 
     Returns:
         The collision object's export name.
 
     Examples:
+        >>> # None:   <original collision name>
         >>> # Unreal: UCX_MyMesh_00, UBX_MyMesh_01
         >>> # Godot:  MyMesh-convcolonly
         >>> # Custom: <prefix>MyMesh<suffix>
     """
     profile = resolve_collision_profile(scene_props)
+
+    if profile == "NONE":
+        # No convention - keep the collision's authored name as-is.
+        return sanitise_filename(original_name)
 
     if profile == "UNREAL":
         # Map shape back to its Unreal prefix (default to convex UCX_).
@@ -765,7 +763,9 @@ def copy_collision_for_export(
     Returns:
         The newly created collision mesh copy.
     """
-    new_name = apply_collision_naming(render_name, shape, index, scene_props)
+    new_name = apply_collision_naming(
+        render_name, shape, index, scene_props, collision_obj.name
+    )
 
     # Copy object and its mesh data so the original is untouched.
     collision_copy = collision_obj.copy()

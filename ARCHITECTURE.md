@@ -162,8 +162,8 @@ MeshExportError          # Base exception
 - `apply_naming_convention()`: Game engine specific name transformations
 - `setup_export_object()`: Rename, scale, and prepare for export
 - `get_collision_meshes()`: Detect collision mesh children (shape from `UCX_`/`UBX_`/`USP_`/`UCP_` prefix, or all children in ALL mode)
-- `resolve_collision_profile()`: Map the AUTO profile to UNREAL/GODOT/CUSTOM via the naming convention
-- `apply_collision_naming()`: Build the collision's exported name per engine profile
+- `resolve_collision_profile()`: Return the active collision convention (NONE/UNREAL/GODOT/CUSTOM)
+- `apply_collision_naming()`: Build the collision's exported name per convention (NONE keeps the original name)
 - `copy_collision_for_export()`: Copy, rename, and parent a collision mesh to its render mesh
 
 #### Main Operator: `MESH_OT_batch_export` (Lines 2129+)
@@ -274,13 +274,14 @@ rather than being written as its own file.
    latent bug where attachment empties were dropped in single-object mode (the temp
    selection previously selected only the render mesh).
 
-**Naming** is driven by the engine profile (`mesh_export_collision_profile`):
+**Naming** is driven by the collision convention (`mesh_export_collision_profile`), chosen
+explicitly (typically via the active preset):
 
+- **NONE** → keep the collision's original authored name (default)
 - **UNREAL** → `UCX_/UBX_/USP_/UCP_` prefix + `_NN` index (e.g. `UCX_MyMesh_00`)
 - **GODOT** → `-convcolonly` / `-convcol` suffix (Godot has no primitive shapes, so all
   shapes export as convex)
 - **CUSTOM** → user-defined prefix + suffix
-- **AUTO** → resolves to Unreal/Godot/Custom from the file naming convention
 
 Detection (`mesh_export_collision_filter`) is either **PREFIXED** (only `UCX_`/`UBX_`/
 `USP_`/`UCP_` children, prefix sets the shape) or **ALL** (every mesh child, convex). Only
