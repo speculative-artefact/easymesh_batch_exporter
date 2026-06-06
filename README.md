@@ -47,6 +47,10 @@ A streamlined Blender add-on designed for game development workflows. Batch expo
   * **Godot:** `-convcolonly` / `-convcol` node suffixes
   * **Custom:** your own prefix/suffix (e.g. Unity colliders)
   * Shape is read from the source object's prefix; works in single, batch, and LOD-hierarchy exports
+* **Attachment Points & Slots:** Parent empties to your render mesh to mark sockets (weapon mounts, effect anchors, etc.) and export them in the same file (FBX/glTF):
+  * **Empty Filter:** Include all empty children, or only those matching a prefix (default `attach_`)
+  * **Slot Empties:** Optionally auto-generate empties at child-mesh positions (default prefix `slot_`) to mark where parts attach
+  * Enabled by default; works in single, batch, and LOD-hierarchy exports
 * **Game-Ready Output:** Optimised for immediate use in game engines
 
 ### 🎯 **Precision Controls**
@@ -60,7 +64,7 @@ A streamlined Blender add-on designed for game development workflows. Batch expo
 
 ### 🔧 **Mesh Processing**
 
-* **Triangulation:** Multiple methods (Beauty, Fixed, Alternate, Shortest Diagonal) with normal preservation
+* **Triangulation:** Multiple methods (Beauty, Fixed, Alternate, Shortest Diagonal) with normal preservation, plus a **Fast** method that defers triangulation to the format exporter for much quicker dense-mesh exports
 * **Smoothing Control:** Format-specific smoothing options (Face, Edge, Off)
 * **Memory-Safe Operations:** All processing optimised for large mesh stability
 
