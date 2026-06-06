@@ -98,7 +98,7 @@ class TestFBXExport:
         props.mesh_export_format = "FBX"
         create_sphere.select_set(True)
 
-        for smoothing_mode in ["OFF", "FACE", "EDGE"]:
+        for smoothing_mode in ["OFF", "FACE", "EDGE", "SMOOTH_GROUP"]:
             props.mesh_export_smoothing = smoothing_mode
             props.mesh_export_suffix = f"_{smoothing_mode.lower()}"
 
