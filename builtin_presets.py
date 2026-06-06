@@ -11,7 +11,10 @@ and Unreal Engine, plus a generic custom template.
 BUILTIN_PRESETS = {
     "Godot": {
         "metadata": {
-            "description": "Optimised for Godot 4.x (Y-up, Z-forward, meters, snake_case)",
+            "description": (
+                "Optimised for Godot 4.x "
+                "(Y-up, Z-forward, meters, snake_case)"
+            ),
             "icon": "COMMUNITY",  # Blender icon identifier
             "is_builtin": True,
         },
@@ -67,7 +70,10 @@ BUILTIN_PRESETS = {
     },
     "Unity": {
         "metadata": {
-            "description": "Optimised for Unity (Y-up, -Z-forward, meters, Capitalised_Words)",
+            "description": (
+                "Optimised for Unity "
+                "(Y-up, -Z-forward, meters, Capitalised_Words)"
+            ),
             "icon": "CUBE",  # Blender icon identifier
             "is_builtin": True,
         },
@@ -123,7 +129,10 @@ BUILTIN_PRESETS = {
     },
     "Unreal": {
         "metadata": {
-            "description": "Optimised for Unreal Engine (Z-up, X-forward, centimeters, PascalCase)",
+            "description": (
+                "Optimised for Unreal Engine "
+                "(Z-up, X-forward, centimeters, PascalCase)"
+            ),
             "icon": "OUTLINER_OB_ARMATURE",  # Blender icon identifier
             "is_builtin": True,
         },

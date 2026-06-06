@@ -13,14 +13,13 @@ import contextlib
 import re
 import math
 import logging
-import weakref
 import json
 from datetime import datetime
 from mathutils import Matrix
 from bpy_extras.io_utils import axis_conversion
-from typing import Optional, Tuple, List, Iterator, Any, Dict
-from bpy.types import Operator, Object, Mesh, Context, Collection
-from bpy.props import StringProperty, BoolProperty, EnumProperty
+from typing import Optional, Tuple, List, Iterator, Any
+from bpy.types import Operator, Object, Mesh, Context
+from bpy.props import StringProperty
 from . import export_indicators
 from . import builtin_presets
 
@@ -62,7 +61,7 @@ class SafeLogRecord(logging.LogRecord):
                 sinfo,
                 **kwargs,
             )
-        except (TypeError, ValueError, UnicodeDecodeError) as e:
+        except (TypeError, ValueError, UnicodeDecodeError):
             # Fallback: use module name instead of pathname
             # This prevents crashes while still providing useful log context
             safe_pathname = name if name else "unknown"
@@ -124,7 +123,7 @@ MAX_FILENAME_LENGTH = 100  # Conservative limit to avoid filesystem issues acros
 FILENAME_TRUNCATE_SUFFIX = "..."  # Suffix appended to truncated names
 
 # Known Unreal Engine prefixes (used in naming convention)
-# See: https://docs.unrealengine.com/5.0/en-US/asset-naming-conventions-in-unreal-engine/
+# See: https://docs.unrealengine.com/5.0/en-US/asset-naming-conventions-in-unreal-engine/  # noqa: E501
 UNREAL_KNOWN_PREFIXES = {
     "SM",  # Static Mesh
     "SK",  # Skeletal Mesh
@@ -310,12 +309,14 @@ class MemoryManager:
             cls._last_gc_time = current_time
             cls._pending_cleanup = False
             logger.debug(
-                f"Garbage collection performed (forced={force}, interval={effective_interval:.1f}s)"
+                f"Garbage collection performed "
+                f"(forced={force}, interval={effective_interval:.1f}s)"
             )
         else:
             cls._pending_cleanup = True
             logger.debug(
-                f"Garbage collection deferred (too frequent, interval={effective_interval:.1f}s)"
+                f"Garbage collection deferred "
+                f"(too frequent, interval={effective_interval:.1f}s)"
             )
 
     @classmethod
@@ -348,7 +349,8 @@ class MeshOperations:
             if poly_count > LARGE_MESH_THRESHOLD:
                 MemoryManager.request_cleanup(poly_count=poly_count)
                 logger.debug(
-                    f"Memory cleanup after mesh update for {obj.name} ({poly_count:,} polygons)"
+                    f"Memory cleanup after mesh update for {obj.name} "
+                    f"({poly_count:,} polygons)"
                 )
 
     @staticmethod
@@ -560,7 +562,9 @@ def copy_empty_for_export(
         The newly created empty copy
 
     Examples:
-        >>> empty_copy = copy_empty_for_export(attach_point, export_mesh, context, "GODOT")
+        >>> empty_copy = copy_empty_for_export(
+        ...     attach_point, export_mesh, context, "GODOT"
+        ... )
         >>> # Creates "attach_point" copy parented to export_mesh
     """
     # Apply naming convention to empty name
@@ -591,7 +595,8 @@ def copy_empty_for_export(
         empty_copy.matrix_world = empty_obj.matrix_world.copy()
 
     logger.debug(
-        f"Created empty copy: {new_name} (parent: {parent_obj.name if parent_obj else 'None'})"
+        f"Created empty copy: {new_name} "
+        f"(parent: {parent_obj.name if parent_obj else 'None'})"
     )
 
     return empty_copy
@@ -611,7 +616,8 @@ def safe_large_mesh_operation(obj, operation_name):
 
     if is_large:
         logger.info(
-            f"Starting large mesh operation: {operation_name} on {poly_count:,} polygons"
+            f"Starting large mesh operation: {operation_name} "
+            f"on {poly_count:,} polygons"
         )
         # Pre-operation cleanup
         MeshOperations.update_mesh_data(obj, with_memory_cleanup=True)
@@ -732,7 +738,8 @@ def convert_curve_to_mesh_object(curve_obj, context):
             if len(metaball.elements) > 0:
                 for i, element in enumerate(metaball.elements):
                     logger.info(
-                        f"Element {i}: type={element.type}, size_x={element.size_x}, co={element.co}"
+                        f"Element {i}: type={element.type}, "
+                        f"size_x={element.size_x}, co={element.co}"
                     )
 
             # Force view layer update to ensure metaball is evaluated
@@ -755,7 +762,8 @@ def convert_curve_to_mesh_object(curve_obj, context):
                     preserve_all_data_layers=True, depsgraph=depsgraph
                 )
                 logger.info(
-                    f"Metaball mesh vertices from original: {len(mesh.vertices) if mesh else 0}"
+                    f"Metaball mesh vertices from original: "
+                    f"{len(mesh.vertices) if mesh else 0}"
                 )
 
                 # If still empty, the metaball might have evaluation issues
@@ -769,7 +777,8 @@ def convert_curve_to_mesh_object(curve_obj, context):
                         preserve_all_data_layers=True, depsgraph=depsgraph
                     )
                     logger.info(
-                        f"Metaball mesh vertices after scene update: {len(mesh.vertices) if mesh else 0}"
+                        f"Metaball mesh vertices after scene update: "
+                        f"{len(mesh.vertices) if mesh else 0}"
                     )
 
                 # Verify mesh has geometry
@@ -890,8 +899,6 @@ def merge_collection_objects(collection, context):
         ValidationError: If collection is empty or has no meshes
         ProcessingError: If merging fails
     """
-    import bmesh
-
     # Get all mesh objects in the collection (including converted curves/metaballs)
     mesh_objects = []
     temp_objects = []  # Track temporary objects for cleanup
@@ -899,12 +906,9 @@ def merge_collection_objects(collection, context):
 
     for obj in collection.objects:
         if obj.type == "MESH":
-            # Check if object has geometry nodes with instances
-            has_instance_geo_nodes = False
+            # Log geometry nodes that could output instances
             for mod in obj.modifiers:
                 if mod.type == "NODES" and mod.show_viewport:
-                    # This could potentially output instances
-                    has_instance_geo_nodes = True
                     logger.info(f"Object '{obj.name}' has geometry nodes modifier")
             mesh_objects.append(obj)
         elif obj.type == "CURVE":
@@ -932,7 +936,8 @@ def merge_collection_objects(collection, context):
         elif obj.type == "EMPTY" and obj.instance_type == "COLLECTION":
             # Handle collection instances (often from geometry nodes)
             logger.warning(
-                f"Skipping collection instance '{obj.name}' - recursive processing not yet supported"
+                f"Skipping collection instance '{obj.name}' - "
+                f"recursive processing not yet supported"
             )
             skipped_objects.append((obj.name, "collection instance not supported"))
         else:
@@ -948,7 +953,8 @@ def merge_collection_objects(collection, context):
             [f"'{name}' ({reason})" for name, reason in skipped_objects]
         )
         logger.warning(
-            f"Skipped {len(skipped_objects)} object(s) in collection '{collection.name}': {skipped_summary}"
+            f"Skipped {len(skipped_objects)} object(s) in collection "
+            f"'{collection.name}': {skipped_summary}"
         )
 
     if not mesh_objects:
@@ -966,7 +972,6 @@ def merge_collection_objects(collection, context):
         bm = bmesh.new()
 
         # Track material remapping
-        material_map = {}
         merged_materials = []
 
         for obj in mesh_objects:
@@ -1046,7 +1051,8 @@ def merge_collection_objects(collection, context):
             bpy.data.objects.remove(temp_obj, do_unlink=True)
 
         logger.info(
-            f"Successfully merged {len(mesh_objects)} objects from collection '{collection.name}'"
+            f"Successfully merged {len(mesh_objects)} objects "
+            f"from collection '{collection.name}'"
         )
         return merged_obj
 
@@ -1120,20 +1126,23 @@ def create_export_copy(original_obj, context):
                         if mat:
                             mesh_obj.data.materials.append(mat)
                     logger.info(
-                        f"Transferred {len(original_obj.data.materials)} materials to converted mesh"
+                        f"Transferred {len(original_obj.data.materials)} "
+                        f"materials to converted mesh"
                     )
 
                 # Link to scene temporarily for duplication
                 context.collection.objects.link(mesh_obj)
 
-                # Apply smooth shading to metaball mesh (metaballs are inherently smooth)
+                # Apply smooth shading to metaball mesh
+                # (metaballs are inherently smooth)
                 # Use modern Blender 4.1+ API for smooth shading
                 try:
                     # Apply basic smooth shading
                     for poly in mesh_obj.data.polygons:
                         poly.use_smooth = True
 
-                    # For Blender 4.1+, use "Smooth by Angle" modifier instead of deprecated operator
+                    # For Blender 4.1+, use "Smooth by Angle" modifier
+                    # instead of deprecated operator
                     # Check if we can add the modifier (Blender 4.1+)
                     if hasattr(bpy.types, "NodesModifier"):
                         # Try to add smooth by angle modifier
@@ -1144,7 +1153,7 @@ def create_export_copy(original_obj, context):
                         # For now, basic smooth shading is sufficient for metaballs
                         mesh_obj.modifiers.remove(smooth_mod)
 
-                    logger.info(f"Applied smooth shading to metaball mesh")
+                    logger.info("Applied smooth shading to metaball mesh")
                 except Exception as e:
                     logger.warning(
                         f"Could not apply smooth shading: {e}, continuing anyway"
@@ -1200,11 +1209,13 @@ def create_export_copy(original_obj, context):
                 f"Successfully created duplicate '{copy_obj.name}' via operator."
             )
 
-            # Make data single user FIRST for curves/metaballs to ensure we don't affect the original
+            # Make data single user FIRST for curves/metaballs to ensure
+            # we don't affect the original
             if copy_obj and copy_obj.type in ["CURVE", "META"]:
                 if copy_obj.data and copy_obj.data.users > 1:
                     logger.info(
-                        f"Making {copy_obj.type.lower()} data single user for '{copy_obj.name}'"
+                        f"Making {copy_obj.type.lower()} data single user "
+                        f"for '{copy_obj.name}'"
                     )
                     copy_obj.data = copy_obj.data.copy()
                 # Now convert to mesh - this returns a new object
@@ -1296,7 +1307,8 @@ def apply_naming_convention(name: str, convention: str) -> str:
         # Unreal Engine: PascalCase, no spaces, remove illegal chars
         try:
             # Replace illegal characters with spaces for splitting
-            # Don't treat dots as separators - they could be version numbers (e.g., "object.2")
+            # Don't treat dots as separators - they could be version
+            # numbers (e.g., "object.2")
             # This includes: \ / : * ? " < > | -
             temp_name = re.sub(r'[\\/:*?"<>|\-]', " ", name)
 
@@ -1344,7 +1356,7 @@ def apply_naming_convention(name: str, convention: str) -> str:
 
             return result
 
-        except Exception as e:
+        except Exception:
             # Fallback to standard sanitisation on any error
             return sanitise_filename(name)
 
@@ -1378,10 +1390,12 @@ def apply_naming_convention(name: str, convention: str) -> str:
 
             # Split into words (handles both spaces and case changes)
             # Complex regex pattern breaks down as follows:
-            #   [A-Z]*[a-z]+        - Matches camelCase words (e.g., "camel" in "camelCase")
+            #   [A-Z]*[a-z]+        - Matches camelCase words
+            #                         (e.g., "camel" in "camelCase")
             #   [A-Z]+(?=[A-Z][a-z]|\b) - Matches acronyms (e.g., "FBX" in "FBXLoader")
             #   [A-Z]               - Matches single uppercase letters
-            #   [0-9]+              - Matches numeric sequences (e.g., "123" in "mesh123")
+            #   [0-9]+              - Matches numeric sequences
+            #                         (e.g., "123" in "mesh123")
             # Example: "FBXLoaderV2" -> ["FBX", "Loader", "V", "2"]
             words = re.findall(
                 r"[A-Z]*[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)|[A-Z]|[0-9]+", temp_name
@@ -1584,19 +1598,22 @@ def setup_export_object(
             # Apply conversion factor for Metres (Blender default) to Centimetres
             final_scale_factor *= METERS_TO_CENTIMETERS
             logger.info(
-                f"Export scale factor: {final_scale_factor:.2f} (includes M to CM conversion)"
+                f"Export scale factor: {final_scale_factor:.2f} "
+                f"(includes M to CM conversion)"
             )
         else:
             logger.info(f"Export scale factor: {final_scale_factor:.2f}")
 
-        # For GLTF and USD, apply scale to object transform instead of passing to exporter
-        # This avoids potential exporter parameter issues whilst maintaining zero performance cost
+        # For GLTF and USD, apply scale to object transform instead of
+        # passing to exporter. This avoids potential exporter parameter
+        # issues whilst maintaining zero performance cost
         if scene_props.mesh_export_format in ["GLTF", "USD"]:
             if abs(final_scale_factor - 1.0) > 1e-6:
                 # Set object-level scale (zero-cost, no mesh vertex transformation)
                 obj.scale = (final_scale_factor, final_scale_factor, final_scale_factor)
                 logger.info(
-                    f"Applied {final_scale_factor}x scale to object transform for {scene_props.mesh_export_format}"
+                    f"Applied {final_scale_factor}x scale to object "
+                    f"transform for {scene_props.mesh_export_format}"
                 )
                 final_scale_factor = (
                     1.0  # Don't pass to exporter, already applied to object
@@ -1732,7 +1749,8 @@ def bake_fbx_export_space(obj, axis_forward, axis_up, export_scale):
 
     Args:
         obj (bpy.types.Object): The mesh object to bake into. No-op for non-meshes.
-        axis_forward (str): Target FBX forward axis (e.g. ``mesh_export_coord_forward``).
+        axis_forward (str): Target FBX forward axis
+            (e.g. ``mesh_export_coord_forward``).
         axis_up (str): Target FBX up axis (e.g. ``mesh_export_coord_up``).
         export_scale (float): Uniform export scale factor to bake into the geometry.
 
@@ -1748,7 +1766,8 @@ def bake_fbx_export_space(obj, axis_forward, axis_up, export_scale):
     # If forward and up land on the same axis (a degenerate combo the FBX export
     # operator silently auto-corrects via orientation_helper), apply Blender's own
     # resolution rule - bump the up axis to the next one - so axis_conversion doesn't
-    # raise and we match what the exporter would have done (bpy_extras.axis_conversion_ensure).
+    # raise and we match what the exporter would have done
+    # (bpy_extras.axis_conversion_ensure).
     if axis_forward[-1] == axis_up[-1]:
         axis_up = axis_up[:-1] + "XYZ"[("XYZ".index(axis_up[-1]) + 1) % 3]
 
@@ -1903,7 +1922,8 @@ def compress_textures(obj, ratio, export_path=None, save_compressed=True):
                 logger.debug(f"Skipping {orig_img.name}: invalid or no data")
                 continue
 
-            # Skip already compressed images (but allow recompression if different ratio)
+            # Skip already compressed images
+            # (but allow recompression if different ratio)
             if orig_img.name.endswith("_LOD"):
                 logger.debug(f"Skipping {orig_img.name}: already compressed")
                 continue
@@ -1959,8 +1979,10 @@ def compress_textures(obj, ratio, export_path=None, save_compressed=True):
                         if not orig_img.packed_file and orig_img.filepath:
                             orig_img.reload()
 
-                        # Use a different approach: create at target size and use GPU for scaling
-                        # First, save original to a temporary location if it has a filepath
+                        # Use a different approach: create at target size
+                        # and use GPU for scaling
+                        # First, save original to a temporary location
+                        # if it has a filepath
                         import tempfile
 
                         if orig_img.filepath and os.path.exists(
@@ -2047,7 +2069,8 @@ def compress_textures(obj, ratio, export_path=None, save_compressed=True):
             for mat, node in nodes_using_img:
                 node.image = copied_img
                 logger.debug(
-                    f"Updated node '{node.name}' in material '{mat.name}' to use compressed image"
+                    f"Updated node '{node.name}' in material '{mat.name}' "
+                    f"to use compressed image"
                 )
 
             modified_images.append(
@@ -2156,8 +2179,6 @@ def apply_decimate_modifier(obj, ratio, decimate_type, sym_axis="X", sym=False):
     current_mode = obj.mode
     MeshOperations.safe_mode_set(obj, "OBJECT")
 
-    # Skip the old texture compression system - we now use simple external texture saving
-    compressed_texture_list = []
     # Texture compression disabled - using simple external texture saving instead
     logger.debug("Skipping texture compression - using external texture saving")
 
@@ -2378,7 +2399,8 @@ def save_external_textures(
         scene_props: Scene properties for texture settings
 
     Returns:
-        Tuple: (List of saved texture filenames, Dict of original node references for restoration)
+        Tuple: (List of saved texture filenames, Dict of original node
+            references for restoration)
     """
     if not obj or obj.type != "MESH":
         return [], {}
@@ -2476,7 +2498,8 @@ def save_external_textures(
                                     scene_props.mesh_export_lod3_texture_size
                                 )
                             logger.info(
-                                f"Preserving normal map quality: {target_size} → {adjusted_target_size}"
+                                f"Preserving normal map quality: "
+                                f"{target_size} → {adjusted_target_size}"
                             )
 
                         # Only resize if image is larger than target (no upscaling)
@@ -2501,7 +2524,9 @@ def save_external_textures(
                             new_height = max(1, new_height)
 
                             logger.info(
-                                f"Resizing {img.name} from {orig_width}x{orig_height} to {new_width}x{new_height}"
+                                f"Resizing {img.name} from "
+                                f"{orig_width}x{orig_height} to "
+                                f"{new_width}x{new_height}"
                             )
 
                             # Create a temporary resized copy
@@ -2514,7 +2539,9 @@ def save_external_textures(
                         else:
                             if adjusted_target_size is not None:
                                 logger.info(
-                                    f"Skipping resize for {img.name} ({orig_width}x{orig_height}) - already smaller than target"
+                                    f"Skipping resize for {img.name} "
+                                    f"({orig_width}x{orig_height}) - "
+                                    f"already smaller than target"
                                 )
 
                         # Set the save path and format
@@ -2567,7 +2594,8 @@ def save_external_textures(
                             size_info += f" → {new_width}x{new_height}"
                         texture_type = "normal map" if is_normal else "texture"
                         logger.info(
-                            f"Saved external {texture_type}: {external_filename} ({size_info}, {format_string})"
+                            f"Saved external {texture_type}: "
+                            f"{external_filename} ({size_info}, {format_string})"
                         )
                     else:
                         logger.warning(f"Image {img.name} has no data to save")
@@ -2628,7 +2656,8 @@ def export_object(
     Exports a single object or current selection using scene properties.
 
     Args:
-        obj (bpy.types.Object): The object to export (or representative object for batch).
+        obj (bpy.types.Object): The object to export
+            (or representative object for batch).
         file_path (str): The file path for the export.
         scene_props (bpy.types.PropertyGroup): Scene properties for export.
         export_scale (float): Scale factor to apply during export.
@@ -2707,7 +2736,8 @@ def export_object(
         )
 
     logger.info(
-        f"Exporting {os.path.basename(export_filepath)} ({fmt}) - {mesh_size:,} polygons..."
+        f"Exporting {os.path.basename(export_filepath)} ({fmt}) - "
+        f"{mesh_size:,} polygons..."
     )
 
     # Convert axis values for OBJ and STL export
@@ -2717,7 +2747,8 @@ def export_object(
             return f"NEGATIVE_{axis_value[1]}"
         return axis_value
 
-    # Use existing selection for batch exports, or create temp context for single exports
+    # Use existing selection for batch exports, or create temp context
+    # for single exports
     selection_context = (
         contextlib.nullcontext()
         if use_existing_selection
@@ -2764,7 +2795,8 @@ def export_object(
                 bpy.ops.wm.obj_export(
                     filepath=export_filepath,
                     export_selected_objects=True,
-                    global_scale=export_scale,  # Pass scale to exporter instead of applying to mesh
+                    # Pass scale to exporter instead of applying to mesh
+                    global_scale=export_scale,
                     forward_axis=convert_axis_for_export(
                         scene_props.mesh_export_coord_forward
                     ),
@@ -2781,8 +2813,9 @@ def export_object(
                 # GLTF doesn't support global scale - warn if scale is not 1.0
                 if abs(export_scale - 1.0) > 1e-6:
                     logger.warning(
-                        f"Scale {export_scale} will NOT be applied for GLTF export (format limitation). "
-                        f"Export at original size or apply scale manually before export."
+                        f"Scale {export_scale} will NOT be applied for GLTF "
+                        "export (format limitation). Export at original size "
+                        "or apply scale manually before export."
                     )
 
                 # For GLTF, textures are always embedded in GLB or copied with GLTF
@@ -2808,7 +2841,9 @@ def export_object(
                     export_image_quality=export_quality,
                     export_def_bones=False,  # Don't export bones
                     # Enable Draco compression for geometry based on user setting
-                    export_draco_mesh_compression_enable=scene_props.mesh_export_use_draco_compression,
+                    export_draco_mesh_compression_enable=(
+                        scene_props.mesh_export_use_draco_compression
+                    ),
                     export_draco_mesh_compression_level=6,
                     export_draco_position_quantization=14,
                     export_draco_normal_quantization=10,
@@ -2818,8 +2853,9 @@ def export_object(
                 # USD doesn't support global scale - warn if scale is not 1.0
                 if abs(export_scale - 1.0) > 1e-6:
                     logger.warning(
-                        f"Scale {export_scale} will NOT be applied for USD export (format limitation). "
-                        f"Export at original size or apply scale manually before export."
+                        f"Scale {export_scale} will NOT be applied for USD "
+                        "export (format limitation). Export at original size "
+                        "or apply scale manually before export."
                     )
 
                 bpy.ops.wm.usd_export(
@@ -2849,7 +2885,8 @@ def export_object(
                 bpy.ops.wm.stl_export(
                     filepath=export_filepath,
                     export_selected_objects=True,
-                    global_scale=export_scale,  # Pass scale to exporter instead of applying to mesh
+                    # Pass scale to exporter instead of applying to mesh
+                    global_scale=export_scale,
                     forward_axis=convert_axis_for_export(
                         scene_props.mesh_export_coord_forward
                     ),
@@ -2881,7 +2918,10 @@ def export_object(
 
                 if total_texture_size > 0:
                     texture_size_mb = total_texture_size / (1024 * 1024)
-                    size_info += f" + {len(external_textures)} texture(s): {texture_size_mb:.2f} MB"
+                    size_info += (
+                        f" + {len(external_textures)} texture(s): "
+                        f"{texture_size_mb:.2f} MB"
+                    )
                     size_info += f" (Total: {file_size_mb + texture_size_mb:.2f} MB)"
 
             # For GLTF JSON format, also check for other texture files
@@ -2915,7 +2955,10 @@ def export_object(
                 estimated_mesh_size_mb = (mesh_size * 100) / (1024 * 1024)
                 estimated_texture_size_mb = file_size_mb - estimated_mesh_size_mb
                 if estimated_texture_size_mb > 0:
-                    size_info += f" (est. mesh: {estimated_mesh_size_mb:.1f} MB, textures: {estimated_texture_size_mb:.1f} MB)"
+                    size_info += (
+                        f" (est. mesh: {estimated_mesh_size_mb:.1f} MB, "
+                        f"textures: {estimated_texture_size_mb:.1f} MB)"
+                    )
 
             logger.info(
                 f"Successfully exported {os.path.basename(export_filepath)} "
@@ -2939,8 +2982,10 @@ def calculate_progressive_ratio(target_ratio, previous_ratio):
     Calculate the decimation ratio needed to go from previous LOD to target LOD.
 
     Args:
-        target_ratio (float): The target ratio from the original mesh (e.g., 0.5 for 50%)
-        previous_ratio (float): The ratio of the previous LOD from original (e.g., 0.75 for 75%)
+        target_ratio (float): The target ratio from the original mesh
+            (e.g., 0.5 for 50%)
+        previous_ratio (float): The ratio of the previous LOD from original
+            (e.g., 0.75 for 75%)
 
     Returns:
         float: The ratio to apply to get from previous LOD to target LOD
@@ -3015,7 +3060,7 @@ def get_preset_directory() -> str:
 
     Example:
         >>> preset_dir = get_preset_directory()
-        >>> "/home/user/.config/blender/4.2/scripts/addons/easymesh_batch_exporter/presets"
+        >>> "~/.config/blender/4.2/scripts/addons/easymesh_batch_exporter/presets"
     """
     # Get the addon directory
     addon_dir = os.path.dirname(os.path.realpath(__file__))
@@ -3270,7 +3315,10 @@ def initialise_builtin_presets() -> None:
             # Define Custom 01 settings (generic template)
             custom_preset_data = {
                 "metadata": {
-                    "description": "Generic custom preset template (FBX, Z-up, Y-forward, meters)",
+                    "description": (
+                        "Generic custom preset template "
+                        "(FBX, Z-up, Y-forward, meters)"
+                    ),
                     "icon": "FILE_3D",
                     "is_builtin": False,
                     "created": datetime.now().isoformat(),
@@ -3606,7 +3654,10 @@ class MESH_OT_batch_export(Operator):
         # layout.separator()
         col = layout.column(align=True)
         col.label(
-            text="Pre-filled with the detected collection or object name. Edit if needed.",
+            text=(
+                "Pre-filled with the detected collection or object name. "
+                "Edit if needed."
+            ),
             icon="INFO",
         )
         col.label(text="For Godot we recommend using snake_case naming")
@@ -3711,7 +3762,6 @@ class MESH_OT_batch_export(Operator):
 
             # Create all LOD objects
             base_lod_obj = None
-            previous_ratio = 1.0
 
             for lod_level, target_ratio in enumerate(ratios):
                 if lod_level == 0:
@@ -3750,8 +3800,10 @@ class MESH_OT_batch_export(Operator):
                     context.collection.objects.link(lod_obj)
 
                     # Only rename for LOD level (scale/location already handled in LOD0)
-                    # Note: We pass the original object name, not the LOD0's modified name
-                    # prebake_fbx_space=False: LodGroup hierarchy keeps the exporter bake.
+                    # Note: We pass the original object name, not the
+                    # LOD0's modified name
+                    # prebake_fbx_space=False: LodGroup hierarchy keeps
+                    # the exporter bake.
                     (lod_obj_name, _, _) = setup_export_object(
                         lod_obj, obj.name, scene_props, lod_level,
                         prebake_fbx_space=False,
@@ -3772,7 +3824,6 @@ class MESH_OT_batch_export(Operator):
                     )
 
                 lod_objects.append(lod_obj)
-                previous_ratio = target_ratio
 
             # Create hierarchy structure (base_lod_obj is LOD0, first in list).
             # Use base_name (prefix/convention applied) so the LodGroup node -
@@ -3883,7 +3934,8 @@ class MESH_OT_batch_export(Operator):
             # Clean up temporary metaball mesh if it exists
             if temp_metaball_mesh:
                 try:
-                    # temp_metaball_mesh is an Object, we need to remove both object and mesh data
+                    # temp_metaball_mesh is an Object, we need to remove
+                    # both object and mesh data
                     mesh_data = temp_metaball_mesh.data
                     bpy.data.objects.remove(temp_metaball_mesh, do_unlink=True)
                     if mesh_data:
@@ -4153,7 +4205,8 @@ class MESH_OT_batch_export(Operator):
             for idx, original_obj in enumerate(objects_to_export):
                 try:
                     logger.info(
-                        f"Processing object {idx + 1}/{len(objects_to_export)}: {original_obj.name}"
+                        f"Processing object {idx + 1}/"
+                        f"{len(objects_to_export)}: {original_obj.name}"
                     )
 
                     # Create export copy
@@ -4172,7 +4225,8 @@ class MESH_OT_batch_export(Operator):
                         skip_zero_location=True,
                     )
 
-                    # Track scale from first object (all objects use same scene_props settings)
+                    # Track scale from first object
+                    # (all objects use same scene_props settings)
                     if idx == 0:
                         batch_export_scale = export_scale
 
@@ -4261,7 +4315,8 @@ class MESH_OT_batch_export(Operator):
                                     progressive_ratio = target_ratio
 
                                 logger.info(
-                                    f"Building LOD{lod_level} with progressive ratio: {progressive_ratio:.3f}"
+                                    f"Building LOD{lod_level} with "
+                                    f"progressive ratio: {progressive_ratio:.3f}"
                                 )
 
                                 # Apply decimation
@@ -4280,9 +4335,11 @@ class MESH_OT_batch_export(Operator):
 
                             except Exception as lod_e:
                                 logger.error(
-                                    f"Failed to generate LOD{lod_level} for {original_obj.name}: {lod_e}"
+                                    f"Failed to generate LOD{lod_level} "
+                                    f"for {original_obj.name}: {lod_e}"
                                 )
-                                # Continue with other objects even if LOD generation fails
+                                # Continue with other objects even if
+                                # LOD generation fails
 
                     logger.info(f"Successfully processed {original_obj.name}")
 
@@ -4304,7 +4361,8 @@ class MESH_OT_batch_export(Operator):
 
             # Select all processed objects for export
             logger.info(
-                f"Exporting {len(processed_objects)} processed objects as single glTF file: {batch_filename}"
+                f"Exporting {len(processed_objects)} processed objects "
+                f"as single glTF file: {batch_filename}"
             )
 
             # Deselect all first
@@ -4323,9 +4381,11 @@ class MESH_OT_batch_export(Operator):
                 context.view_layer.objects.active = processed_objects[0]
 
             # Export all selected objects as single file
-            # For glTF/USD, scale is already applied to obj.scale (batch_export_scale will be 1.0)
-            # For other formats, batch_export_scale contains the actual scale to pass to exporter
-            # use_existing_selection=True tells export_object to use the selection we set up above
+            # For glTF/USD, scale is already applied to obj.scale
+            # (batch_export_scale will be 1.0). For other formats,
+            # batch_export_scale contains the actual scale to pass to the
+            # exporter. use_existing_selection=True tells export_object to
+            # use the selection we set up above
             if export_object(
                 mesh_objects[0] if mesh_objects else processed_objects[0],
                 file_path,
@@ -4443,7 +4503,8 @@ class MESH_OT_batch_export(Operator):
                 return {"CANCELLED"}
 
             logger.info(
-                f"Starting batch glTF export for {total_items} objects (single file) to {export_base_path}"
+                f"Starting batch glTF export for {total_items} objects "
+                f"(single file) to {export_base_path}"
             )
 
             wm.progress_begin(0, 100)
@@ -4483,11 +4544,13 @@ class MESH_OT_batch_export(Operator):
             # Standard per-object export
             if hierarchy_mode:
                 logger.info(
-                    f"Starting batch export for {total_items} objects with LOD hierarchies to {export_base_path}"
+                    f"Starting batch export for {total_items} objects "
+                    f"with LOD hierarchies to {export_base_path}"
                 )
             else:
                 logger.info(
-                    f"Starting batch export for {total_items} objects to {export_base_path}"
+                    f"Starting batch export for {total_items} objects "
+                    f"to {export_base_path}"
                 )
 
             wm.progress_begin(0, total_items)
@@ -4821,7 +4884,8 @@ class MESH_OT_delete_export_preset(Operator):
         if builtin_presets.is_builtin_preset(self.preset_name):
             self.report(
                 {"ERROR"},
-                f"Cannot delete built-in preset '{self.preset_name}'. Use 'Reset to Default' instead.",
+                f"Cannot delete built-in preset '{self.preset_name}'. "
+                f"Use 'Reset to Default' instead.",
             )
             return {"CANCELLED"}
 

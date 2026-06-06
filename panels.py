@@ -9,8 +9,6 @@ import time
 import logging
 from bpy.types import Panel
 from . import export_indicators
-from . import operators
-from . import builtin_presets
 
 # --- Setup Logger ---
 logger = logging.getLogger(__name__)
@@ -664,7 +662,8 @@ class MESH_EXPORT_PT_texture_info(Panel):
                         orig_w, orig_h = img.size
                         target_size = lod_sizes[i]
 
-                        # Calculate actual dimensions after resize (preserving aspect ratio)
+                        # Calculate actual dimensions after resize
+                        # (preserving aspect ratio)
                         if orig_w > orig_h:
                             new_w = min(orig_w, target_size)
                             new_h = int(new_w * (orig_h / orig_w))

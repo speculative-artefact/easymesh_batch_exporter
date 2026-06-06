@@ -6,13 +6,10 @@ formats: FBX, OBJ, glTF (GLB and JSON), USD, and STL.
 
 import bpy
 import pytest
-from pathlib import Path
 from conftest import (
     verify_file_exists,
     verify_exported_files,
-    count_exported_files,
     get_scene_props,
-    reset_export_settings,
 )
 
 

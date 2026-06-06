@@ -5,9 +5,7 @@ Blender object types: meshes, curves, and metaballs.
 """
 
 import bpy
-import pytest
-from pathlib import Path
-from conftest import verify_file_exists, get_scene_props, reset_export_settings
+from conftest import verify_file_exists, get_scene_props
 
 
 class TestMeshObjects:

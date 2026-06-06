@@ -61,7 +61,8 @@ def clear_indicators_if_disabled(self, context):
         context: The current Blender context
 
     Note:
-        Silently fails if the clear operator hasn't been registered yet during addon startup.
+        Silently fails if the clear operator hasn't been registered yet
+        during addon startup.
     """
     if not self.mesh_export_show_indicators:
         # Clear all export indicators
@@ -165,12 +166,14 @@ class MeshExporterSettings(PropertyGroup):
             (
                 "PLACEHOLDER",
                 "Placeholder",
-                "Do not export materials, but write multiple primitive groups per mesh, keeping material slot information",
+                "Do not export materials, but write multiple primitive "
+                "groups per mesh, keeping material slot information",
             ),
             (
                 "NONE",
                 "No export",
-                "Do not export materials, and combine mesh primitive groups, losing material slot information",
+                "Do not export materials, and combine mesh primitive "
+                "groups, losing material slot information",
             ),
         ],
         default="EXPORT",
@@ -179,7 +182,11 @@ class MeshExporterSettings(PropertyGroup):
     # GLTF Draco compression property
     mesh_export_use_draco_compression: BoolProperty(
         name="Draco Compression",
-        description="Enable Draco mesh compression for smaller file sizes. Note: Godot has its own runtime compression, so this is typically not needed for Godot imports",
+        description=(
+            "Enable Draco mesh compression for smaller file sizes. "
+            "Note: Godot has its own runtime compression, so this is "
+            "typically not needed for Godot imports"
+        ),
         default=False,
     )
 
@@ -191,7 +198,8 @@ class MeshExporterSettings(PropertyGroup):
             (
                 "COMBINE",
                 "Combine",
-                "Export all selected meshes into a single glTF file (recommended for Godot)",
+                "Export all selected meshes into a single glTF file "
+                "(recommended for Godot)",
             ),
             (
                 "INDIVIDUAL",
@@ -355,7 +363,10 @@ class MeshExporterSettings(PropertyGroup):
     # Export indicators property
     mesh_export_show_indicators: BoolProperty(
         name="Show Export Indicators",
-        description="Display colour indicators in viewport for recently exported objects",
+        description=(
+            "Display colour indicators in viewport for recently "
+            "exported objects"
+        ),
         default=True,
         update=lambda self, context: clear_indicators_if_disabled(self, context),
     )
@@ -412,7 +423,10 @@ class MeshExporterSettings(PropertyGroup):
     # Texture quality property
     mesh_export_texture_quality: IntProperty(
         name="Texture Compression",
-        description="Quality for lossy formats like JPEG (0-100). Does not affect PNG or other lossless formats",
+        description=(
+            "Quality for lossy formats like JPEG (0-100). Does not "
+            "affect PNG or other lossless formats"
+        ),
         default=85,
         min=0,
         max=100,
@@ -478,14 +492,20 @@ class MeshExporterSettings(PropertyGroup):
     # Texture embedding property
     mesh_export_embed_textures: BoolProperty(
         name="Embed Textures",
-        description="Embed textures in the exported file (recommended for game development)",
+        description=(
+            "Embed textures in the exported file "
+            "(recommended for game development)"
+        ),
         default=True,
     )
 
     # LOD hierarchy export property (for game engines)
     mesh_export_lod_hierarchy: BoolProperty(
         name="Export as Hierarchy",
-        description="Export collection as single mesh with LODs in parent/child structure (Unity/Unreal workflow)",
+        description=(
+            "Export collection as single mesh with LODs in parent/child "
+            "structure (Unity/Unreal workflow)"
+        ),
         default=True,
     )
 

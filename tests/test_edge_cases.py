@@ -5,13 +5,11 @@ to ensure the addon handles them gracefully.
 """
 
 import bpy
-import pytest
 from pathlib import Path
 from conftest import (
     verify_file_exists,
     count_exported_files,
     get_scene_props,
-    reset_export_settings,
 )
 
 

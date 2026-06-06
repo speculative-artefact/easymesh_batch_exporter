@@ -1,0 +1,12 @@
+# Ruff configuration for EasyMesh Batch Exporter.
+# Enforces PEP 8 with an 88-column line limit (Black-compatible).
+
+line-length = 88
+target-version = "py311"
+
+# Vendored / generated files that should not be linted.
+extend-exclude = ["get-pip.py", "presets"]
+
+[lint]
+# pycodestyle errors (E) + warnings (W) and pyflakes (F).
+select = ["E", "W", "F"]

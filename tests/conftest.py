@@ -6,11 +6,10 @@ including addon enablement, temporary directories, and verification helpers.
 
 import bpy
 import pytest
-import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 
 # --- Addon Management Fixtures ---
@@ -33,12 +32,10 @@ def enable_addon():
 
     # Check if addon is already enabled under any name
     addon_enabled = False
-    enabled_name = None
 
     for addon_name in addon_names:
         if addon_name in bpy.context.preferences.addons:
             addon_enabled = True
-            enabled_name = addon_name
             print(f"Addon already enabled: {addon_name}")
             break
 
@@ -54,7 +51,6 @@ def enable_addon():
                 bpy.ops.preferences.addon_enable(module=addon_name)
                 print(f"Enabled addon: {addon_name}")
                 addon_enabled = True
-                enabled_name = addon_name
                 break
             except Exception:
                 continue
@@ -67,8 +63,9 @@ def enable_addon():
 
     # Cleanup: Optionally disable addon after all tests
     # Uncomment if you want to disable after tests
-    # if enabled_name and enabled_name in bpy.context.preferences.addons:
-    #     bpy.ops.preferences.addon_disable(module=enabled_name)
+    # for addon_name in addon_names:
+    #     if addon_name in bpy.context.preferences.addons:
+    #         bpy.ops.preferences.addon_disable(module=addon_name)
 
 
 # --- Scene Management Fixtures ---
