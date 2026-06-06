@@ -321,6 +321,14 @@ def reset_export_settings():
     props.mesh_export_create_slots = False
     props.mesh_export_slot_prefix = "slot_"
 
+    # Collision meshes (disabled by default so other tests are unaffected)
+    props.mesh_export_include_collisions = False
+    props.mesh_export_collision_filter = "PREFIXED"
+    props.mesh_export_collision_profile = "AUTO"
+    props.mesh_export_collision_godot_visual = False
+    props.mesh_export_collision_custom_prefix = "UCX_"
+    props.mesh_export_collision_custom_suffix = ""
+
 
 @pytest.fixture
 def reset_settings():
@@ -421,6 +429,37 @@ def create_mesh_with_mixed_empties():
         empty.parent = parent
         bpy.context.collection.objects.link(empty)
 
+    return parent
+
+
+@pytest.fixture
+def create_mesh_with_unreal_collisions():
+    """Create a render mesh with UCX_ and UBX_ collision children.
+
+    The collision children follow Unreal's source-name convention so the
+    collision filter can detect them and read their shape from the prefix.
+
+    Returns:
+        bpy.types.Object: The parent render mesh with collision children
+    """
+    bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0))
+    parent = bpy.context.active_object
+    parent.name = "CollisionParent"
+
+    # Convex hull and box collisions, named for their parent.
+    collision_data = [
+        ("UCX_CollisionParent", (0, 0, 0)),
+        ("UBX_CollisionParent", (0, 0, 0)),
+    ]
+    for name, loc in collision_data:
+        bpy.ops.mesh.primitive_cube_add(location=loc)
+        child = bpy.context.active_object
+        child.name = name
+        child.parent = parent
+
+    # Leave the parent active/selected as the entry point for export.
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.context.view_layer.objects.active = parent
     return parent
 
 

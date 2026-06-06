@@ -42,6 +42,11 @@ A streamlined Blender add-on designed for game development workflows. Batch expo
   * **Unreal Engine:** PascalCase naming (MyMeshName) with prefix preservation
   * **Default:** Keep original naming with basic sanitisation
 * **LOD Hierarchy Export:** Export objects with LOD levels as structured hierarchies for Unity/Unreal workflows (FBX format only)
+* **Custom Collision Meshes:** Parent collision meshes to your render mesh and export them in the same file, renamed for your engine (FBX/glTF):
+  * **Unreal:** `UCX_`/`UBX_`/`USP_`/`UCP_` prefixes (convex/box/sphere/capsule)
+  * **Godot:** `-convcolonly` / `-convcol` node suffixes
+  * **Custom:** your own prefix/suffix (e.g. Unity colliders)
+  * Shape is read from the source object's prefix; works in single, batch, and LOD-hierarchy exports
 * **Game-Ready Output:** Optimised for immediate use in game engines
 
 ### 🎯 **Precision Controls**

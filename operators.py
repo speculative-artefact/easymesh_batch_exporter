@@ -139,6 +139,22 @@ UNREAL_KNOWN_PREFIXES = {
     "P",  # Physics Asset
 }
 
+# Collision mesh constants
+# Source-name prefix on the Blender object -> collision shape. Authored by the
+# user (Unreal's own collision vocabulary); the prefix both detects a child as a
+# collision and signals its shape. See:
+# https://docs.unrealengine.com/5.0/en-US/setting-up-collisions-with-static-meshes-in-unreal-engine/  # noqa: E501
+COLLISION_SHAPE_PREFIXES = {
+    "UCX_": "CONVEX",  # Convex hull
+    "UBX_": "BOX",  # Box primitive
+    "USP_": "SPHERE",  # Sphere primitive
+    "UCP_": "CAPSULE",  # Capsule primitive
+}
+# Godot encodes collision as a node-name suffix and has no primitive shapes, so
+# every shape maps to convex on export.
+GODOT_COLLISION_SUFFIX_ONLY = "-convcolonly"  # Collision only (not rendered)
+GODOT_COLLISION_SUFFIX_VISUAL = "-convcol"  # Collision + rendered visual
+
 # Preset system constants
 MAX_PRESET_NAME_LENGTH = 50  # Maximum characters for preset names
 PRESET_FILE_EXTENSION = ".json"  # File extension for preset files
@@ -600,6 +616,173 @@ def copy_empty_for_export(
     )
 
     return empty_copy
+
+
+def get_collision_meshes(
+    obj: Object, scene_props
+) -> List[Tuple[Object, str]]:
+    """
+    Get mesh children of an object that should be exported as collision meshes.
+
+    Collision meshes ride along in the same file as their render mesh so the
+    target engine can auto-bind them on import. Shape is read from the source
+    object's name prefix (UCX_/UBX_/USP_/UCP_).
+
+    Args:
+        obj: The parent (render) object to get collision children from
+        scene_props: Scene properties containing collision settings
+
+    Returns:
+        List of (collision_object, shape) tuples. Shape is one of
+        "CONVEX"/"BOX"/"SPHERE"/"CAPSULE".
+
+    Examples:
+        >>> get_collision_meshes(cube, scene_props)
+        >>> # [(UCX_Cube, "CONVEX"), (UBX_Cube, "BOX")] in PREFIXED mode
+        >>> # [(child1, "CONVEX"), (child2, "CONVEX")] in ALL mode
+    """
+    if not obj or not scene_props.mesh_export_include_collisions:
+        return []
+
+    collisions = []
+    for child in obj.children:
+        if child.type != "MESH":
+            continue
+
+        if scene_props.mesh_export_collision_filter == "ALL":
+            # Every mesh child becomes a convex collision.
+            collisions.append((child, "CONVEX"))
+        else:  # PREFIXED
+            # Match the source-name prefix; the prefix also sets the shape.
+            for prefix, shape in COLLISION_SHAPE_PREFIXES.items():
+                if child.name.startswith(prefix):
+                    collisions.append((child, shape))
+                    break
+
+    if collisions:
+        logger.info(f"Found {len(collisions)} collision meshes for {obj.name}")
+
+    return collisions
+
+
+def resolve_collision_profile(scene_props) -> str:
+    """
+    Resolve the active collision profile, mapping AUTO to a concrete engine.
+
+    AUTO follows the file naming convention: UNREAL/GODOT convention map to the
+    matching engine, everything else falls back to CUSTOM.
+
+    Args:
+        scene_props: Scene properties containing collision settings
+
+    Returns:
+        One of "UNREAL", "GODOT", "CUSTOM".
+    """
+    profile = scene_props.mesh_export_collision_profile
+    if profile != "AUTO":
+        return profile
+
+    convention = scene_props.mesh_export_naming_convention
+    if convention == "UNREAL":
+        return "UNREAL"
+    if convention == "GODOT":
+        return "GODOT"
+    return "CUSTOM"
+
+
+def apply_collision_naming(
+    render_name: str, shape: str, index: int, scene_props
+) -> str:
+    """
+    Build the exported name for a collision mesh per the active engine profile.
+
+    Args:
+        render_name: The render mesh's already-converted export base name, so the
+            collision binds to the exact in-file asset name.
+        shape: Collision shape ("CONVEX"/"BOX"/"SPHERE"/"CAPSULE").
+        index: Zero-based index among this render mesh's collisions (Unreal
+            disambiguates multiples with a _NN suffix).
+        scene_props: Scene properties containing collision settings
+
+    Returns:
+        The collision object's export name.
+
+    Examples:
+        >>> # Unreal: UCX_MyMesh_00, UBX_MyMesh_01
+        >>> # Godot:  MyMesh-convcolonly
+        >>> # Custom: <prefix>MyMesh<suffix>
+    """
+    profile = resolve_collision_profile(scene_props)
+
+    if profile == "UNREAL":
+        # Map shape back to its Unreal prefix (default to convex UCX_).
+        shape_prefix = next(
+            (p for p, s in COLLISION_SHAPE_PREFIXES.items() if s == shape),
+            "UCX_",
+        )
+        return f"{shape_prefix}{render_name}_{index:02d}"
+
+    if profile == "GODOT":
+        # Godot has no primitive shapes - everything is convex.
+        suffix = (
+            GODOT_COLLISION_SUFFIX_VISUAL
+            if scene_props.mesh_export_collision_godot_visual
+            else GODOT_COLLISION_SUFFIX_ONLY
+        )
+        return f"{render_name}{suffix}"
+
+    # CUSTOM
+    prefix = scene_props.mesh_export_collision_custom_prefix
+    suffix = scene_props.mesh_export_collision_custom_suffix
+    return f"{prefix}{render_name}{suffix}"
+
+
+def copy_collision_for_export(
+    collision_obj: Object,
+    parent_obj: Object,
+    render_name: str,
+    shape: str,
+    index: int,
+    context: Context,
+    scene_props,
+) -> Object:
+    """
+    Create a copy of a collision mesh for export, named and parented for the
+    target engine.
+
+    The copy preserves the local transform relative to the parent (render mesh),
+    mirroring copy_empty_for_export.
+
+    Args:
+        collision_obj: The collision mesh object to copy
+        parent_obj: The export render object to parent the copy to
+        render_name: The render mesh's export base name (for naming)
+        shape: Collision shape ("CONVEX"/"BOX"/"SPHERE"/"CAPSULE")
+        index: Zero-based index among this render mesh's collisions
+        context: Blender context
+        scene_props: Scene properties containing collision settings
+
+    Returns:
+        The newly created collision mesh copy.
+    """
+    new_name = apply_collision_naming(render_name, shape, index, scene_props)
+
+    # Copy object and its mesh data so the original is untouched.
+    collision_copy = collision_obj.copy()
+    collision_copy.data = collision_obj.data.copy()
+    collision_copy.name = new_name
+    context.collection.objects.link(collision_copy)
+
+    # Parent to the render object and preserve the world position.
+    world_matrix = collision_obj.matrix_world.copy()
+    collision_copy.parent = parent_obj
+    collision_copy.matrix_local = parent_obj.matrix_world.inverted() @ world_matrix
+
+    logger.debug(
+        f"Created collision copy: {new_name} (parent: {parent_obj.name})"
+    )
+
+    return collision_copy
 
 
 @contextlib.contextmanager
@@ -2660,6 +2843,7 @@ def export_object(
     export_scale=1.0,
     use_existing_selection=False,
     include_empties=False,
+    extra_objects=None,
 ):
     """
     Exports a single object or current selection using scene properties.
@@ -2674,6 +2858,9 @@ def export_object(
             creating temp context. Used for batch exports. Defaults to False.
         include_empties (bool): If True, includes EMPTY objects in FBX/glTF exports.
             Used for attachment points. Defaults to False.
+        extra_objects (list, optional): Additional objects (e.g. attachment empties,
+            collision meshes) to select alongside ``obj`` for single-object exports.
+            Ignored when ``use_existing_selection`` is True. Defaults to None.
 
     Returns:
         bool: True if export was successful, False otherwise.
@@ -2762,7 +2949,9 @@ def export_object(
         contextlib.nullcontext()
         if use_existing_selection
         else temp_selection_context(
-            bpy.context, active_object=obj, selected_objects=[obj]
+            bpy.context,
+            active_object=obj,
+            selected_objects=[obj] + list(extra_objects or []),
         )
     )
 
@@ -3695,6 +3884,37 @@ class MESH_OT_batch_export(Operator):
         if not objects_to_export:
             raise ValidationError("No mesh, curve, or metaball objects selected.")
 
+        # Exclude collision children from the standalone export list - they are
+        # exported alongside their parent render mesh, not as their own files.
+        if scene_props.mesh_export_include_collisions:
+            filtered = []
+            skipped_collisions = []
+            for obj in objects_to_export:
+                parent = obj.parent
+                if parent is not None:
+                    collision_children = {
+                        child
+                        for child, _ in get_collision_meshes(parent, scene_props)
+                    }
+                    if obj in collision_children:
+                        skipped_collisions.append(obj.name)
+                        continue
+                filtered.append(obj)
+
+            if skipped_collisions:
+                logger.info(
+                    f"Excluded {len(skipped_collisions)} collision object(s) from "
+                    f"standalone export (exported with their parent): "
+                    f"{', '.join(skipped_collisions)}"
+                )
+            objects_to_export = filtered
+
+            if not objects_to_export:
+                raise ValidationError(
+                    "Only collision meshes were selected. Select their parent "
+                    "render mesh (or disable 'Include Collision Meshes')."
+                )
+
         # Check if we're in LOD hierarchy mode
         hierarchy_mode = (
             scene_props.mesh_export_lod
@@ -3845,6 +4065,21 @@ class MESH_OT_batch_export(Operator):
                     lod_objects[0].matrix_world.inverted() @ slot_world
                 )
                 temp_empties.append(slot_empty)
+
+            # Handle collision meshes - parent to LOD0 (tracked in temp_empties
+            # so they're selected for the inline FBX export below)
+            collisions = get_collision_meshes(obj, scene_props)
+            for idx, (collision_obj, shape) in enumerate(collisions):
+                collision_copy = copy_collision_for_export(
+                    collision_obj,
+                    lod_objects[0],
+                    base_name,
+                    shape,
+                    idx,
+                    context,
+                    scene_props,
+                )
+                temp_empties.append(collision_copy)
 
             # Export the hierarchy as FBX
             # Use base_name which includes prefix/suffix but not LOD suffix
@@ -4070,6 +4305,7 @@ class MESH_OT_batch_export(Operator):
         export_obj_name = None
         temp_metaball_mesh = None
         temp_empties = []  # Track temporary empties for cleanup
+        temp_collisions = []  # Track temporary collision copies for cleanup
 
         try:
             logger.info("Processing single export (no LODs)..")
@@ -4121,20 +4357,31 @@ class MESH_OT_batch_export(Operator):
 
                     include_empties = len(temp_empties) > 0
 
-                    # Select empties along with the mesh for export
-                    if include_empties:
-                        for temp_empty in temp_empties:
-                            temp_empty.select_set(True)
-                        obj.select_set(True)
-                        context.view_layer.objects.active = obj
+                    # Copy each collision mesh and parent to the export object
+                    collisions = get_collision_meshes(original_obj, scene_props)
+                    for idx, (collision_obj, shape) in enumerate(collisions):
+                        collision_copy = copy_collision_for_export(
+                            collision_obj,
+                            obj,
+                            base_name,
+                            shape,
+                            idx,
+                            context,
+                            scene_props,
+                        )
+                        temp_collisions.append(collision_copy)
 
                 file_path = os.path.join(export_base_path, base_name)
+                # Pass empties/collisions as extra objects so they're selected
+                # alongside the mesh (temp_selection_context selects exactly these).
+                extra_objects = temp_empties + temp_collisions
                 if export_object(
                     obj,
                     file_path,
                     scene_props,
                     export_scale,
                     include_empties=include_empties,
+                    extra_objects=extra_objects,
                 ):
                     return 1, []
                 else:
@@ -4149,6 +4396,12 @@ class MESH_OT_batch_export(Operator):
             for temp_empty in temp_empties:
                 cleanup_object(
                     temp_empty, temp_empty.name if temp_empty else "temp_empty"
+                )
+            # Cleanup temporary collision copies
+            for temp_collision in temp_collisions:
+                cleanup_object(
+                    temp_collision,
+                    temp_collision.name if temp_collision else "temp_collision",
                 )
             # Cleanup temp metaball mesh if exists
             if temp_metaball_mesh:
@@ -4271,6 +4524,23 @@ class MESH_OT_batch_export(Operator):
                             slot_empty
                         )  # Include in export selection
                         has_empties = True
+
+                    # Handle collision meshes - copy and parent to export object
+                    collisions = get_collision_meshes(original_obj, scene_props)
+                    for idx, (collision_obj, shape) in enumerate(collisions):
+                        collision_copy = copy_collision_for_export(
+                            collision_obj,
+                            export_obj,
+                            base_name,
+                            shape,
+                            idx,
+                            context,
+                            scene_props,
+                        )
+                        temp_objects.append(collision_copy)
+                        processed_objects.append(
+                            collision_copy
+                        )  # Include in export selection
 
                     # Handle LOD generation if enabled
                     if scene_props.mesh_export_lod:

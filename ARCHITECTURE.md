@@ -161,6 +161,10 @@ MeshExportError          # Base exception
 - `triangulate_mesh()`: Convert quads/ngons to triangles
 - `apply_naming_convention()`: Game engine specific name transformations
 - `setup_export_object()`: Rename, scale, and prepare for export
+- `get_collision_meshes()`: Detect collision mesh children (shape from `UCX_`/`UBX_`/`USP_`/`UCP_` prefix, or all children in ALL mode)
+- `resolve_collision_profile()`: Map the AUTO profile to UNREAL/GODOT/CUSTOM via the naming convention
+- `apply_collision_naming()`: Build the collision's exported name per engine profile
+- `copy_collision_for_export()`: Copy, rename, and parent a collision mesh to its render mesh
 
 #### Main Operator: `MESH_OT_batch_export` (Lines 2129+)
 
@@ -188,6 +192,8 @@ MESH_PT_exporter_panel (Main)
 ├── MESH_PT_exporter_transform_sub_panel
 ├── MESH_PT_exporter_naming_sub_panel
 ├── MESH_PT_exporter_lod_sub_panel (Collapsible)
+├── MESH_PT_exporter_panel_empties (Attachment Points, FBX/glTF only)
+├── MESH_PT_exporter_panel_collisions (Collision Meshes, FBX/glTF only)
 └── MESH_PT_exporter_recent_sub_panel (with indicators toggle)
 ```
 
@@ -245,6 +251,40 @@ _cache_update_interval = 10.0  # Refresh every 10 seconds
 - `mesh_export_timestamp`: Export time (float)
 - `mesh_export_status`: Current status (int)
 - `mesh_exporter_original_colour`: Saved viewport colour (list[float])
+
+---
+
+## Collision Mesh Export
+
+Custom collision meshes are exported into the **same file** as their render mesh so the
+target engine binds them on import. The design mirrors the attachment-empties feature: a
+collision is a MESH child of the render object that rides along in the export selection
+rather than being written as its own file.
+
+**Pipeline:**
+
+1. `_validate_export_setup()` removes recognised collision children from the standalone
+   export list (so a selected `UCX_*` child is never exported on its own).
+2. Each export path (`_process_single_export`, `_process_batch_gltf_export`,
+   `_process_object_hierarchy_export`) calls `get_collision_meshes()` for the current
+   render object and `copy_collision_for_export()` for each result, parenting the copy to
+   the render object (or LOD0 in hierarchy mode).
+3. The collision copies are added to the export selection. For single-object exports they
+   are passed via the new `export_object(extra_objects=...)` parameter, which also fixed a
+   latent bug where attachment empties were dropped in single-object mode (the temp
+   selection previously selected only the render mesh).
+
+**Naming** is driven by the engine profile (`mesh_export_collision_profile`):
+
+- **UNREAL** → `UCX_/UBX_/USP_/UCP_` prefix + `_NN` index (e.g. `UCX_MyMesh_00`)
+- **GODOT** → `-convcolonly` / `-convcol` suffix (Godot has no primitive shapes, so all
+  shapes export as convex)
+- **CUSTOM** → user-defined prefix + suffix
+- **AUTO** → resolves to Unreal/Godot/Custom from the file naming convention
+
+Detection (`mesh_export_collision_filter`) is either **PREFIXED** (only `UCX_`/`UBX_`/
+`USP_`/`UCP_` children, prefix sets the shape) or **ALL** (every mesh child, convex). Only
+FBX and glTF carry the node hierarchy needed; the panel and logic are gated to those.
 
 ---
 

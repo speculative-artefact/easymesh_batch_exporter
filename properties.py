@@ -578,6 +578,68 @@ class MeshExporterSettings(PropertyGroup):
         default="slot_",
     )
 
+    # --- Custom Collision Meshes ---
+    mesh_export_include_collisions: BoolProperty(
+        name="Include Collision Meshes",
+        description=(
+            "Include collision mesh children of exported objects in the same "
+            "file (FBX/glTF), renamed for the target engine"
+        ),
+        default=False,
+    )
+
+    mesh_export_collision_filter: EnumProperty(
+        name="Collision Filter",
+        description="Which mesh children to treat as collisions",
+        items=[
+            (
+                "PREFIXED",
+                "Prefixed Only",
+                "Only children named with a UCX_/UBX_/USP_/UCP_ prefix "
+                "(the prefix also sets the shape)",
+            ),
+            (
+                "ALL",
+                "All Children",
+                "Treat every mesh child as a convex collision",
+            ),
+        ],
+        default="PREFIXED",
+    )
+
+    mesh_export_collision_profile: EnumProperty(
+        name="Engine Profile",
+        description="How collision meshes are named for the target engine",
+        items=[
+            ("AUTO", "Auto", "Follow the file naming convention above"),
+            ("UNREAL", "Unreal Engine", "UCX_/UBX_/USP_/UCP_ prefix (UCX_Mesh_00)"),
+            ("GODOT", "Godot", "Convex collision suffix (Mesh-convcolonly)"),
+            ("CUSTOM", "Custom", "User-defined prefix and suffix"),
+        ],
+        default="AUTO",
+    )
+
+    mesh_export_collision_godot_visual: BoolProperty(
+        name="Render Collision (Godot)",
+        description=(
+            "Use '-convcol' (collision + rendered) instead of '-convcolonly' "
+            "(collision only)"
+        ),
+        default=False,
+    )
+
+    mesh_export_collision_custom_prefix: StringProperty(
+        name="Custom Prefix",
+        description="Prefix applied to collision names (Custom profile)",
+        default="UCX_",
+    )
+
+    mesh_export_collision_custom_suffix: StringProperty(
+        name="Custom Suffix",
+        description="Suffix applied to collision names (Custom profile)",
+        default="",
+    )
+
     # Preset system properties
     mesh_export_current_preset: StringProperty(
         name="Current Preset", description="Currently active export preset", default=""

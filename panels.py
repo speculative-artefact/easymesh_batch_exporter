@@ -477,6 +477,76 @@ class MESH_PT_exporter_panel_empties(Panel):
             info_col.label(text="Creates empties at child mesh positions", icon="INFO")
 
 
+# Custom Collision Meshes Panel
+class MESH_PT_exporter_panel_collisions(Panel):
+    bl_label = "Collision Meshes"
+    bl_idname = "MESH_PT_exporter_panel_collisions"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Exporter"
+    bl_parent_id = "MESH_PT_exporter_panel"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    @classmethod
+    def poll(cls, context):
+        # Only show for FBX and glTF formats (same as attachment points)
+        settings = context.scene.mesh_exporter
+        return (
+            settings
+            and settings.mesh_export_path
+            and settings.mesh_export_path != ""
+            and settings.mesh_export_format in {"FBX", "GLTF"}
+        )
+
+    def draw_header(self, context):
+        layout = self.layout
+        settings = context.scene.mesh_exporter
+        layout.prop(settings, "mesh_export_include_collisions", text="")
+
+    def draw(self, context):
+        layout = self.layout
+        settings = context.scene.mesh_exporter
+
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+
+        # Enable/disable based on the header checkbox
+        layout.enabled = settings.mesh_export_include_collisions
+
+        # Which children count as collisions
+        col = layout.column(heading="Detect", align=True)
+        row = col.row(align=True)
+        row.prop(settings, "mesh_export_collision_filter", expand=True)
+
+        # Engine naming profile
+        col = layout.column(align=True)
+        col.prop(settings, "mesh_export_collision_profile")
+
+        # Resolve AUTO to show the relevant profile-specific options.
+        profile = settings.mesh_export_collision_profile
+        if profile == "AUTO":
+            convention = settings.mesh_export_naming_convention
+            if convention == "UNREAL":
+                profile = "UNREAL"
+            elif convention == "GODOT":
+                profile = "GODOT"
+            else:
+                profile = "CUSTOM"
+
+        if profile == "GODOT":
+            col.prop(settings, "mesh_export_collision_godot_visual")
+        elif profile == "CUSTOM":
+            col.prop(settings, "mesh_export_collision_custom_prefix")
+            col.prop(settings, "mesh_export_collision_custom_suffix")
+
+        # Convention hint
+        info_col = layout.column()
+        info_col.scale_y = 0.8
+        info_col.label(
+            text="Name source objects UCX_/UBX_/USP_/UCP_", icon="INFO"
+        )
+
+
 # Recent Exports Panel
 class MESH_EXPORT_PT_recent_exports(Panel):
     bl_label = "Recent Exports"
@@ -703,6 +773,7 @@ classes = (
     MESH_PT_exporter_panel_presets,
     MESH_PT_exporter_panel_lod,
     MESH_PT_exporter_panel_empties,
+    MESH_PT_exporter_panel_collisions,
     MESH_EXPORT_PT_texture_info,
     MESH_EXPORT_PT_recent_exports,
 )
