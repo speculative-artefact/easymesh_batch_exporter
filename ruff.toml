@@ -5,7 +5,7 @@ line-length = 88
 target-version = "py311"
 
 # Vendored / generated files that should not be linted.
-extend-exclude = ["get-pip.py", "presets"]
+extend-exclude = ["presets"]
 
 [lint]
 # pycodestyle errors (E) + warnings (W) and pyflakes (F).
