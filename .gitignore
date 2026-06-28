@@ -164,7 +164,7 @@ cython_debug/
 .vscode/
 *.code-workspace
 .claude/
-CLAUDE.md
+# CLAUDE.md is tracked as project memory; kept out of the built package via blender_manifest.toml
 
 # Mac OS
 .DS_Store

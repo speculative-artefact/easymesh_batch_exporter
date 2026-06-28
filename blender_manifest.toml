@@ -42,6 +42,7 @@ paths_exclude_pattern = [
     "releases/",
     "exported_meshes/",
     "ARCHITECTURE.md",
+    "CLAUDE.md",
     ".gitignore",
     "*.pyc",
     ".DS_Store",
