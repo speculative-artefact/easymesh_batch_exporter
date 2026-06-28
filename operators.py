@@ -144,7 +144,7 @@ def temporary_mesh(
         if mesh_data:
             try:
                 bpy.data.meshes.remove(mesh_data)
-            except (ReferenceError, Exception):
+            except (ReferenceError, RuntimeError):
                 pass
 
 
@@ -184,7 +184,7 @@ def temporary_image_file(filepath: str) -> Iterator[str]:
         if filepath and os.path.exists(filepath):
             try:
                 os.remove(filepath)
-            except Exception:
+            except OSError:
                 pass
 
 
@@ -286,7 +286,7 @@ class MeshOperations:
         """Update view layer with error handling."""
         try:
             bpy.context.view_layer.update()
-        except Exception:
+        except (AttributeError, RuntimeError):
             pass
 
     @staticmethod
@@ -337,7 +337,7 @@ class MeshOperations:
                     mode=mode,
                 )
                 return success
-        except Exception as e:
+        except (ReferenceError, AttributeError, RuntimeError):
             return False
         return False
 
@@ -1203,7 +1203,7 @@ def create_export_copy(original_obj, context):
                         # For now, basic smooth shading is sufficient for metaballs
                         mesh_obj.modifiers.remove(smooth_mod)
 
-                except Exception:
+                except (AttributeError, RuntimeError):
                     pass
 
                 # Store the temporary mesh object for cleanup later
@@ -1273,7 +1273,7 @@ def create_export_copy(original_obj, context):
                 copy_obj_ref = context.view_layer.objects.active
                 if copy_obj_ref and copy_obj_ref != original_obj:
                     bpy.data.objects.remove(copy_obj_ref, do_unlink=True)
-            except Exception:
+            except (ReferenceError, RuntimeError):
                 pass
 
             raise RuntimeError(
@@ -1382,7 +1382,7 @@ def apply_naming_convention(name: str, convention: str) -> str:
 
             return result
 
-        except Exception:
+        except (AttributeError, TypeError, ValueError):
             # Fallback to standard sanitisation on any error
             return sanitise_filename(name)
 
@@ -1405,7 +1405,7 @@ def apply_naming_convention(name: str, convention: str) -> str:
             result = "_".join(words)
 
             return result if result else sanitise_filename(name)
-        except Exception:
+        except (AttributeError, TypeError, ValueError):
             return sanitise_filename(name)
 
     elif convention == "GODOT":
@@ -1443,7 +1443,7 @@ def apply_naming_convention(name: str, convention: str) -> str:
                 result if result else sanitise_filename(name).lower().replace(" ", "_")
             )
 
-        except Exception:
+        except (AttributeError, TypeError, ValueError):
             # Fallback: basic conversion to snake_case
             temp_name = sanitise_filename(name).lower().replace(" ", "_")
             return re.sub(r"_+", "_", temp_name).strip("_")
@@ -2007,7 +2007,7 @@ def compress_textures(obj, ratio, export_path=None, save_compressed=True):
                             orig_img.colorspace_settings.name
                         )
 
-                    except Exception as e:
+                    except (ReferenceError, RuntimeError, AttributeError, OSError):
                         # Clean up failed copy
                         if copied_img:
                             bpy.data.images.remove(copied_img)
@@ -2039,7 +2039,7 @@ def compress_textures(obj, ratio, export_path=None, save_compressed=True):
                         copied_img.save()
 
 
-                    except Exception:
+                    except (ReferenceError, RuntimeError, OSError):
                         pass
 
             # Update material nodes to use the copied image
@@ -2057,7 +2057,7 @@ def compress_textures(obj, ratio, export_path=None, save_compressed=True):
 
             obj["original_textures"][copy_name] = orig_img.name
 
-        except Exception as e:
+        except (ReferenceError, RuntimeError, AttributeError, KeyError):
             continue
 
     return modified_images
@@ -2110,7 +2110,7 @@ def restore_original_textures(obj):
         for img in list(bpy.data.images):  # Use list to avoid iteration issues
             if "_LOD" in img.name and img.users == 0:
                 bpy.data.images.remove(img)
-    except Exception:
+    except (ReferenceError, RuntimeError):
         pass
 
 
@@ -2238,7 +2238,7 @@ def triangulate_mesh(obj, method="BEAUTY", keep_normals=True):
     try:
         with bpy.context.temp_override(**override):
             bpy.ops.object.modifier_apply(modifier=mod_name)
-    except Exception:
+    except (RuntimeError, ReferenceError):
         pass
     finally:
         if obj.mode != current_mode:
@@ -2529,8 +2529,8 @@ def save_external_textures(
                     else:
                         pass
 
-                except Exception as e:
-                    import traceback
+                except (ReferenceError, RuntimeError, AttributeError, OSError, KeyError):
+                    pass
 
 
     return saved_textures, original_references
@@ -2562,7 +2562,7 @@ def restore_material_references(original_references):
         except (ReferenceError, AttributeError):
             # Node or image was already removed, which can happen during cleanup
             pass
-        except Exception:
+        except RuntimeError:
             pass
 
 
@@ -2877,7 +2877,14 @@ def export_object(
                     )
 
             success = True
-        except Exception as e:
+        except (
+            ReferenceError,
+            RuntimeError,
+            OSError,
+            AttributeError,
+            TypeError,
+            ValueError,
+        ):
             success = False
         finally:
             # Restore original material references if we modified them
@@ -2939,14 +2946,14 @@ def cleanup_object(obj, obj_name_for_log):
                 if was_large_mesh and hasattr(mesh_data, "clear_geometry"):
                     mesh_data.clear_geometry()
                 bpy.data.meshes.remove(mesh_data)
-            except (ReferenceError, Exception):
+            except (ReferenceError, RuntimeError):
                 pass
 
         # Force garbage collection for large meshes
         if was_large_mesh:
             MemoryManager.request_cleanup(force=True)
 
-    except (ReferenceError, Exception):
+    except (ReferenceError, RuntimeError):
         pass
 
 
@@ -3413,7 +3420,7 @@ def get_all_preset_names() -> List[str]:
         for name in all_files:
             if name not in builtin_names:
                 user_names.append(name)
-    except Exception:
+    except OSError:
         pass
 
     # Sort user presets alphabetically
@@ -3831,13 +3838,13 @@ class MESH_OT_batch_export(Operator):
             if parent_empty:
                 try:
                     bpy.data.objects.remove(parent_empty, do_unlink=True)
-                except (ReferenceError, Exception):
+                except (ReferenceError, RuntimeError):
                     pass
 
             for lod_obj in lod_objects:
                 try:
                     bpy.data.objects.remove(lod_obj, do_unlink=True)
-                except (ReferenceError, Exception):
+                except (ReferenceError, RuntimeError):
                     pass
 
             # Clean up temporary metaball mesh if it exists
@@ -3849,7 +3856,7 @@ class MESH_OT_batch_export(Operator):
                     bpy.data.objects.remove(temp_metaball_mesh, do_unlink=True)
                     if mesh_data:
                         bpy.data.meshes.remove(mesh_data, do_unlink=True)
-                except (ReferenceError, Exception):
+                except (ReferenceError, RuntimeError):
                     pass
 
         return successful_exports, failed_exports
@@ -4254,7 +4261,12 @@ class MESH_OT_batch_export(Operator):
                                 base_lod_obj = lod_obj
                                 previous_ratio = target_ratio
 
-                            except Exception:
+                            except (
+                                ReferenceError,
+                                RuntimeError,
+                                AttributeError,
+                                ValueError,
+                            ):
                                 pass
                                 # Continue with other objects even if
                                 # LOD generation fails

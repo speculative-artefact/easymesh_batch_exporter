@@ -85,7 +85,7 @@ def mark_object_as_exported(obj):
                 first_interval=_TIMER_INTERVAL_SECONDS,
                 persistent=True,
             )
-        except Exception:
+        except (RuntimeError, ValueError):
             pass
 
     # Mark the object
@@ -120,7 +120,7 @@ def _delete_prop(obj, prop_name):
     except (ReferenceError, KeyError):
         # Consider it deleted if it's gone
         return True
-    except Exception:
+    except TypeError:
         pass
     return False
 
@@ -155,7 +155,7 @@ def restore_object_colour(obj):
             try:
                 if len(original_colour_stored) == 4:
                     is_valid_sequence = True
-            except Exception:
+            except TypeError:
                 pass
 
         if is_valid_sequence:
@@ -179,7 +179,7 @@ def restore_object_colour(obj):
         restore_success = True  # Prop gone, consider restore "successful"
     except ReferenceError:
         pass
-    except Exception:
+    except (AttributeError, TypeError):
         pass
 
     # Always ensure the original colour prop
@@ -238,7 +238,7 @@ def set_object_colour(obj):
 
     except ReferenceError:
         pass
-    except Exception:
+    except (AttributeError, TypeError, KeyError):
         pass
 
 
@@ -351,7 +351,7 @@ def update_all_export_statuses():
 
         except ReferenceError:
             continue
-        except Exception:
+        except (AttributeError, TypeError, KeyError):
             continue
 
     return needs_redraw
@@ -406,13 +406,13 @@ def update_timer_callback():
                         try:
                             # Force update for all area types
                             area.tag_redraw()
-                        except Exception:
+                        except (AttributeError, RuntimeError):
                             # Ignore potential errors during redraw
                             # without stopping timer
                             pass
             else:
                 pass
-    except Exception:
+    except (ReferenceError, RuntimeError, AttributeError):
         # Ignore but don't stop the timer
         pass
 
@@ -449,7 +449,7 @@ class MESH_OT_clear_all_indicators(Operator):
                     _delete_prop(obj, EXPORT_TIME_PROP)
                     _delete_prop(obj, EXPORT_STATUS_PROP)
                     count += 1
-                except Exception:
+                except (ReferenceError, AttributeError, KeyError):
                     pass
 
         msg = f"Cleared export indicators from {count} objects."
@@ -511,7 +511,7 @@ def register():
     if bpy.app.timers.is_registered(update_timer_callback):
         try:
             bpy.app.timers.unregister(update_timer_callback)
-        except Exception:
+        except (ValueError, RuntimeError):
             pass
 
     # Now register a fresh timer with persistence
@@ -521,7 +521,7 @@ def register():
             first_interval=_TIMER_INTERVAL_SECONDS,
             persistent=True,  # Make timer survive file loads
         )
-    except Exception:
+    except (RuntimeError, ValueError):
         pass
 
 
@@ -531,7 +531,7 @@ def unregister():
     if bpy.app.timers.is_registered(update_timer_callback):
         try:
             bpy.app.timers.unregister(update_timer_callback)
-        except Exception:
+        except (ValueError, RuntimeError):
             pass
 
     # No longer restoring viewport settings automatically
@@ -551,11 +551,11 @@ def unregister():
                         _delete_prop(obj, EXPORT_TIME_PROP)
                         _delete_prop(obj, EXPORT_STATUS_PROP)
                         count_cleaned += 1
-                    except Exception:
+                    except (ReferenceError, AttributeError, KeyError):
                         pass
             if count_cleaned > 0:
                 pass
-    except Exception:
+    except (ReferenceError, AttributeError, RuntimeError):
         pass
 
     # Unregister operators

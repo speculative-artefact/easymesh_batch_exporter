@@ -41,7 +41,7 @@ def refresh_preset_items_cache():
             icon = operators.get_preset_icon(preset_name)
             desc = operators.get_preset_description(preset_name) or preset_name
             items.append((preset_name, preset_name, desc, icon, i))
-    except Exception:
+    except (OSError, AttributeError, TypeError):
         pass
 
     if not items:
