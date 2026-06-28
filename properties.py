@@ -41,11 +41,8 @@ def refresh_preset_items_cache():
             icon = operators.get_preset_icon(preset_name)
             desc = operators.get_preset_description(preset_name) or preset_name
             items.append((preset_name, preset_name, desc, icon, i))
-    except Exception as e:
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.warning(f"Failed to refresh preset items cache: {e}")
+    except Exception:
+        pass
 
     if not items:
         items.append(("NONE", "No Presets", "No presets available", "SETTINGS", 0))
@@ -114,11 +111,8 @@ def load_preset_on_change(self, context):
                 bpy.ops.mesh.load_export_preset(
                     preset_name=self.mesh_export_preset_selector
                 )
-            except (AttributeError, RuntimeError) as e:
-                import logging
-
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Failed to auto-load preset: {e}")
+            except (AttributeError, RuntimeError):
+                pass
 
 
 class MeshExporterSettings(PropertyGroup):

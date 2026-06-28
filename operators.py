@@ -12,7 +12,6 @@ import time
 import contextlib
 import re
 import math
-import logging
 import json
 from datetime import datetime
 from mathutils import Matrix
@@ -23,77 +22,6 @@ from bpy.props import StringProperty
 from . import export_indicators
 from . import builtin_presets
 
-
-# --- Safe LogRecord for Blender 5.0 Extension System ---
-class SafeLogRecord(logging.LogRecord):
-    """Custom LogRecord that safely handles pathname inspection.
-
-    Prevents PyUnicode crashes in Blender 5.0's extension system where
-    call stack inspection can encounter corrupted/unusual module paths.
-    Falls back to module name if pathname operations fail.
-    """
-
-    def __init__(
-        self,
-        name,
-        level,
-        pathname,
-        lineno,
-        msg,
-        args,
-        exc_info,
-        func=None,
-        sinfo=None,
-        **kwargs,
-    ):
-        # Safely handle pathname which can crash in Blender extensions
-        try:
-            # Let parent class handle pathname normally
-            super().__init__(
-                name,
-                level,
-                pathname,
-                lineno,
-                msg,
-                args,
-                exc_info,
-                func,
-                sinfo,
-                **kwargs,
-            )
-        except (TypeError, ValueError, UnicodeDecodeError):
-            # Fallback: use module name instead of pathname
-            # This prevents crashes while still providing useful log context
-            safe_pathname = name if name else "unknown"
-            super().__init__(
-                name,
-                level,
-                safe_pathname,
-                lineno,
-                msg,
-                args,
-                exc_info,
-                func,
-                sinfo,
-                **kwargs,
-            )
-
-
-# Set custom LogRecord factory before creating logger
-logging.setLogRecordFactory(SafeLogRecord)
-
-# --- Setup Logger ---
-logger = logging.getLogger(__name__)
-# Clear any existing handlers to prevent accumulation on addon reload
-if logger.handlers:
-    logger.handlers.clear()
-handler = logging.StreamHandler()
-formatter = logging.Formatter("%(name)s:%(levelname)s: %(message)s")
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-logger.setLevel(logging.INFO)  # Default level
-# Prevent propagation to avoid duplicate logs
-logger.propagate = False
 
 # --- Constants ---
 EXPORT_TIME_PROP = "mesh_export_timestamp"
@@ -205,7 +133,7 @@ def temporary_mesh(
 
     Args:
         mesh_data: The mesh data to manage
-        name: Name identifier for logging
+        name: Name identifier for diagnostics
 
     Yields:
         The mesh data object
@@ -216,9 +144,8 @@ def temporary_mesh(
         if mesh_data:
             try:
                 bpy.data.meshes.remove(mesh_data)
-                logger.debug(f"Cleaned up temporary mesh: {name}")
-            except (ReferenceError, Exception) as e:
-                logger.warning(f"Failed to cleanup temporary mesh {name}: {e}")
+            except (ReferenceError, Exception):
+                pass
 
 
 @contextlib.contextmanager
@@ -229,7 +156,7 @@ def temporary_object(
 
     Args:
         obj: The Blender object to manage
-        name: Name identifier for logging (uses obj.name if not provided)
+        name: Name identifier for diagnostics (uses obj.name if not provided)
 
     Yields:
         The object
@@ -257,9 +184,8 @@ def temporary_image_file(filepath: str) -> Iterator[str]:
         if filepath and os.path.exists(filepath):
             try:
                 os.remove(filepath)
-                logger.debug(f"Cleaned up temporary file: {filepath}")
-            except Exception as e:
-                logger.warning(f"Failed to cleanup temporary file {filepath}: {e}")
+            except Exception:
+                pass
 
 
 # --- Memory Management Utilities ---
@@ -284,9 +210,8 @@ class MemoryManager:
         """
         if interval > 0:
             cls._gc_interval = interval
-            logger.info(f"GC interval set to {interval} seconds")
         else:
-            logger.warning(f"Invalid GC interval {interval}, must be positive")
+            pass
 
     @classmethod
     def set_adaptive_mode(cls, enabled: bool) -> None:
@@ -296,7 +221,6 @@ class MemoryManager:
             enabled: Whether to enable adaptive mode
         """
         cls._adaptive_mode = enabled
-        logger.info(f"Adaptive GC mode {'enabled' if enabled else 'disabled'}")
 
     @classmethod
     def request_cleanup(cls, force: bool = False, poly_count: int = 0) -> None:
@@ -324,16 +248,8 @@ class MemoryManager:
             gc.collect()
             cls._last_gc_time = current_time
             cls._pending_cleanup = False
-            logger.debug(
-                f"Garbage collection performed "
-                f"(forced={force}, interval={effective_interval:.1f}s)"
-            )
         else:
             cls._pending_cleanup = True
-            logger.debug(
-                f"Garbage collection deferred "
-                f"(too frequent, interval={effective_interval:.1f}s)"
-            )
 
     @classmethod
     def cleanup_if_pending(cls) -> None:
@@ -364,18 +280,14 @@ class MeshOperations:
             poly_count = len(obj.data.polygons) if hasattr(obj.data, "polygons") else 0
             if poly_count > LARGE_MESH_THRESHOLD:
                 MemoryManager.request_cleanup(poly_count=poly_count)
-                logger.debug(
-                    f"Memory cleanup after mesh update for {obj.name} "
-                    f"({poly_count:,} polygons)"
-                )
 
     @staticmethod
     def update_view_layer() -> None:
         """Update view layer with error handling."""
         try:
             bpy.context.view_layer.update()
-        except Exception as e:
-            logger.warning(f"Failed to update view layer: {e}")
+        except Exception:
+            pass
 
     @staticmethod
     def safe_operator_call(
@@ -395,13 +307,11 @@ class MeshOperations:
         try:
             # Check if we have a valid context
             if not bpy.context.view_layer:
-                logger.warning(f"{error_msg}: No valid context available")
                 return (False, None)
 
             result = operator_func(**kwargs)
             return (True, result)
         except (AttributeError, RuntimeError, TypeError) as e:
-            logger.warning(f"{error_msg}: {e}")
             return (False, None)
 
     @staticmethod
@@ -428,7 +338,6 @@ class MeshOperations:
                 )
                 return success
         except Exception as e:
-            logger.warning(f"Failed to set mode {mode} on {obj.name}: {e}")
             return False
         return False
 
@@ -451,9 +360,6 @@ def optimise_for_large_mesh(obj: Optional[Object]) -> bool:
 
     poly_count = len(obj.data.polygons)
     if poly_count > LARGE_MESH_THRESHOLD:
-        logger.info(
-            f"Applying memory optimisation for large mesh: {poly_count} polygons"
-        )
         MeshOperations.update_mesh_data(obj, with_memory_cleanup=True)
         return True
     return False
@@ -495,7 +401,7 @@ def get_attachment_empties(obj: Object, scene_props) -> List[Object]:
                 empties.append(child)
 
     if empties:
-        logger.info(f"Found {len(empties)} attachment empties for {obj.name}")
+        pass
 
     return empties
 
@@ -549,10 +455,9 @@ def create_slot_empties(obj: Object, scene_props, context: Context) -> List[Obje
         empty.matrix_world = child.matrix_world.copy()
 
         slot_empties.append(empty)
-        logger.info(f"Created slot empty: {slot_name}")
 
     if slot_empties:
-        logger.info(f"Created {len(slot_empties)} slot empties for {obj.name}")
+        pass
 
     return slot_empties
 
@@ -610,10 +515,6 @@ def copy_empty_for_export(
         # No parent - just copy world transform
         empty_copy.matrix_world = empty_obj.matrix_world.copy()
 
-    logger.debug(
-        f"Created empty copy: {new_name} "
-        f"(parent: {parent_obj.name if parent_obj else 'None'})"
-    )
 
     return empty_copy
 
@@ -660,7 +561,7 @@ def get_collision_meshes(
                     break
 
     if collisions:
-        logger.info(f"Found {len(collisions)} collision meshes for {obj.name}")
+        pass
 
     return collisions
 
@@ -800,9 +701,6 @@ def copy_collision_for_export(
     collision_copy.parent = parent_obj
     collision_copy.matrix_local = parent_obj.matrix_world.inverted() @ world_matrix
 
-    logger.debug(
-        f"Created collision copy: {new_name} (parent: {parent_obj.name})"
-    )
 
     return collision_copy
 
@@ -814,16 +712,12 @@ def safe_large_mesh_operation(obj, operation_name):
 
     Args:
         obj (bpy.types.Object): The mesh object.
-        operation_name (str): Name of the operation for logging.
+        operation_name (str): Name of the operation.
     """
     poly_count = len(obj.data.polygons) if obj and obj.data else 0
     is_large = poly_count > LARGE_MESH_THRESHOLD
 
     if is_large:
-        logger.info(
-            f"Starting large mesh operation: {operation_name} "
-            f"on {poly_count:,} polygons"
-        )
         # Pre-operation cleanup
         MeshOperations.update_mesh_data(obj, with_memory_cleanup=True)
 
@@ -833,7 +727,6 @@ def safe_large_mesh_operation(obj, operation_name):
         if is_large:
             # Post-operation cleanup
             MeshOperations.update_mesh_data(obj, with_memory_cleanup=True)
-            logger.info(f"Completed large mesh operation: {operation_name}")
 
 
 # --- Core Functions ---
@@ -873,9 +766,7 @@ def temp_selection_context(context, active_object=None, selected_objects=None):
                     try:
                         obj.select_set(True)
                     except ReferenceError:
-                        logger.warning(
-                            f"Could not select '{obj.name}' - object reference invalid."
-                        )
+                        pass
 
         # Set active object directly
         if active_object and active_object.name in context.scene.objects:
@@ -922,7 +813,6 @@ def convert_curve_to_mesh_object(curve_obj, context):
     if not curve_obj or curve_obj.type not in ["CURVE", "META"]:
         return curve_obj
 
-    logger.info(f"Converting {curve_obj.type} object '{curve_obj.name}' to mesh...")
 
     try:
         # Store the original name and properties
@@ -938,14 +828,9 @@ def convert_curve_to_mesh_object(curve_obj, context):
         if curve_obj.type == "META":
             # Debug metaball properties
             metaball = curve_obj.data
-            logger.info(f"Metaball threshold: {metaball.threshold}")
-            logger.info(f"Metaball elements count: {len(metaball.elements)}")
             if len(metaball.elements) > 0:
                 for i, element in enumerate(metaball.elements):
-                    logger.info(
-                        f"Element {i}: type={element.type}, "
-                        f"size_x={element.size_x}, co={element.co}"
-                    )
+                    pass
 
             # Force view layer update to ensure metaball is evaluated
             context.view_layer.update()
@@ -966,10 +851,6 @@ def convert_curve_to_mesh_object(curve_obj, context):
                 mesh = original_eval.to_mesh(
                     preserve_all_data_layers=True, depsgraph=depsgraph
                 )
-                logger.info(
-                    f"Metaball mesh vertices from original: "
-                    f"{len(mesh.vertices) if mesh else 0}"
-                )
 
                 # If still empty, the metaball might have evaluation issues
                 if mesh and len(mesh.vertices) == 0:
@@ -981,15 +862,10 @@ def convert_curve_to_mesh_object(curve_obj, context):
                     mesh = original_eval.to_mesh(
                         preserve_all_data_layers=True, depsgraph=depsgraph
                     )
-                    logger.info(
-                        f"Metaball mesh vertices after scene update: "
-                        f"{len(mesh.vertices) if mesh else 0}"
-                    )
 
                 # Verify mesh has geometry
                 if mesh and len(mesh.vertices) == 0:
-                    logger.warning(f"Mesh created from {curve_obj.type} is empty!")
-                    logger.warning("Check metaball threshold and element positions")
+                    pass
 
                 if mesh:
                     # For metaballs, we need to copy the evaluated mesh to main database
@@ -1011,7 +887,7 @@ def convert_curve_to_mesh_object(curve_obj, context):
             mesh = bpy.data.meshes.new_from_object(obj_eval)
             # Verify mesh has geometry
             if mesh and len(mesh.vertices) == 0:
-                logger.warning(f"Mesh created from {curve_obj.type} is empty!")
+                pass
 
         if mesh:
             # Create a new mesh object
@@ -1033,13 +909,11 @@ def convert_curve_to_mesh_object(curve_obj, context):
             # Remove the curve object
             bpy.data.objects.remove(curve_obj, do_unlink=True)
 
-            logger.info(f"Successfully converted to mesh object '{mesh_obj.name}'")
             return mesh_obj
         else:
             raise RuntimeError(f"Failed to create mesh from {curve_obj.type}")
 
     except Exception as e:
-        logger.error(f"Failed to convert '{curve_obj.name}' to mesh: {e}")
         raise RuntimeError(f"Failed to convert {curve_obj.type} to mesh: {e}") from e
 
 
@@ -1085,7 +959,6 @@ def create_lod_hierarchy(base_obj, lod_objects, group_name, context):
         lod_obj.parent = parent_empty
         lod_obj.name = f"{group_name}_LOD{i}"
 
-    logger.info(f"Created LOD hierarchy with {len(lod_objects) + 1} levels")
     return parent_empty
 
 
@@ -1114,7 +987,7 @@ def merge_collection_objects(collection, context):
             # Log geometry nodes that could output instances
             for mod in obj.modifiers:
                 if mod.type == "NODES" and mod.show_viewport:
-                    logger.info(f"Object '{obj.name}' has geometry nodes modifier")
+                    pass
             mesh_objects.append(obj)
         elif obj.type == "CURVE":
             # Convert curve to mesh first
@@ -1123,7 +996,6 @@ def merge_collection_objects(collection, context):
                 mesh_objects.append(converted)
                 temp_objects.append(converted)
             except Exception as e:
-                logger.warning(f"Failed to convert curve {obj.name} to mesh: {e}")
                 skipped_objects.append((obj.name, "curve conversion failed"))
                 continue
         elif obj.type == "META":
@@ -1135,31 +1007,19 @@ def merge_collection_objects(collection, context):
                     temp_objects.append(temp_meta)
                 temp_objects.append(copy_obj)
             except Exception as e:
-                logger.warning(f"Failed to convert metaball {obj.name} to mesh: {e}")
                 skipped_objects.append((obj.name, "metaball conversion failed"))
                 continue
         elif obj.type == "EMPTY" and obj.instance_type == "COLLECTION":
             # Handle collection instances (often from geometry nodes)
-            logger.warning(
-                f"Skipping collection instance '{obj.name}' - "
-                f"recursive processing not yet supported"
-            )
             skipped_objects.append((obj.name, "collection instance not supported"))
         else:
             # Unsupported object type
-            logger.debug(
-                f"Skipping object '{obj.name}' of type '{obj.type}' - not exportable"
-            )
             skipped_objects.append((obj.name, f"unsupported type {obj.type}"))
 
     # Log summary of skipped objects if any
     if skipped_objects:
         skipped_summary = ", ".join(
             [f"'{name}' ({reason})" for name, reason in skipped_objects]
-        )
-        logger.warning(
-            f"Skipped {len(skipped_objects)} object(s) in collection "
-            f"'{collection.name}': {skipped_summary}"
         )
 
     if not mesh_objects:
@@ -1195,9 +1055,7 @@ def merge_collection_objects(collection, context):
                     m.type == "NODES" for m in obj.modifiers if m.show_viewport
                 )
                 if has_geo_nodes:
-                    logger.info(
-                        f"Object '{obj.name}' has geometry nodes - applying to mesh"
-                    )
+                    pass
 
                 # Create a transformation matrix
                 transform_matrix = obj.matrix_world
@@ -1255,10 +1113,6 @@ def merge_collection_objects(collection, context):
         for temp_obj in temp_objects:
             bpy.data.objects.remove(temp_obj, do_unlink=True)
 
-        logger.info(
-            f"Successfully merged {len(mesh_objects)} objects "
-            f"from collection '{collection.name}'"
-        )
         return merged_obj
 
     except Exception as e:
@@ -1266,10 +1120,8 @@ def merge_collection_objects(collection, context):
         for temp_obj in temp_objects:
             try:
                 bpy.data.objects.remove(temp_obj, do_unlink=True)
-            except (ReferenceError, RuntimeError) as cleanup_error:
-                logger.debug(
-                    f"Could not remove temp object during cleanup: {cleanup_error}"
-                )
+            except (ReferenceError, RuntimeError):
+                pass
         raise ProcessingError(f"Failed to merge collection: {e}") from e
 
 
@@ -1298,9 +1150,6 @@ def create_export_copy(original_obj, context):
 
     # For metaballs, convert to mesh first, then duplicate the mesh
     if original_obj.type == "META":
-        logger.info(
-            f"Converting metaball '{original_obj.name}' to mesh before duplication..."
-        )
         depsgraph = context.evaluated_depsgraph_get()
         obj_eval = original_obj.evaluated_get(depsgraph)
         mesh = None
@@ -1330,10 +1179,6 @@ def create_export_copy(original_obj, context):
                     for mat in original_obj.data.materials:
                         if mat:
                             mesh_obj.data.materials.append(mat)
-                    logger.info(
-                        f"Transferred {len(original_obj.data.materials)} "
-                        f"materials to converted mesh"
-                    )
 
                 # Link to scene temporarily for duplication
                 context.collection.objects.link(mesh_obj)
@@ -1358,29 +1203,22 @@ def create_export_copy(original_obj, context):
                         # For now, basic smooth shading is sufficient for metaballs
                         mesh_obj.modifiers.remove(smooth_mod)
 
-                    logger.info("Applied smooth shading to metaball mesh")
-                except Exception as e:
-                    logger.warning(
-                        f"Could not apply smooth shading: {e}, continuing anyway"
-                    )
+                except Exception:
+                    pass
 
-                logger.info(f"Successfully converted metaball to mesh: {mesh_obj.name}")
                 # Store the temporary mesh object for cleanup later
                 temp_metaball_mesh = mesh_obj
                 # Now continue with normal duplication of the mesh object
                 original_obj = mesh_obj
             else:
-                logger.error("Metaball produced empty mesh")
                 raise ProcessingError("Metaball conversion resulted in empty mesh")
 
         except Exception as e:
-            logger.error(f"Failed to convert metaball to mesh: {e}")
             raise ProcessingError(f"Metaball to mesh conversion failed: {e}") from e
         finally:
             # Always clean up the evaluated mesh
             obj_eval.to_mesh_clear()
 
-    logger.info(f"Attempting to duplicate '{original_obj.name}' using operator...")
 
     # Use the context manager to handle selection and active object
     with temp_selection_context(
@@ -1410,25 +1248,17 @@ def create_export_copy(original_obj, context):
                     f"No active object after duplication of '{original_obj.name}'"
                 )
 
-            logger.info(
-                f"Successfully created duplicate '{copy_obj.name}' via operator."
-            )
 
             # Make data single user FIRST for curves/metaballs to ensure
             # we don't affect the original
             if copy_obj and copy_obj.type in ["CURVE", "META"]:
                 if copy_obj.data and copy_obj.data.users > 1:
-                    logger.info(
-                        f"Making {copy_obj.type.lower()} data single user "
-                        f"for '{copy_obj.name}'"
-                    )
                     copy_obj.data = copy_obj.data.copy()
                 # Now convert to mesh - this returns a new object
                 copy_obj = convert_curve_to_mesh_object(copy_obj, context)
 
             # Make Mesh Data Single User (for regular meshes or after conversion)
             if copy_obj and copy_obj.data and copy_obj.data.users > 1:
-                logger.info(f"Making mesh data single user for '{copy_obj.name}'")
                 copy_obj.data = copy_obj.data.copy()
 
                 # Optimise memory for large meshes after making single user
@@ -1437,23 +1267,14 @@ def create_export_copy(original_obj, context):
             return copy_obj, temp_metaball_mesh
 
         except Exception as e:
-            logger.error(
-                f"Error using duplicate_move_linked operator for "
-                f"'{original_obj.name}': {e}",
-                exc_info=True,
-            )
             # Attempt cleanup if copy_obj was created but failed later
             copy_obj_ref = None
             try:
                 copy_obj_ref = context.view_layer.objects.active
                 if copy_obj_ref and copy_obj_ref != original_obj:
-                    logger.info(
-                        f"Attempting cleanup of partially created "
-                        f"copy: {copy_obj_ref.name}"
-                    )
                     bpy.data.objects.remove(copy_obj_ref, do_unlink=True)
-            except Exception as cleanup_e:
-                logger.warning(f"Issue during cleanup after copy failure: {cleanup_e}")
+            except Exception:
+                pass
 
             raise RuntimeError(
                 f"Failed to create operator copy of {original_obj.name}: {e}"
@@ -1697,10 +1518,8 @@ def get_batch_export_filename(
     # Use override name if provided
     if override_name:
         base_name = override_name
-        logger.info(f"Using user-specified batch export name: '{base_name}'")
     else:
         base_name = detect_batch_default_name(objects)
-        logger.info(f"Auto-detected batch export name: '{base_name}'")
 
     # Apply prefix and suffix (gated by the naming-enabled toggle)
     prefix, suffix, convention = resolve_naming(scene_props)
@@ -1717,7 +1536,6 @@ def get_batch_export_filename(
     if len(final_name) > MAX_FILENAME_LENGTH:
         truncated = final_name[: MAX_FILENAME_LENGTH - len(FILENAME_TRUNCATE_SUFFIX)]
         final_name = truncated + FILENAME_TRUNCATE_SUFFIX
-        logger.warning(f"Batch filename truncated to {MAX_FILENAME_LENGTH} characters")
 
     return final_name
 
@@ -1771,14 +1589,12 @@ def setup_export_object(
             truncated = (
                 base_name[: MAX_FILENAME_LENGTH - suffix_len] + FILENAME_TRUNCATE_SUFFIX
             )
-            logger.warning(f"Name too long, truncating: {base_name} → {truncated}")
             base_name = truncated
 
         final_name = (
             f"{base_name}_LOD{lod_level:02d}" if lod_level is not None else base_name
         )
         obj.name = final_name
-        logger.info(f"Renamed to: {obj.name}")
 
         # Check if object's scale is already 1.0
         # Use epsilon comparison to account for floating-point precision errors
@@ -1791,14 +1607,12 @@ def setup_export_object(
             or abs(obj.scale[2] - 1.0) > scale_epsilon
         ):
             # Apply scale transform if not 1.0
-            logger.info(f"Object scale is not 1.0: {obj.scale}, applying...")
             apply_transforms(obj, apply_scale=True)
 
         # Zero location if specified in scene properties
         # Skip for batch exports to preserve spatial relationships
         if scene_props.mesh_export_zero_location and not skip_zero_location:
             obj.location = (0.0, 0.0, 0.0)
-            logger.info(f"Zeroed location for {obj.name}")
 
         # Calculate final scale factor but DON'T apply it to mesh data
         # This avoids memory-intensive vertex transformations
@@ -1806,12 +1620,8 @@ def setup_export_object(
         if scene_props.mesh_export_units == "CENTIMETERS":
             # Apply conversion factor for Metres (Blender default) to Centimetres
             final_scale_factor *= METERS_TO_CENTIMETERS
-            logger.info(
-                f"Export scale factor: {final_scale_factor:.2f} "
-                f"(includes M to CM conversion)"
-            )
         else:
-            logger.info(f"Export scale factor: {final_scale_factor:.2f}")
+            pass
 
         # For GLTF and USD, apply scale to object transform instead of
         # passing to exporter. This avoids potential exporter parameter
@@ -1820,10 +1630,6 @@ def setup_export_object(
             if abs(final_scale_factor - 1.0) > 1e-6:
                 # Set object-level scale (zero-cost, no mesh vertex transformation)
                 obj.scale = (final_scale_factor, final_scale_factor, final_scale_factor)
-                logger.info(
-                    f"Applied {final_scale_factor}x scale to object "
-                    f"transform for {scene_props.mesh_export_format}"
-                )
                 final_scale_factor = (
                     1.0  # Don't pass to exporter, already applied to object
                 )
@@ -1873,15 +1679,12 @@ def apply_transforms(
         RuntimeError: If transform application fails
     """
     if not obj:
-        logger.warning("Attempted to apply transforms to an invalid object.")
         return
 
     if not obj.data or obj.type != "MESH":
-        logger.warning(f"Object {obj.name} is not a mesh, skipping transform apply.")
         return
 
     if not (apply_location or apply_rotation or apply_scale):
-        logger.info(f"No transforms requested for {obj.name}. Skipping apply.")
         return
 
     transforms_to_apply = []
@@ -1892,9 +1695,6 @@ def apply_transforms(
     if apply_scale:
         transforms_to_apply.append("scale")
 
-    logger.info(
-        f"Applying {', '.join(transforms_to_apply)} transforms for {obj.name}..."
-    )
 
     try:
         # Get current matrix components
@@ -1931,12 +1731,8 @@ def apply_transforms(
         # Update mesh
         mesh.update()
 
-        logger.info(
-            f"Successfully applied {', '.join(transforms_to_apply)} for {obj.name}"
-        )
 
     except Exception as e:
-        logger.error(f"Failed to apply transforms for {obj.name}: {e}")
         raise RuntimeError(f"Transform application failed for {obj.name}") from e
 
 
@@ -2010,10 +1806,8 @@ def apply_mesh_modifiers(obj, modifier_mode="VISIBLE"):
 
     # Skip all modifier application if mode is NONE
     if modifier_mode == "NONE":
-        logger.info(f"Skipping modifier application for {obj.name} (mode: NONE)")
         return
 
-    logger.info(f"Applying {modifier_mode.lower()} modifiers for {obj.name}...")
     current_mode = obj.mode
     MeshOperations.safe_mode_set(obj, "OBJECT")
 
@@ -2038,7 +1832,6 @@ def apply_mesh_modifiers(obj, modifier_mode="VISIBLE"):
 
             if should_apply:
                 mod_name = modifier.name
-                logger.info(f"Applying modifier: {mod_name} ({modifier_mode.lower()})")
                 try:
                     with bpy.context.temp_override(**override):
                         bpy.ops.object.modifier_apply(modifier=mod_name)
@@ -2047,25 +1840,18 @@ def apply_mesh_modifiers(obj, modifier_mode="VISIBLE"):
                     # Memory cleanup for large meshes after every 3 modifiers
                     if is_large_mesh and len(applied_modifiers) % 3 == 0:
                         MeshOperations.update_mesh_data(obj, with_memory_cleanup=True)
-                        logger.info(
-                            f"Memory cleanup after {len(applied_modifiers)} modifiers"
-                        )
 
-                except (RuntimeError, ReferenceError) as e:
-                    logger.warning(
-                        f"Could not apply modifier '{mod_name}' on {obj.name}: {e}"
-                    )
+                except (RuntimeError, ReferenceError):
+                    pass
             else:
                 status = (
                     "viewport disabled"
                     if modifier_mode == "VISIBLE"
                     else "render disabled"
                 )
-                logger.info(f"Skipping modifier '{modifier.name}': {status}")
     finally:
         if obj.mode != current_mode:
             bpy.ops.object.mode_set(mode=current_mode)
-    logger.info(f"Finished applying modifiers. Applied: {applied_modifiers}")
 
 
 def compress_textures(obj, ratio, export_path=None, save_compressed=True):
@@ -2085,17 +1871,12 @@ def compress_textures(obj, ratio, export_path=None, save_compressed=True):
     if not obj or obj.type != "MESH":
         return []
 
-    logger.info(
-        f"Compressing textures for {obj.name} (decimation ratio: {ratio:.3f})..."
-    )
 
     # Get all materials on the object
     materials = obj.data.materials
     if not materials:
-        logger.info(f"No materials found on {obj.name}, skipping texture compression")
         return []
 
-    logger.info(f"Found {len(materials)} materials on {obj.name}")
 
     modified_images = []
 
@@ -2114,10 +1895,8 @@ def compress_textures(obj, ratio, export_path=None, save_compressed=True):
 
     # Nothing to do if no images found
     if not image_nodes:
-        logger.info(f"No texture images found on {obj.name}")
         return []
 
-    logger.info(f"Found {len(image_nodes)} unique texture images to compress")
 
     # Calculate compression amount based on decimation ratio
     compression_factor = max(ratio**0.9, 0.05)  # Limit max compression to 1/20
@@ -2128,13 +1907,11 @@ def compress_textures(obj, ratio, export_path=None, save_compressed=True):
         try:
             # Skip packed, or invalid images
             if not orig_img.has_data or orig_img.size[0] == 0 or orig_img.size[1] == 0:
-                logger.debug(f"Skipping {orig_img.name}: invalid or no data")
                 continue
 
             # Skip already compressed images
             # (but allow recompression if different ratio)
             if orig_img.name.endswith("_LOD"):
-                logger.debug(f"Skipping {orig_img.name}: already compressed")
                 continue
 
             # Calculate new resolution
@@ -2231,17 +2008,11 @@ def compress_textures(obj, ratio, export_path=None, save_compressed=True):
                         )
 
                     except Exception as e:
-                        logger.warning(f"Error copying pixels for {orig_img.name}: {e}")
                         # Clean up failed copy
                         if copied_img:
                             bpy.data.images.remove(copied_img)
                         continue
 
-                logger.info(
-                    f"Created compressed copy of '{orig_img.name}' "
-                    f"at {new_width}x{new_height} "
-                    f"(compression factor: {compression_factor:.2f})"
-                )
 
                 # Save compressed texture to disk if requested
                 if save_compressed and export_path:
@@ -2267,20 +2038,13 @@ def compress_textures(obj, ratio, export_path=None, save_compressed=True):
                         )
                         copied_img.save()
 
-                        logger.info(f"Saved compressed texture: {compressed_filename}")
 
-                    except Exception as save_e:
-                        logger.warning(
-                            f"Failed to save compressed texture {copy_name}: {save_e}"
-                        )
+                    except Exception:
+                        pass
 
             # Update material nodes to use the copied image
             for mat, node in nodes_using_img:
                 node.image = copied_img
-                logger.debug(
-                    f"Updated node '{node.name}' in material '{mat.name}' "
-                    f"to use compressed image"
-                )
 
             modified_images.append(
                 f"{orig_img.name} ({orig_width}x{orig_height} "
@@ -2294,9 +2058,6 @@ def compress_textures(obj, ratio, export_path=None, save_compressed=True):
             obj["original_textures"][copy_name] = orig_img.name
 
         except Exception as e:
-            logger.error(
-                f"Error processing texture {orig_img.name}: {e}", exc_info=True
-            )
             continue
 
     return modified_images
@@ -2320,7 +2081,6 @@ def restore_original_textures(obj):
     if not texture_map:
         return
 
-    logger.info(f"Restoring original textures for {obj.name}...")
 
     # Get all materials on the object
     materials = obj.data.materials
@@ -2340,7 +2100,6 @@ def restore_original_textures(obj):
                     original_img = bpy.data.images.get(original_name)
 
                     if original_img:
-                        logger.info(f"Restoring {node.image.name} → {original_name}")
                         node.image = original_img
 
     # Clean up the mapping
@@ -2350,10 +2109,9 @@ def restore_original_textures(obj):
     try:
         for img in list(bpy.data.images):  # Use list to avoid iteration issues
             if "_LOD" in img.name and img.users == 0:
-                logger.debug(f"Removing unused LOD texture: {img.name}")
                 bpy.data.images.remove(img)
-    except Exception as e:
-        logger.warning(f"Error cleaning up LOD textures: {e}")
+    except Exception:
+        pass
 
 
 def apply_decimate_modifier(obj, ratio, decimate_type, sym_axis="X", sym=False):
@@ -2373,23 +2131,17 @@ def apply_decimate_modifier(obj, ratio, decimate_type, sym_axis="X", sym=False):
     if not obj or obj.type != "MESH":
         return
 
-    # Get initial poly count for logging
+    # Get initial poly count
     initial_poly_count = len(obj.data.polygons)
-    logger.info(
-        f"Applying Decimate to mesh with {initial_poly_count:,} polygons "
-        f"(Ratio: {ratio:.3f}, Type: {decimate_type})..."
-    )
 
     # Memory optimisation for very large meshes before decimation
     if initial_poly_count > VERY_LARGE_MESH_THRESHOLD:
-        logger.info("Very large mesh detected, enabling memory optimisation")
         MeshOperations.update_mesh_data(obj, with_memory_cleanup=True)
 
     current_mode = obj.mode
     MeshOperations.safe_mode_set(obj, "OBJECT")
 
     # Texture compression disabled - using simple external texture saving instead
-    logger.debug("Skipping texture compression - using external texture saving")
 
     # Create and apply decimate modifier
     mod_name = "TempDecimate"
@@ -2406,15 +2158,10 @@ def apply_decimate_modifier(obj, ratio, decimate_type, sym_axis="X", sym=False):
             # Ensure axis is valid before setting
             axis_upper = sym_axis.upper()
             if axis_upper not in {"X", "Y", "Z"}:
-                logger.error(
-                    f"Invalid symmetry axis value received: "
-                    f"{sym_axis}. Aborting modifier application."
-                )
                 obj.modifiers.remove(dec_mod)  # Clean up modifier
                 raise ValueError(f"Invalid symmetry axis: {sym_axis}")
 
             dec_mod.symmetry_axis = axis_upper
-            logger.info(f"Using symmetry axis: {axis_upper}")
 
     override = bpy.context.copy()
     override["object"] = obj
@@ -2431,17 +2178,11 @@ def apply_decimate_modifier(obj, ratio, decimate_type, sym_axis="X", sym=False):
         actual_ratio = (
             final_poly_count / initial_poly_count if initial_poly_count > 0 else 0
         )
-        logger.info(
-            f"Decimation complete: {initial_poly_count} "
-            f"→ {final_poly_count} polys "
-            f"(target: {ratio:.3f}, actual: {actual_ratio:.3f})"
-        )
 
         # No texture compression details to log
         pass
 
     except Exception as e:
-        logger.error(f"Failed to apply Decimate modifier: {e}")
         if mod_name in obj.modifiers:
             try:
                 obj.modifiers.remove(dec_mod)
@@ -2472,11 +2213,9 @@ def triangulate_mesh(obj, method="BEAUTY", keep_normals=True):
     # separate modifier pass is skipped entirely - see export_object / the LOD-hierarchy
     # FBX call, which set the exporter's triangulate flag when this method is selected.
     if method == "FAST":
-        logger.info(f"Skipping separate triangulation for {obj.name} (Fast method)")
         return
 
     poly_count = len(obj.data.polygons)
-    logger.info(f"Triangulating {obj.name} with {poly_count:,} polygons...")
 
     # Memory optimisation for large meshes before triangulation
     if poly_count > LARGE_MESH_THRESHOLD:
@@ -2499,9 +2238,8 @@ def triangulate_mesh(obj, method="BEAUTY", keep_normals=True):
     try:
         with bpy.context.temp_override(**override):
             bpy.ops.object.modifier_apply(modifier=mod_name)
-        logger.info("Successfully triangulated.")
-    except Exception as e:
-        logger.warning(f"Could not apply triangulation modifier on {obj.name}: {e}")
+    except Exception:
+        pass
     finally:
         if obj.mode != current_mode:
             bpy.ops.object.mode_set(mode=current_mode)
@@ -2637,7 +2375,6 @@ def save_external_textures(
         else:
             target_size = None  # Default to original
 
-    logger.info(f"Target texture size for {lod_suffix}: {target_size or 'original'}")
 
     for mat in materials:
         if not mat or not mat.node_tree:
@@ -2706,10 +2443,6 @@ def save_external_textures(
                                 adjusted_target_size = int(
                                     scene_props.mesh_export_lod3_texture_size
                                 )
-                            logger.info(
-                                f"Preserving normal map quality: "
-                                f"{target_size} → {adjusted_target_size}"
-                            )
 
                         # Only resize if image is larger than target (no upscaling)
                         needs_resize = adjusted_target_size is not None and (
@@ -2732,11 +2465,6 @@ def save_external_textures(
                             new_width = max(1, new_width)
                             new_height = max(1, new_height)
 
-                            logger.info(
-                                f"Resizing {img.name} from "
-                                f"{orig_width}x{orig_height} to "
-                                f"{new_width}x{new_height}"
-                            )
 
                             # Create a temporary resized copy
                             temp_img = img.copy()
@@ -2747,11 +2475,7 @@ def save_external_textures(
                             img_to_save = temp_img
                         else:
                             if adjusted_target_size is not None:
-                                logger.info(
-                                    f"Skipping resize for {img.name} "
-                                    f"({orig_width}x{orig_height}) - "
-                                    f"already smaller than target"
-                                )
+                                pass
 
                         # Set the save path and format
                         original_filepath = img_to_save.filepath_raw
@@ -2802,18 +2526,12 @@ def save_external_textures(
                         if needs_resize:
                             size_info += f" → {new_width}x{new_height}"
                         texture_type = "normal map" if is_normal else "texture"
-                        logger.info(
-                            f"Saved external {texture_type}: "
-                            f"{external_filename} ({size_info}, {format_string})"
-                        )
                     else:
-                        logger.warning(f"Image {img.name} has no data to save")
+                        pass
 
                 except Exception as e:
-                    logger.warning(f"Failed to save texture {img.name}: {e}")
                     import traceback
 
-                    logger.debug(traceback.format_exc())
 
     return saved_textures, original_references
 
@@ -2837,20 +2555,15 @@ def restore_material_references(original_references):
             if external_img and external_img.name.endswith("_external"):
                 try:
                     bpy.data.images.remove(external_img)
-                    logger.debug(
-                        f"Cleaned up external image reference: {external_img.name}"
-                    )
                 except ReferenceError:
                     # Image was already removed, which is fine
-                    logger.debug(
-                        f"External image already cleaned up: {external_img.name}"
-                    )
+                    pass
 
         except (ReferenceError, AttributeError):
             # Node or image was already removed, which can happen during cleanup
-            logger.debug("Material reference already cleaned up")
-        except Exception as e:
-            logger.warning(f"Error restoring material reference: {e}")
+            pass
+        except Exception:
+            pass
 
 
 def export_object(
@@ -2923,7 +2636,6 @@ def export_object(
     # Check mesh size and optimise if needed
     mesh_size = len(obj.data.polygons) if obj.data else 0
     if mesh_size > LARGE_MESH_THRESHOLD:
-        logger.info(f"Large mesh export: {mesh_size:,} polygons")
         MeshOperations.update_mesh_data(obj, with_memory_cleanup=True)
         MeshOperations.update_view_layer()
 
@@ -2948,10 +2660,6 @@ def export_object(
             scene_props,
         )
 
-    logger.info(
-        f"Exporting {os.path.basename(export_filepath)} ({fmt}) - "
-        f"{mesh_size:,} polygons..."
-    )
 
     # Convert axis values for OBJ and STL export
     def convert_axis_for_export(axis_value):
@@ -3027,11 +2735,7 @@ def export_object(
             elif fmt == "GLTF":
                 # GLTF doesn't support global scale - warn if scale is not 1.0
                 if abs(export_scale - 1.0) > 1e-6:
-                    logger.warning(
-                        f"Scale {export_scale} will NOT be applied for GLTF "
-                        "export (format limitation). Export at original size "
-                        "or apply scale manually before export."
-                    )
+                    pass
 
                 # For GLTF, textures are always embedded in GLB or copied with GLTF
                 bpy.ops.export_scene.gltf(
@@ -3067,11 +2771,7 @@ def export_object(
             elif fmt == "USD":
                 # USD doesn't support global scale - warn if scale is not 1.0
                 if abs(export_scale - 1.0) > 1e-6:
-                    logger.warning(
-                        f"Scale {export_scale} will NOT be applied for USD "
-                        "export (format limitation). Export at original size "
-                        "or apply scale manually before export."
-                    )
+                    pass
 
                 bpy.ops.wm.usd_export(
                     filepath=export_filepath,
@@ -3111,7 +2811,6 @@ def export_object(
                     apply_modifiers=False,  # Handled by apply_mesh_modifiers
                 )
             else:
-                logger.error(f"Unsupported export format '{fmt}'")
                 return False
 
             # Get file size
@@ -3177,19 +2876,13 @@ def export_object(
                         f"textures: {estimated_texture_size_mb:.1f} MB)"
                     )
 
-            logger.info(
-                f"Successfully exported {os.path.basename(export_filepath)} "
-                f"({size_info})"
-            )
             success = True
         except Exception as e:
-            logger.error(f"Failed exporting {obj.name} as {fmt}: {e}", exc_info=True)
             success = False
         finally:
             # Restore original material references if we modified them
             if original_references:
                 restore_material_references(original_references)
-                logger.debug("Restored original material references")
 
     return success
 
@@ -3226,7 +2919,6 @@ def cleanup_object(obj, obj_name_for_log):
     if not obj:
         return
     log_name = obj_name_for_log if obj_name_for_log else "unnamed object"
-    logger.info(f"Attempting cleanup for: {log_name}")
 
     # No texture restoration needed with the new simple system
     pass
@@ -3239,7 +2931,6 @@ def cleanup_object(obj, obj_name_for_log):
         was_large_mesh = poly_count > LARGE_MESH_THRESHOLD
 
         bpy.data.objects.remove(obj, do_unlink=True)
-        logger.info(f"Cleaned up object: {log_name}")
 
         # If the mesh data had only this object as a user, remove it too
         if num_users == 1 and mesh_data:
@@ -3248,19 +2939,15 @@ def cleanup_object(obj, obj_name_for_log):
                 if was_large_mesh and hasattr(mesh_data, "clear_geometry"):
                     mesh_data.clear_geometry()
                 bpy.data.meshes.remove(mesh_data)
-                logger.info(f"Cleaned up orphaned mesh data for: {log_name}")
-            except (ReferenceError, Exception) as mesh_remove_e:
-                logger.warning(
-                    f"Issue removing mesh data for {log_name}: {mesh_remove_e}"
-                )
+            except (ReferenceError, Exception):
+                pass
 
         # Force garbage collection for large meshes
         if was_large_mesh:
             MemoryManager.request_cleanup(force=True)
-            logger.info(f"Memory cleanup completed for large mesh: {log_name}")
 
-    except (ReferenceError, Exception) as remove_e:
-        logger.warning(f"Issue during cleanup of {log_name}: {remove_e}")
+    except (ReferenceError, Exception):
+        pass
 
 
 # --- Preset System Helper Functions ---
@@ -3287,7 +2974,6 @@ def get_preset_directory() -> str:
     if not os.path.exists(preset_dir):
         try:
             os.makedirs(preset_dir)
-            logger.info(f"Created preset directory: {preset_dir}")
         except OSError as e:
             raise ResourceError(f"Failed to create preset directory: {e}")
 
@@ -3307,7 +2993,6 @@ def list_available_presets() -> List[str]:
     try:
         preset_dir = get_preset_directory()
     except ResourceError as e:
-        logger.warning(f"Cannot list presets: {e}")
         return []
 
     if not os.path.exists(preset_dir):
@@ -3467,7 +3152,6 @@ def deserialise_settings_from_dict(settings, data: dict) -> None:
 
         # Check if property exists on settings
         if not hasattr(settings, prop_name):
-            logger.warning(f"Skipping unknown property: {prop_name}")
             skipped_count += 1
             continue
 
@@ -3477,16 +3161,12 @@ def deserialise_settings_from_dict(settings, data: dict) -> None:
             applied_count += 1
         except (AttributeError, TypeError) as e:
             error_msg = f"Failed to set {prop_name} = {value}: {e}"
-            logger.warning(error_msg)
             errors.append(error_msg)
 
-    logger.info(
-        f"Applied {applied_count} settings, skipped {skipped_count} unknown properties"
-    )
 
     if errors:
         # Log errors but don't raise exception - partial loading is acceptable
-        logger.warning(f"Encountered {len(errors)} errors during preset loading")
+        pass
 
 
 def initialise_builtin_presets() -> None:
@@ -3504,7 +3184,6 @@ def initialise_builtin_presets() -> None:
     try:
         preset_dir = get_preset_directory()
     except ResourceError as e:
-        logger.error(f"Cannot initialise built-in presets: {e}")
         return
 
     # Create built-in presets
@@ -3518,9 +3197,8 @@ def initialise_builtin_presets() -> None:
                 preset_data = builtin_presets.get_builtin_preset_data(preset_name)
                 with open(filepath, "w", encoding="utf-8") as f:
                     json.dump(preset_data, f, indent=2, sort_keys=True)
-                logger.info(f"Created built-in preset file: {filepath}")
-            except (OSError, IOError) as e:
-                logger.error(f"Failed to create built-in preset '{preset_name}': {e}")
+            except (OSError, IOError):
+                pass
 
     # Create "Custom 01" as first user preset (not built-in)
     custom_preset_name = "Custom 01"
@@ -3595,9 +3273,8 @@ def initialise_builtin_presets() -> None:
 
             with open(custom_filepath, "w", encoding="utf-8") as f:
                 json.dump(custom_preset_data, f, indent=2, sort_keys=True)
-            logger.info(f"Created default user preset file: {custom_filepath}")
-        except (OSError, IOError) as e:
-            logger.error(f"Failed to create user preset '{custom_preset_name}': {e}")
+        except (OSError, IOError):
+            pass
 
     # Refresh the preset enum cache after initialization
     from . import properties
@@ -3710,7 +3387,6 @@ def settings_match_preset(settings, preset_name: str) -> bool:
         return True
 
     except (OSError, IOError, json.JSONDecodeError) as e:
-        logger.warning(f"Failed to compare settings with preset '{preset_name}': {e}")
         return False
 
 
@@ -3737,8 +3413,8 @@ def get_all_preset_names() -> List[str]:
         for name in all_files:
             if name not in builtin_names:
                 user_names.append(name)
-    except Exception as e:
-        logger.warning(f"Failed to list user presets: {e}")
+    except Exception:
+        pass
 
     # Sort user presets alphabetically
     user_names.sort()
@@ -3779,7 +3455,6 @@ def reset_preset_to_builtin(preset_name: str) -> None:
     try:
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(preset_data, f, indent=2, sort_keys=True)
-        logger.info(f"Reset built-in preset '{preset_name}' to factory defaults")
     except (OSError, IOError) as e:
         raise ResourceError(f"Failed to reset preset file: {e}")
 
@@ -3918,11 +3593,7 @@ class MESH_OT_batch_export(Operator):
                 filtered.append(obj)
 
             if skipped_collisions:
-                logger.info(
-                    f"Excluded {len(skipped_collisions)} collision object(s) from "
-                    f"standalone export (exported with their parent): "
-                    f"{', '.join(skipped_collisions)}"
-                )
+                pass
             objects_to_export = filtered
 
             if not objects_to_export:
@@ -3948,7 +3619,6 @@ class MESH_OT_batch_export(Operator):
         if not os.path.isdir(export_base_path):
             try:
                 os.makedirs(export_base_path, exist_ok=True)
-                logger.info(f"Created export directory: {export_base_path}")
             except OSError as e:
                 raise ResourceError(
                     f"Cannot create export directory '{export_base_path}': {e}"
@@ -3972,7 +3642,6 @@ class MESH_OT_batch_export(Operator):
         Returns:
             tuple: (success_count, failed_list)
         """
-        logger.info(f"Processing object '{obj.name}' for hierarchy export")
         successful_exports = 0
         failed_exports = []
         temp_metaball_mesh = None
@@ -3996,7 +3665,6 @@ class MESH_OT_batch_export(Operator):
             for lod_level, target_ratio in enumerate(ratios):
                 if lod_level == 0:
                     # LOD0: Create base copy with all processing
-                    logger.info("Creating base LOD0...")
                     lod_obj, temp_metaball_mesh = create_export_copy(obj, context)
 
                     # Setup object (naming, location, scale). Keep the exporter's own
@@ -4022,7 +3690,6 @@ class MESH_OT_batch_export(Operator):
                     base_lod_obj = lod_obj
                 else:
                     # LOD1+: Create copy and apply progressive decimation
-                    logger.info(f"Creating LOD{lod_level} with ratio {target_ratio}...")
 
                     # Create a copy of the base LOD
                     lod_obj = base_lod_obj.copy()
@@ -4147,13 +3814,10 @@ class MESH_OT_batch_export(Operator):
                     embed_textures=scene_props.mesh_export_embed_textures,
                 )
                 successful_exports = len(lod_objects)  # All LODs including base
-                logger.info(f"Successfully exported hierarchy to {export_path}")
             except Exception as e:
                 failed_exports.append(f"{obj.name} (Export failed: {e})")
-                logger.error(f"Failed to export hierarchy: {e}")
 
         except Exception as e:
-            logger.error(f"Failed to process object hierarchy: {e}")
             failed_exports.append(f"{obj.name} (Processing failed: {e})")
 
         finally:
@@ -4167,14 +3831,14 @@ class MESH_OT_batch_export(Operator):
             if parent_empty:
                 try:
                     bpy.data.objects.remove(parent_empty, do_unlink=True)
-                except (ReferenceError, Exception) as e:
-                    logger.warning(f"Issue cleaning up parent_empty: {e}")
+                except (ReferenceError, Exception):
+                    pass
 
             for lod_obj in lod_objects:
                 try:
                     bpy.data.objects.remove(lod_obj, do_unlink=True)
-                except (ReferenceError, Exception) as e:
-                    logger.warning(f"Issue cleaning up lod_obj: {e}")
+                except (ReferenceError, Exception):
+                    pass
 
             # Clean up temporary metaball mesh if it exists
             if temp_metaball_mesh:
@@ -4185,8 +3849,8 @@ class MESH_OT_batch_export(Operator):
                     bpy.data.objects.remove(temp_metaball_mesh, do_unlink=True)
                     if mesh_data:
                         bpy.data.meshes.remove(mesh_data, do_unlink=True)
-                except (ReferenceError, Exception) as e:
-                    logger.warning(f"Issue cleaning up temp_metaball_mesh: {e}")
+                except (ReferenceError, Exception):
+                    pass
 
         return successful_exports, failed_exports
 
@@ -4196,7 +3860,6 @@ class MESH_OT_batch_export(Operator):
         Returns:
             tuple: (success_count, failed_list)
         """
-        logger.info(f"Generating {scene_props.mesh_export_lod_count + 1} LOD levels...")
 
         # Get LOD ratios
         lod_ratios_prop = [
@@ -4222,7 +3885,6 @@ class MESH_OT_batch_export(Operator):
                 try:
                     if lod_level == 0:
                         # LOD0: Create base copy with modifiers applied
-                        logger.info("Creating base LOD0...")
                         lod_obj, temp_metaball_mesh = create_export_copy(
                             original_obj, context
                         )
@@ -4238,15 +3900,10 @@ class MESH_OT_batch_export(Operator):
                         if base_lod_obj is None:
                             raise RuntimeError("Base LOD object lost, cannot continue")
 
-                        logger.info(f"Building LOD{lod_level} from previous LOD...")
 
                         # Calculate progressive ratio
                         progressive_ratio = calculate_progressive_ratio(
                             target_ratio, previous_ratio
-                        )
-                        logger.info(
-                            f"Progressive decimation ratio: {progressive_ratio:.3f} "
-                            f"(from {previous_ratio:.3f} to {target_ratio:.3f})"
                         )
 
                         # Rename for current LOD
@@ -4286,7 +3943,6 @@ class MESH_OT_batch_export(Operator):
                         if lod_obj_name
                         else f"{original_obj.name}_LOD{lod_level:02d}"
                     )
-                    logger.error(f"Failed processing {log_name}: {lod_e}")
                     failed_exports.append(f"{original_obj.name} (LOD{lod_level:02d})")
                     # Break the loop on error since subsequent LODs depend on previous
                     break
@@ -4305,7 +3961,6 @@ class MESH_OT_batch_export(Operator):
                 > LARGE_MESH_THRESHOLD
             ):
                 MemoryManager.request_cleanup()
-                logger.debug("Memory cleanup after LOD level processing")
 
         return successful_exports, failed_exports
 
@@ -4324,7 +3979,6 @@ class MESH_OT_batch_export(Operator):
         temp_collisions = []  # Track temporary collision copies for cleanup
 
         try:
-            logger.info("Processing single export (no LODs)..")
             export_obj, temp_metaball_mesh = create_export_copy(original_obj, context)
 
             # Use context manager for the export object
@@ -4405,7 +4059,6 @@ class MESH_OT_batch_export(Operator):
 
         except Exception as e:
             log_name = export_obj_name if export_obj_name else original_obj.name
-            logger.error(f"Failed processing {log_name}: {e}")
             return 0, [f"{original_obj.name} (Processing Error)"]
         finally:
             # Cleanup temporary empties
@@ -4459,18 +4112,11 @@ class MESH_OT_batch_export(Operator):
         has_empties = False  # Track whether we have any empties to export
 
         try:
-            logger.info(
-                f"Processing batch glTF export for {len(objects_to_export)} objects..."
-            )
             convention = resolve_naming(scene_props)[2]
 
             # Process each object
             for idx, original_obj in enumerate(objects_to_export):
                 try:
-                    logger.info(
-                        f"Processing object {idx + 1}/"
-                        f"{len(objects_to_export)}: {original_obj.name}"
-                    )
 
                     # Create export copy
                     export_obj, temp_metaball_mesh = create_export_copy(
@@ -4560,7 +4206,6 @@ class MESH_OT_batch_export(Operator):
 
                     # Handle LOD generation if enabled
                     if scene_props.mesh_export_lod:
-                        logger.info(f"Generating LODs for {original_obj.name}...")
                         lod_count = scene_props.mesh_export_lod_count
 
                         # Get LOD ratios
@@ -4594,10 +4239,6 @@ class MESH_OT_batch_export(Operator):
                                 else:
                                     progressive_ratio = target_ratio
 
-                                logger.info(
-                                    f"Building LOD{lod_level} with "
-                                    f"progressive ratio: {progressive_ratio:.3f}"
-                                )
 
                                 # Apply decimation
                                 apply_decimate_modifier(
@@ -4613,24 +4254,18 @@ class MESH_OT_batch_export(Operator):
                                 base_lod_obj = lod_obj
                                 previous_ratio = target_ratio
 
-                            except Exception as lod_e:
-                                logger.error(
-                                    f"Failed to generate LOD{lod_level} "
-                                    f"for {original_obj.name}: {lod_e}"
-                                )
+                            except Exception:
+                                pass
                                 # Continue with other objects even if
                                 # LOD generation fails
 
-                    logger.info(f"Successfully processed {original_obj.name}")
 
                 except Exception as obj_e:
-                    logger.error(f"Failed to process {original_obj.name}: {obj_e}")
                     failed_objects.append(original_obj.name)
                     # Continue processing other objects
 
             # Check if we have any objects to export
             if not processed_objects:
-                logger.error("No objects were successfully processed for batch export")
                 return 0, failed_objects
 
             # Determine batch filename (with optional user override)
@@ -4640,10 +4275,6 @@ class MESH_OT_batch_export(Operator):
             file_path = os.path.join(export_base_path, batch_filename)
 
             # Select all processed objects for export
-            logger.info(
-                f"Exporting {len(processed_objects)} processed objects "
-                f"as single glTF file: {batch_filename}"
-            )
 
             # Deselect all first
             for obj in context.scene.objects:
@@ -4674,20 +4305,16 @@ class MESH_OT_batch_export(Operator):
                 use_existing_selection=True,
                 include_empties=has_empties,
             ):
-                logger.info(f"Batch export successful: {batch_filename}")
                 # Count as 1 successful export (the batch file)
                 return 1, failed_objects
             else:
-                logger.error(f"Batch export failed for {batch_filename}")
                 return 0, [obj.name for obj in objects_to_export]
 
         except Exception as e:
-            logger.error(f"Critical error during batch glTF export: {e}", exc_info=True)
             return 0, [obj.name for obj in objects_to_export]
 
         finally:
             # Cleanup all temporary objects (includes mesh copies)
-            logger.info(f"Cleaning up {len(temp_objects)} temporary objects...")
             for temp_obj in temp_objects:
                 cleanup_object(temp_obj, temp_obj.name if temp_obj else "temp_object")
 
@@ -4708,7 +4335,6 @@ class MESH_OT_batch_export(Operator):
                 for obj in objects_to_export
             ):
                 MemoryManager.request_cleanup()
-                logger.debug("Memory cleanup after batch export")
 
     def _generate_export_report(self, successful_exports, failed_exports, elapsed_time):
         """Generate final export report message.
@@ -4730,7 +4356,6 @@ class MESH_OT_batch_export(Operator):
                 f"{'...' if len(unique_fails) > 5 else ''}). Check console/log."
             )
             message += f" {fail_summary}"
-            logger.warning(f"Failures occurred for: {', '.join(unique_fails)}")
 
         report_type = {"INFO"} if overall_success else {"WARNING"}
         return message, report_type, overall_success
@@ -4746,15 +4371,12 @@ class MESH_OT_batch_export(Operator):
             )
         except ValidationError as e:
             self.report({"WARNING"}, str(e))
-            logger.warning(f"Validation failed: {e}")
             return {"CANCELLED"}
         except ResourceError as e:
             self.report({"ERROR"}, str(e))
-            logger.error(f"Resource error: {e}")
             return {"CANCELLED"}
         except Exception as e:
             self.report({"ERROR"}, f"Unexpected validation error: {e}")
-            logger.error(f"Unexpected validation error: {e}", exc_info=True)
             return {"CANCELLED"}
 
         # Initialise tracking
@@ -4782,10 +4404,6 @@ class MESH_OT_batch_export(Operator):
             # get_batch_export_filename() auto-detects the default name.
             override_name = self.batch_name.strip() if self.batch_name else None
 
-            logger.info(
-                f"Starting batch glTF export for {total_items} objects "
-                f"(single file) to {export_base_path}"
-            )
 
             wm.progress_begin(0, 100)
             try:
@@ -4809,11 +4427,9 @@ class MESH_OT_batch_export(Operator):
                 wm.progress_update(100)
 
             except KeyboardInterrupt:
-                logger.info("Batch export cancelled by user")
                 self.report({"INFO"}, "Export cancelled by user")
                 return {"CANCELLED"}
             except Exception as e:
-                logger.error(f"Critical error during batch export: {e}", exc_info=True)
                 self.report({"ERROR"}, f"Critical batch export error: {e}")
                 return {"CANCELLED"}
             finally:
@@ -4823,24 +4439,15 @@ class MESH_OT_batch_export(Operator):
         else:
             # Standard per-object export
             if hierarchy_mode:
-                logger.info(
-                    f"Starting batch export for {total_items} objects "
-                    f"with LOD hierarchies to {export_base_path}"
-                )
+                pass
             else:
-                logger.info(
-                    f"Starting batch export for {total_items} objects "
-                    f"to {export_base_path}"
-                )
+                pass
 
             wm.progress_begin(0, total_items)
             try:
                 # Process each object
                 for index, original_obj in enumerate(objects_to_export):
                     wm.progress_update(index + 1)
-                    logger.info(
-                        f"Processing ({index + 1}/{total_items}): {original_obj.name}"
-                    )
 
                     try:
                         # Process with hierarchy mode, regular LOD, or single export
@@ -4866,33 +4473,20 @@ class MESH_OT_batch_export(Operator):
                         # Mark object if successful
                         if not failures:
                             export_indicators.mark_object_as_exported(original_obj)
-                            logger.info(
-                                f"Marked original {original_obj.name} as exported."
-                            )
                         else:
-                            logger.info(
-                                f"Skipped marking {original_obj.name} due to errors."
-                            )
+                            pass
 
                     except ProcessingError as e:
-                        logger.error(f"Processing error for {original_obj.name}: {e}")
                         failed_exports.append(f"{original_obj.name} (Processing Error)")
                     except ResourceError as e:
-                        logger.error(f"Resource error for {original_obj.name}: {e}")
                         failed_exports.append(f"{original_obj.name} (Resource Error)")
                     except Exception as e:
-                        logger.error(
-                            f"Unexpected error for {original_obj.name}: {e}",
-                            exc_info=True,
-                        )
                         failed_exports.append(f"{original_obj.name} (Unexpected Error)")
 
             except KeyboardInterrupt:
-                logger.info("Export cancelled by user")
                 self.report({"INFO"}, "Export cancelled by user")
                 return {"CANCELLED"}
             except Exception as e:
-                logger.error(f"Critical error during export: {e}", exc_info=True)
                 self.report({"ERROR"}, f"Critical export error: {e}")
                 return {"CANCELLED"}
             finally:
@@ -4906,7 +4500,6 @@ class MESH_OT_batch_export(Operator):
             successful_exports, failed_exports, elapsed_time
         )
 
-        logger.log(logging.INFO if overall_success else logging.WARNING, message)
         self.report(report_type, message)
 
         # Trigger viewport redraw
@@ -4933,7 +4526,6 @@ class OBJECT_OT_select_by_name(Operator):
         # Access the property using self.object_name
         target_obj = bpy.data.objects.get(self.object_name)
         if not target_obj:
-            logger.warning(f"Object '{self.object_name}' not found for selection.")
             return {"CANCELLED"}
 
         # Deselect all objects directly
@@ -4989,7 +4581,6 @@ class MESH_OT_save_export_preset(Operator):
             preset_dir = get_preset_directory()
         except ResourceError as e:
             self.report({"ERROR"}, f"Cannot access preset directory: {e}")
-            logger.error(f"Preset directory error: {e}")
             return {"CANCELLED"}
 
         # Build file path
@@ -5008,7 +4599,6 @@ class MESH_OT_save_export_preset(Operator):
             settings_data = serialise_settings_to_dict(settings)
         except Exception as e:
             self.report({"ERROR"}, f"Failed to serialise settings: {e}")
-            logger.error(f"Serialisation error: {e}", exc_info=True)
             return {"CANCELLED"}
 
         # Create preset data with metadata (new format)
@@ -5028,10 +4618,8 @@ class MESH_OT_save_export_preset(Operator):
         try:
             with open(filepath, "w", encoding="utf-8") as f:
                 json.dump(preset_data, f, indent=2, sort_keys=True)
-            logger.info(f"Saved preset '{self.preset_name}' to {filepath}")
         except (OSError, IOError) as e:
             self.report({"ERROR"}, f"Failed to save preset file: {e}")
-            logger.error(f"File write error: {e}", exc_info=True)
             return {"CANCELLED"}
 
         # Refresh the preset enum cache FIRST (before setting selector)
@@ -5077,7 +4665,6 @@ class MESH_OT_load_export_preset(Operator):
             preset_dir = get_preset_directory()
         except ResourceError as e:
             self.report({"ERROR"}, f"Cannot access preset directory: {e}")
-            logger.error(f"Preset directory error: {e}")
             return {"CANCELLED"}
 
         # Build file path
@@ -5093,14 +4680,11 @@ class MESH_OT_load_export_preset(Operator):
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            logger.info(f"Loaded preset data from {filepath}")
         except (OSError, IOError) as e:
             self.report({"ERROR"}, f"Failed to read preset file: {e}")
-            logger.error(f"File read error: {e}", exc_info=True)
             return {"CANCELLED"}
         except json.JSONDecodeError as e:
             self.report({"ERROR"}, f"Invalid preset file format: {e}")
-            logger.error(f"JSON decode error: {e}", exc_info=True)
             return {"CANCELLED"}
 
         # Extract settings dict (handle both old and new format with metadata)
@@ -5115,7 +4699,6 @@ class MESH_OT_load_export_preset(Operator):
             deserialise_settings_from_dict(settings, settings_data)
         except Exception as e:
             self.report({"ERROR"}, f"Failed to apply preset settings: {e}")
-            logger.error(f"Deserialisation error: {e}", exc_info=True)
             return {"CANCELLED"}
 
         # Update current preset properties
@@ -5174,7 +4757,6 @@ class MESH_OT_delete_export_preset(Operator):
             preset_dir = get_preset_directory()
         except ResourceError as e:
             self.report({"ERROR"}, f"Cannot access preset directory: {e}")
-            logger.error(f"Preset directory error: {e}")
             return {"CANCELLED"}
 
         # Build file path
@@ -5189,10 +4771,8 @@ class MESH_OT_delete_export_preset(Operator):
         # Delete file
         try:
             os.remove(filepath)
-            logger.info(f"Deleted preset '{self.preset_name}' from {filepath}")
         except OSError as e:
             self.report({"ERROR"}, f"Failed to delete preset file: {e}")
-            logger.error(f"File delete error: {e}", exc_info=True)
             return {"CANCELLED"}
 
         # Refresh the preset enum cache FIRST (removes deleted preset from enum)
@@ -5242,7 +4822,6 @@ class MESH_OT_update_current_preset(Operator):
             preset_dir = get_preset_directory()
         except ResourceError as e:
             self.report({"ERROR"}, f"Cannot access preset directory: {e}")
-            logger.error(f"Preset directory error: {e}")
             return {"CANCELLED"}
 
         # Build file path
@@ -5259,7 +4838,6 @@ class MESH_OT_update_current_preset(Operator):
             settings_data = serialise_settings_to_dict(settings)
         except Exception as e:
             self.report({"ERROR"}, f"Failed to serialise settings: {e}")
-            logger.error(f"Serialisation error: {e}", exc_info=True)
             return {"CANCELLED"}
 
         # Read existing file to preserve metadata
@@ -5290,10 +4868,8 @@ class MESH_OT_update_current_preset(Operator):
         try:
             with open(filepath, "w", encoding="utf-8") as f:
                 json.dump(preset_data, f, indent=2, sort_keys=True)
-            logger.info(f"Updated preset '{preset_name}'")
         except (OSError, IOError) as e:
             self.report({"ERROR"}, f"Failed to update preset file: {e}")
-            logger.error(f"File write error: {e}", exc_info=True)
             return {"CANCELLED"}
 
         # Clear modified flag
@@ -5393,10 +4969,8 @@ class MESH_OT_rename_preset(Operator):
         # Rename file
         try:
             os.rename(old_filepath, new_filepath)
-            logger.info(f"Renamed preset from '{old_name}' to '{self.new_name}'")
         except OSError as e:
             self.report({"ERROR"}, f"Failed to rename preset: {e}")
-            logger.error(f"File rename error: {e}", exc_info=True)
             return {"CANCELLED"}
 
         # Refresh the preset enum cache FIRST (before setting selector)
@@ -5448,7 +5022,6 @@ class MESH_OT_reset_preset_to_default(Operator):
             return {"CANCELLED"}
         except ResourceError as e:
             self.report({"ERROR"}, str(e))
-            logger.error(f"Reset error: {e}", exc_info=True)
             return {"CANCELLED"}
 
         # Reload the preset
@@ -5474,7 +5047,6 @@ class MESH_OT_reset_preset_to_default(Operator):
 
         except Exception as e:
             self.report({"WARNING"}, f"Preset reset but failed to reload: {e}")
-            logger.error(f"Reload error: {e}", exc_info=True)
 
         # Refresh the preset enum cache (in case description changed)
         from . import properties
@@ -5504,7 +5076,6 @@ def register():
         try:
             bpy.utils.register_class(cls)
         except ValueError:
-            logger.warning(f"Class {cls.__name__} already registered.")
             pass  # Already registered
 
 
@@ -5514,5 +5085,4 @@ def unregister():
         try:
             bpy.utils.unregister_class(cls)
         except RuntimeError:
-            logger.warning(f"Class {cls.__name__} already unregistered.")
             pass  # Already unregistered

@@ -94,7 +94,6 @@ A streamlined Blender add-on designed for game development workflows. Batch expo
   * Yellow: Previously exported (< 5 minutes)
   * Toggle on/off via checkbox for cleaner viewport when needed
 * **Recent Exports Panel:** Interactive list of exported objects with selection
-* **Detailed Logging:** Comprehensive console output with polygon counts and timing
 
 ## Installation
 
@@ -168,8 +167,7 @@ You can also find the add-on directly on [Blender Extensions](https://extensions
 4. **Export:** Click the "Export Objects" button (text changes based on selection type)
 5. **Monitor Progress:**
    * Real-time progress in Blender's status bar
-   * Detailed console logs with polygon counts and timing
-   * Memory optimisation messages for large meshes
+   * Status messages reported in Blender's info area
 
 ## Performance & Large Mesh Handling
 
@@ -190,7 +188,6 @@ The add-on automatically detects and optimises for large meshes:
 * **Use "None" modifiers:** Skip modifier application for fastest export
 * **Close other applications:** Maximise available system memory
 * **Export in batches:** Process fewer objects at once to reduce memory pressure
-* **Monitor console:** Watch for "Memory optimisation" messages
 
 #### For Very Large Meshes (1M+ polygons)
 
@@ -204,17 +201,6 @@ The add-on automatically detects and optimises for large meshes:
 * **"Visible":** Good balance of functionality and performance (default)
 * **"Render":** Most complete but may impact performance on large meshes
 
-### 📊 **Console Output**
-
-Monitor the console for detailed information:
-
-``` text
-INFO: Applying memory optimisation for large mesh: 1,250,000 polygons
-INFO: Large mesh export: 1,250,000 polygons
-INFO: Memory cleanup after 3 modifiers
-INFO: Decimation complete: 1,250,000 → 312,500 polys (target: 0.250, actual: 0.250)
-```
-
 ## Export Indicators
 
 * After an object is successfully exported (including all its LODs if enabled), it will be marked in the viewport.
@@ -227,118 +213,6 @@ INFO: Decimation complete: 1,250,000 → 312,500 polys (target: 0.250, actual: 0
 * **Recent Exports Panel:** When indicators are enabled, shows a list of recently exported objects (still FRESH or STALE). Clicking the icon selects the object.
 * **Clear Indicators:** The "Clear All Export Indicators" button at the bottom of the "Recent Exports" panel will immediately remove the status from all objects and restore their original viewport colours.
 * **Auto-Clear:** Unchecking the indicators checkbox immediately clears all existing indicators from the viewport.
-
-## Testing
-
-EasyMesh Batch Exporter includes a comprehensive automated test suite to ensure reliability across all export formats, features, and edge cases.
-
-### Quick Start
-
-Run all tests:
-
-```bash
-./run_tests.sh
-```
-
-### Test Suite Coverage
-
-The test suite includes:
-
-* **Export Formats:** FBX, OBJ, glTF (GLB/JSON), USD, STL
-* **Object Types:** Meshes, curves, metaballs, mixed selections
-* **LOD Generation:** Multiple LOD levels, hierarchies, ratios, texture optimisation
-* **Batch Modes:** glTF combine vs individual export
-* **Naming Conventions:** Godot, Unity, Unreal, Default
-* **Modifier Application:** None, Visible, Render modes
-* **Memory Management:** Large mesh handling (500K+, 1M+, 2M+ polygons)
-* **Edge Cases:** Empty selections, invalid paths, special characters, extreme settings
-
-### Setup
-
-1. Install pytest-blender:
-
-```bash
-pip install pytest-blender
-```
-
-1. Install test dependencies into Blender's Python:
-
-```bash
-blender_python="$(pytest-blender)"
-$blender_python -m ensurepip
-$blender_python -m pip install -r test-requirements.txt
-```
-
-### Running Tests
-
-#### Run all tests
-
-```bash
-./run_tests.sh
-```
-
-#### Run specific test file
-
-```bash
-./run_tests.sh tests/test_export_formats.py
-```
-
-#### Run tests with verbose output
-
-```bash
-./run_tests.sh -v
-```
-
-#### Skip slow tests (large mesh tests)
-
-```bash
-./run_tests.sh -m "not slow"
-```
-
-#### Skip memory-intensive tests
-
-```bash
-./run_tests.sh -m "not memory"
-```
-
-#### Run only tests matching a pattern
-
-```bash
-./run_tests.sh -k test_fbx
-```
-
-#### Run specific test class or method
-
-```bash
-./run_tests.sh tests/test_export_formats.py::TestFBXExport::test_fbx_single_object_export
-```
-
-### Test Organisation
-
-``` text
-tests/
-├── conftest.py                # Shared fixtures and utilities
-├── test_export_formats.py     # All export formats (FBX, OBJ, glTF, USD, STL)
-├── test_object_types.py       # Meshes, curves, metaballs
-├── test_lod_generation.py     # LOD features and hierarchies
-├── test_batch_modes.py        # glTF batch combine/individual
-├── test_naming.py             # Naming conventions and sanitisation
-├── test_modifiers.py          # Modifier application modes
-├── test_memory.py             # Large mesh memory management
-└── test_edge_cases.py         # Error handling and edge cases
-```
-
-### Continuous Testing
-
-Tests can be integrated into CI/CD pipelines using GitHub Actions or similar. The test suite is designed to catch regressions when making changes to any part of the export system.
-
-### Contributing
-
-When adding new features or fixing bugs:
-
-1. Run existing tests to ensure no regressions
-2. Add new tests covering your changes
-3. Ensure all tests pass before submitting pull requests
 
 ## Support Development
 

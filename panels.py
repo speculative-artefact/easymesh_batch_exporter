@@ -6,22 +6,8 @@ It includes the main exporter panel, LOD settings, and recent exports
 """
 
 import time
-import logging
 from bpy.types import Panel
 from . import export_indicators
-
-# --- Setup Logger ---
-logger = logging.getLogger(__name__)
-# Clear any existing handlers to prevent accumulation on addon reload
-if logger.handlers:
-    logger.handlers.clear()
-handler = logging.StreamHandler()
-formatter = logging.Formatter("%(name)s:%(levelname)s: %(message)s")
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-logger.setLevel(logging.INFO)  # Default level
-# Prevent propagation to avoid duplicate logs
-logger.propagate = False
 
 
 # Main UI Panel
@@ -105,28 +91,15 @@ class MESH_PT_exporter_panel(Panel):
     def draw(self, context):
         layout = self.layout
 
-        # --- Debugging Start ---
-        # logger.info("--- Drawing MESH_PT_exporter_panel ---")
         if not hasattr(context.scene, "mesh_exporter"):
-            logger.error("context.scene has no 'mesh_exporter' attribute!")
             layout.label(text="Error: Property group not registered?")
             return  # Stop drawing if the group isn't there
 
         settings = context.scene.mesh_exporter
 
         if settings is None:
-            logger.error("context.scene.mesh_exporter is None!")
             layout.label(text="Error: Property group is None?")
             return  # Stop drawing if the group is None
-
-        # logger.info(f"Settings object: {settings}")
-        # try:
-        # Try accessing a property directly
-        # path_value = settings.mesh_export_path
-        # logger.info(f"Value of mesh_export_path: {path_value}")
-        # except AttributeError:
-        #     logger.error("Could not access settings.mesh_export_path!")
-        # --- Debugging End ---
 
         layout.use_property_split = True
         layout.use_property_decorate = False
